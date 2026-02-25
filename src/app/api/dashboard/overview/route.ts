@@ -1,0 +1,12 @@
+import { withAuth } from '@/lib/api-handler';
+import { apiSuccess } from '@/lib/api-response';
+import { DashboardService } from '@/lib/services/dashboard-service';
+
+export const GET = withAuth(async (req, { params, auth }) => {
+  const overview = DashboardService.getOverview({
+    organizationId: auth.organizationId,
+    userId: auth.dbUserId,
+  });
+
+  return apiSuccess(overview);
+});
