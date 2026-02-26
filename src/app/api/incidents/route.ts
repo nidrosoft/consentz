@@ -48,6 +48,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
     severity: validated.severity as 'CRITICAL' | 'MAJOR' | 'MINOR' | 'NEAR_MISS',
     reportedBy: auth.fullName,
     category: validated.category,
+    incidentType: (validated as Record<string, unknown>).incidentType as 'PREMISES' | 'PATIENT_COMPLICATION' ?? 'PREMISES',
     domain: 'safe',
   });
 

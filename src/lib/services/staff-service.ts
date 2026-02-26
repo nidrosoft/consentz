@@ -121,6 +121,13 @@ export class StaffService {
       dbsStatus: params.dbsStatus ?? 'PENDING',
       dbsExpiry: params.dbsExpiry ?? '',
       isActive: true,
+      gmcNumber: null,
+      gmcStatus: 'NOT_APPLICABLE',
+      gmcExpiry: null,
+      aestheticQualification: null,
+      aestheticQualificationStatus: 'NOT_APPLICABLE',
+      aestheticQualificationExpiry: null,
+      staffType: 'NON_MEDICAL',
     };
 
     return staffStore.create(member);

@@ -2,7 +2,7 @@
 // Incident Service — CRUD and filtered listing for incidents
 // =============================================================================
 
-import type { Incident, IncidentSeverity, IncidentStatus, DomainSlug } from '@/types';
+import type { Incident, IncidentSeverity, IncidentStatus, IncidentType, DomainSlug } from '@/types';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
 import { incidentStore, generateId } from '@/lib/mock-data/store';
@@ -32,6 +32,7 @@ interface IncidentCreateParams {
   severity: IncidentSeverity;
   reportedBy: string;
   category: string;
+  incidentType: IncidentType;
   domain: DomainSlug;
 }
 
@@ -121,6 +122,7 @@ export class IncidentService {
       reportedBy: params.reportedBy,
       reportedAt: new Date().toISOString(),
       category: params.category,
+      incidentType: params.incidentType,
       domain: params.domain,
     };
 
