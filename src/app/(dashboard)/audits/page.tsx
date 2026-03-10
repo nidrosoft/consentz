@@ -7,7 +7,8 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { cx } from "@/utils/cx";
-import { mockActivityLog } from "@/lib/mock-data";
+import { useAuditLog } from "@/hooks/use-audit";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
 
 const ENTITY_ICONS: Record<string, typeof File06> = {
     EVIDENCE: File06, TASK: CheckSquare, ORGANIZATION: PieChart01, POLICY: File06,
@@ -19,9 +20,6 @@ const ENTITY_COLORS: Record<string, "brand" | "success" | "warning" | "error" | 
     INCIDENT: "error", STAFF: "gray", TRAINING: "success", GAP: "warning",
 };
 
-const USERS = [...new Set(mockActivityLog.map((e) => e.user))];
-const ENTITY_TYPES = [...new Set(mockActivityLog.map((e) => e.entityType))];
-const ACTIONS = [...new Set(mockActivityLog.map((e) => e.action))];
 const PAGE_SIZE = 5;
 
 function formatDate(dateStr: string): string {
@@ -32,6 +30,12 @@ function formatTime(dateStr: string): string {
 }
 
 export default function AuditLogPage() {
+    const { data, isLoading, error, refetch } = useAuditLog({ pageSize: 100 });
+    const activityLog = data?.data ?? [];
+    const users = useMemo(() => [...new Set(activityLog.map((e: { user: string }) => e.user))], [activityLog]);
+    const entityTypes = useMemo(() => [...new Set(activityLog.map((e: { entityType: string }) => e.entityType))], [activityLog]);
+    const actions = useMemo(() => [...new Set(activityLog.map((e: { action: string }) => e.action))], [activityLog]);
+
     const [search, setSearch] = useState("");
     const [userFilter, setUserFilter] = useState<string | null>(null);
     const [entityFilter, setEntityFilter] = useState<string | null>(null);
@@ -41,16 +45,16 @@ export default function AuditLogPage() {
     const [showFilters, setShowFilters] = useState(false);
 
     const filtered = useMemo(() => {
-        return mockActivityLog
-            .filter((e) => {
+        return activityLog
+            .filter((e: { description: string; user: string; entityType: string; action: string }) => {
                 if (search && !e.description.toLowerCase().includes(search.toLowerCase()) && !e.user.toLowerCase().includes(search.toLowerCase())) return false;
                 if (userFilter && e.user !== userFilter) return false;
                 if (entityFilter && e.entityType !== entityFilter) return false;
                 if (actionFilter && e.action !== actionFilter) return false;
                 return true;
             })
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [search, userFilter, entityFilter, actionFilter]);
+            .sort((a: { createdAt: string }, b: { createdAt: string }) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }, [activityLog, search, userFilter, entityFilter, actionFilter]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -61,6 +65,17 @@ export default function AuditLogPage() {
         setUserFilter(null);
         setEntityFilter(null);
         setActionFilter(null);
+    }
+
+    if (isLoading) return <PageSkeleton variant="list" rows={10} />;
+
+    if (error) {
+        return (
+            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-6">
+                <p className="text-sm text-error-primary">Failed to load audit log.</p>
+                <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+            </div>
+        );
     }
 
     return (
@@ -102,7 +117,7 @@ export default function AuditLogPage() {
                             size="sm"
                             selectedKey={userFilter}
                             onSelectionChange={(key) => { setUserFilter(key === "" ? null : String(key)); setPage(1); }}
-                            items={[{ id: "" }, ...USERS.map((u) => ({ id: u }))]}
+                            items={[{ id: "" }, ...users.map((u) => ({ id: u }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All users"}</Select.Item>}
                         </Select>
@@ -113,7 +128,7 @@ export default function AuditLogPage() {
                             size="sm"
                             selectedKey={entityFilter}
                             onSelectionChange={(key) => { setEntityFilter(key === "" ? null : String(key)); setPage(1); }}
-                            items={[{ id: "" }, ...ENTITY_TYPES.map((t) => ({ id: t }))]}
+                            items={[{ id: "" }, ...entityTypes.map((t) => ({ id: t }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All entities"}</Select.Item>}
                         </Select>
@@ -124,7 +139,7 @@ export default function AuditLogPage() {
                             size="sm"
                             selectedKey={actionFilter}
                             onSelectionChange={(key) => { setActionFilter(key === "" ? null : String(key)); setPage(1); }}
-                            items={[{ id: "" }, ...ACTIONS.map((a) => ({ id: a }))]}
+                            items={[{ id: "" }, ...actions.map((a) => ({ id: a }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All actions"}</Select.Item>}
                         </Select>

@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { shortString, longString, dateStringSchema, kloeCodesSchema, regulationCodesSchema, domainSlugSchema } from './shared';
 
 export const evidenceCategorySchema = z.enum([
-  'POLICY', 'PROCEDURE', 'RECORD', 'ASSESSMENT', 'TRAINING', 'AUDIT', 'CERTIFICATE', 'REPORT', 'OTHER',
+  'POLICY', 'TRAINING_RECORD', 'AUDIT_REPORT', 'RISK_ASSESSMENT',
+  'INCIDENT_LOG', 'CERTIFICATE', 'MEETING_MINUTES', 'PATIENT_RECORD',
+  'CHECKLIST', 'OTHER',
 ]);
 
 export const createEvidenceSchema = z.object({
@@ -36,7 +38,7 @@ export const updateEvidenceSchema = z.object({
 
 export const evidenceFilterSchema = z.object({
   category: evidenceCategorySchema.optional(),
-  status: z.enum(['VALID', 'EXPIRING_SOON', 'EXPIRED', 'PENDING_REVIEW']).optional(),
+  status: z.enum(['VALID', 'EXPIRING_SOON', 'EXPIRED', 'PENDING_REVIEW', 'ARCHIVED']).optional(),
   domain: domainSlugSchema.optional(),
   kloeCode: z.string().optional(),
   expiringSoon: z.coerce.boolean().optional(),

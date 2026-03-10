@@ -8,9 +8,9 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
-import { cx } from "@/utils/cx";
-import { mockIncidents } from "@/lib/mock-data";
-import type { IncidentSeverity, IncidentStatus, IncidentType } from "@/types";
+import { useIncidents } from "@/hooks/use-incidents";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
+import type { Incident, IncidentSeverity, IncidentStatus, IncidentType } from "@/types";
 
 const SEVERITY_BADGE: Record<string, "error" | "warning" | "brand" | "gray"> = {
     CRITICAL: "error", MAJOR: "warning", MINOR: "brand", NEAR_MISS: "gray",
@@ -23,14 +23,6 @@ function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function timeAgo(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const hrs = Math.floor(diff / 3600000);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-}
-
-const CATEGORIES = [...new Set(mockIncidents.map((i) => i.category))];
 const SEVERITIES: IncidentSeverity[] = ["CRITICAL", "MAJOR", "MINOR", "NEAR_MISS"];
 const STATUSES: IncidentStatus[] = ["REPORTED", "INVESTIGATING", "RESOLVED", "CLOSED"];
 const INCIDENT_TYPES: IncidentType[] = ["PREMISES", "PATIENT_COMPLICATION"];
@@ -47,6 +39,10 @@ const TYPE_BADGE: Record<IncidentType, "blue" | "pink"> = {
 
 export default function IncidentsPage() {
     const router = useRouter();
+    const { data, isLoading, error, refetch } = useIncidents();
+    const incidents = (data?.data ?? []) as Incident[];
+    const categories = useMemo(() => [...new Set(incidents.map((i) => i.category))], [incidents]);
+
     const [search, setSearch] = useState("");
     const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
     const [severityFilter, setSeverityFilter] = useState<IncidentSeverity | null>(null);
@@ -56,7 +52,7 @@ export default function IncidentsPage() {
     const [showFilters, setShowFilters] = useState(false);
 
     const filtered = useMemo(() => {
-        let result = mockIncidents.filter((inc) => {
+        let result = incidents.filter((inc) => {
             if (search && !inc.title.toLowerCase().includes(search.toLowerCase()) && !inc.description.toLowerCase().includes(search.toLowerCase())) return false;
             if (categoryFilter && inc.category !== categoryFilter) return false;
             if (severityFilter && inc.severity !== severityFilter) return false;
@@ -68,7 +64,7 @@ export default function IncidentsPage() {
         if (sortBy === "date") result = [...result].sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime());
         else result = [...result].sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity]);
         return result;
-    }, [search, categoryFilter, severityFilter, statusFilter, typeFilter, sortBy]);
+    }, [incidents, search, categoryFilter, severityFilter, statusFilter, typeFilter, sortBy]);
 
     const hasFilters = !!(categoryFilter || severityFilter || statusFilter || typeFilter);
     const activeFilterCount = [categoryFilter, severityFilter, statusFilter, typeFilter].filter(Boolean).length;
@@ -80,13 +76,24 @@ export default function IncidentsPage() {
         setTypeFilter(null);
     }
 
+    if (isLoading) return <PageSkeleton variant="list" rows={8} />;
+
+    if (error) {
+        return (
+            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-6">
+                <p className="text-sm text-error-primary">Failed to load incidents.</p>
+                <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Incident Log</h1>
-                    <p className="mt-1 text-sm text-tertiary">{mockIncidents.length} incidents recorded</p>
+                    <p className="mt-1 text-sm text-tertiary">{incidents.length} incidents recorded</p>
                 </div>
                 <Button color="primary" size="lg" iconLeading={Plus} onClick={() => router.push("/incidents/report")}>Report Incident</Button>
             </div>
@@ -127,7 +134,7 @@ export default function IncidentsPage() {
                             size="sm"
                             selectedKey={categoryFilter}
                             onSelectionChange={(key) => setCategoryFilter(key === "" ? null : String(key))}
-                            items={[{ id: "" }, ...CATEGORIES.map((c) => ({ id: c }))]}
+                            items={[{ id: "" }, ...categories.map((c) => ({ id: c }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All categories"}</Select.Item>}
                         </Select>

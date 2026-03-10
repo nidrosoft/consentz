@@ -18,7 +18,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
 export const PATCH = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
 
-  const existing = IncidentService.getById(params.id);
+  const existing = await IncidentService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Incident');
   }
@@ -26,18 +26,22 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = updateIncidentSchema.parse(body);
 
-  const updated = IncidentService.update({
+  const updated = await IncidentService.update({
     id: params.id,
     title: validated.title,
     description: validated.description,
     status: validated.status,
+    rootCause: validated.rootCause,
+    actionsTaken: validated.actionsTaken,
+    lessonsLearned: validated.lessonsLearned,
+    severity: validated.severity,
   });
 
   if (!updated) {
     return ApiErrors.notFound('Incident');
   }
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'INCIDENT_UPDATED',

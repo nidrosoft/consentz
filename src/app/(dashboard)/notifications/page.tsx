@@ -6,7 +6,8 @@ import { Bell01, CheckCircle, AlertTriangle, AlertCircle, InfoCircle } from "@un
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
-import { mockNotifications } from "@/lib/mock-data";
+import { useNotifications } from "@/hooks/use-notifications";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
 
 const TYPE_ICON: Record<string, typeof Bell01> = {
     INFO: InfoCircle, WARNING: AlertTriangle, ERROR: AlertCircle, SUCCESS: CheckCircle,
@@ -25,15 +26,30 @@ function timeAgo(dateStr: string): string {
 
 export default function NotificationsPage() {
     const router = useRouter();
+    const { data: notifications, isLoading, error, refetch } = useNotifications();
+    const list = notifications ?? [];
     const [tab, setTab] = useState<"all" | "unread">("all");
-    const filtered = tab === "unread" ? mockNotifications.filter((n) => !n.isRead) : mockNotifications;
+    const filtered = tab === "unread" ? list.filter((n: { isRead: boolean }) => !n.isRead) : list;
+
+    const unreadCount = list.filter((n: { isRead: boolean }) => !n.isRead).length;
+
+    if (isLoading) return <PageSkeleton variant="list" />;
+
+    if (error) {
+        return (
+            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-6">
+                <p className="text-sm text-error-primary">Failed to load notifications.</p>
+                <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Notifications</h1>
-                    <p className="mt-1 text-sm text-tertiary">{mockNotifications.filter((n) => !n.isRead).length} unread</p>
+                    <p className="mt-1 text-sm text-tertiary">{unreadCount} unread</p>
                 </div>
                 <Button color="secondary" size="sm">Mark all as read</Button>
             </div>
@@ -42,14 +58,14 @@ export default function NotificationsPage() {
                 <button onClick={() => setTab("all")} className={cx("rounded-md px-4 py-1.5 text-sm font-medium transition duration-100", tab === "all" ? "bg-primary shadow-xs text-primary" : "text-tertiary hover:text-secondary")}>All</button>
                 <button onClick={() => setTab("unread")} className={cx("rounded-md px-4 py-1.5 text-sm font-medium transition duration-100", tab === "unread" ? "bg-primary shadow-xs text-primary" : "text-tertiary hover:text-secondary")}>
                     Unread
-                    {mockNotifications.filter((n) => !n.isRead).length > 0 && (
-                        <Badge size="sm" color="error" type="pill-color" className="ml-1.5">{mockNotifications.filter((n) => !n.isRead).length}</Badge>
+                    {unreadCount > 0 && (
+                        <Badge size="sm" color="error" type="pill-color" className="ml-1.5">{unreadCount}</Badge>
                     )}
                 </button>
             </div>
 
             <div className="rounded-xl border border-secondary bg-primary">
-                {filtered.map((notif, i) => {
+                {filtered.map((notif: { id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string; actionUrl: string | null }, i: number) => {
                     const Icon = TYPE_ICON[notif.type];
                     return (
                         <button

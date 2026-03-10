@@ -2,6 +2,7 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rate-limiter';
+import { supabaseAdmin } from '@/lib/supabase';
 
 const ALLOWED_TYPES = new Set([
   'application/pdf',
@@ -27,6 +28,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
 
   const formData = await req.formData();
   const file = formData.get('file');
+  const bucket = (formData.get('bucket') as string) || 'evidence';
 
   if (!file || !(file instanceof File)) {
     return ApiErrors.badRequest('No file provided');
@@ -40,13 +42,31 @@ export const POST = withAuth(async (req, { params, auth }) => {
     return ApiErrors.unsupportedFileType(file.type);
   }
 
-  // Mock upload response — in production this would upload to cloud storage
-  const storagePath = `organizations/${auth.organizationId}/evidence/${Date.now()}-${file.name}`;
-  const fileUrl = `https://storage.consentz.co.uk/${storagePath}`;
+  const year = new Date().getFullYear();
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `${auth.organizationId}/${bucket}/${year}/${Date.now()}-${sanitizedName}`;
+
+  const arrayBuffer = await file.arrayBuffer();
+  const { data, error } = await supabaseAdmin.storage
+    .from(bucket)
+    .upload(storagePath, arrayBuffer, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (error) {
+    return ApiErrors.internal(`Upload failed: ${error.message}`);
+  }
+
+  const { data: urlData } = supabaseAdmin.storage
+    .from(bucket)
+    .getPublicUrl(data.path);
+
+  const fileUrl = urlData.publicUrl;
 
   return apiSuccess({
     fileUrl,
-    storagePath,
+    storagePath: data.path,
     fileName: file.name,
     fileType: file.type,
     fileSize: file.size,

@@ -4,7 +4,9 @@ import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, AlertTriangle, Calendar, User01 } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
-import { mockIncidents } from "@/lib/mock-data";
+import { useIncidentDetail } from "@/hooks/use-incidents";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
+import type { Incident } from "@/types";
 
 const SEVERITY_BADGE: Record<string, "error" | "warning" | "gray" | "brand"> = {
     CRITICAL: "error", MAJOR: "warning", MINOR: "brand", NEAR_MISS: "gray",
@@ -13,9 +15,22 @@ const SEVERITY_BADGE: Record<string, "error" | "warning" | "gray" | "brand"> = {
 export default function IncidentDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const incident = mockIncidents.find((i) => i.id === params.id);
+    const id = typeof params.id === "string" ? params.id : "";
+    const { data, isLoading, error, refetch } = useIncidentDetail(id);
+    const incident = data as Incident | undefined;
 
-    if (!incident) return <p className="text-tertiary">Incident not found.</p>;
+    if (isLoading) return <PageSkeleton variant="detail" />;
+
+    if (error || !incident) {
+        return (
+            <div className="flex flex-col gap-4">
+                <p className="text-sm text-tertiary">Incident not found.</p>
+                {error && (
+                    <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">

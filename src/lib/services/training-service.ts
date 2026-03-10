@@ -2,25 +2,27 @@
 // Training Service — CRUD and training matrix generation
 // =============================================================================
 
-import type { TrainingRecord, TrainingStatus } from '@/types';
+import { db } from '@/lib/db';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
-import { trainingStore, staffStore, generateId } from '@/lib/mock-data/store';
-import { paginateArray } from '@/lib/pagination';
+import type { Prisma } from '@prisma/client';
+
+function deriveTrainingStatus(expiryDate: Date | null, isExpired: boolean): string {
+  if (isExpired) return 'EXPIRED';
+  if (!expiryDate) return 'VALID';
+  const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  if (expiryDate <= thirtyDays) return 'EXPIRING_SOON';
+  return 'VALID';
+}
 
 interface TrainingListParams {
   organizationId: string;
   pagination: PaginationInput;
   filters?: {
     staffId?: string;
-    status?: TrainingStatus | TrainingStatus[];
+    status?: string | string[];
     courseName?: string;
   };
-}
-
-interface TrainingListResult {
-  data: TrainingRecord[];
-  meta: PaginationMeta;
 }
 
 interface TrainingCreateParams {
@@ -30,7 +32,7 @@ interface TrainingCreateParams {
   completedDate: string;
   expiryDate: string;
   certificateUrl?: string | null;
-  status?: TrainingStatus;
+  status?: string;
 }
 
 interface TrainingUpdateParams {
@@ -39,142 +41,119 @@ interface TrainingUpdateParams {
   completedDate?: string;
   expiryDate?: string;
   certificateUrl?: string | null;
-  status?: TrainingStatus;
-}
-
-interface StaffTrainingEntry {
-  courseName: string;
-  status: TrainingStatus;
-  expiryDate: string;
-}
-
-interface TrainingMatrixRow {
-  id: string;
-  name: string;
-  trainings: StaffTrainingEntry[];
-}
-
-interface TrainingMatrix {
-  staff: TrainingMatrixRow[];
+  status?: string;
 }
 
 export class TrainingService {
-  /**
-   * List all training records with optional filters and pagination.
-   */
-  static listAll(params: TrainingListParams): TrainingListResult {
-    let items = trainingStore.getAll();
-
-    // Apply filters
-    if (params.filters) {
-      const { staffId, status, courseName } = params.filters;
-
-      if (staffId) {
-        items = items.filter((t) => t.staffId === staffId);
-      }
-
-      if (status) {
-        const statuses = Array.isArray(status) ? status : [status];
-        items = items.filter((t) => statuses.includes(t.status));
-      }
-
-      if (courseName) {
-        const query = courseName.toLowerCase();
-        items = items.filter((t) => t.courseName.toLowerCase().includes(query));
-      }
-    }
-
-    // Apply search
-    if (params.pagination.search) {
-      const query = params.pagination.search.toLowerCase();
-      items = items.filter((t) =>
-        t.courseName.toLowerCase().includes(query),
-      );
-    }
-
-    // Sort by completedDate descending
-    items.sort(
-      (a, b) =>
-        new Date(b.completedDate).getTime() - new Date(a.completedDate).getTime(),
-    );
-
-    return paginateArray(items, params.pagination);
-  }
-
-  /**
-   * Get a single training record by ID.
-   */
-  static getById(id: string): TrainingRecord | undefined {
-    return trainingStore.getById(id);
-  }
-
-  /**
-   * Create a new training record.
-   */
-  static create(params: TrainingCreateParams): TrainingRecord {
-    const record: TrainingRecord = {
-      id: generateId('tr'),
-      staffId: params.staffId,
-      courseName: params.courseName,
-      completedDate: params.completedDate,
-      expiryDate: params.expiryDate,
-      certificateUrl: params.certificateUrl ?? null,
-      status: params.status ?? 'VALID',
+  static async listAll(params: TrainingListParams) {
+    const where: Prisma.TrainingRecordWhereInput = {
+      staffMember: { organizationId: params.organizationId },
     };
 
-    return trainingStore.create(record);
-  }
+    if (params.filters?.staffId) {
+      where.staffMemberId = params.filters.staffId;
+    }
+    if (params.filters?.courseName) {
+      where.courseName = { contains: params.filters.courseName, mode: 'insensitive' };
+    }
+    if (params.pagination.search) {
+      where.courseName = { contains: params.pagination.search, mode: 'insensitive' };
+    }
 
-  /**
-   * Update an existing training record.
-   */
-  static update(params: TrainingUpdateParams): TrainingRecord | undefined {
-    const existing = trainingStore.getById(params.id);
-    if (!existing) return undefined;
+    const skip = (params.pagination.page - 1) * params.pagination.pageSize;
+    const take = params.pagination.pageSize;
 
-    const updates: Partial<TrainingRecord> = {};
+    const [rawData, total] = await Promise.all([
+      db.trainingRecord.findMany({
+        where,
+        orderBy: { completedDate: 'desc' },
+        skip,
+        take,
+        include: { staffMember: { select: { firstName: true, lastName: true } } },
+      }),
+      db.trainingRecord.count({ where }),
+    ]);
 
-    if (params.courseName !== undefined) updates.courseName = params.courseName;
-    if (params.completedDate !== undefined) updates.completedDate = params.completedDate;
-    if (params.expiryDate !== undefined) updates.expiryDate = params.expiryDate;
-    if (params.certificateUrl !== undefined) updates.certificateUrl = params.certificateUrl;
-    if (params.status !== undefined) updates.status = params.status;
+    const data = rawData.map((r) => ({
+      ...r,
+      status: deriveTrainingStatus(r.expiryDate, r.isExpired),
+      staffName: `${r.staffMember.firstName} ${r.staffMember.lastName}`,
+    }));
 
-    return trainingStore.update(params.id, updates);
-  }
-
-  /**
-   * Delete a training record permanently.
-   */
-  static delete(id: string): boolean {
-    return trainingStore.remove(id);
-  }
-
-  /**
-   * Generate a training matrix: staff-by-course grid.
-   * Each row is a staff member with their training records.
-   */
-  static getMatrix(organizationId: string): TrainingMatrix {
-    const activeStaff = staffStore.filter((s) => s.isActive);
-    const allTraining = trainingStore.getAll();
-
-    const staffRows: TrainingMatrixRow[] = activeStaff.map((member) => {
-      const memberTrainings = allTraining.filter(
-        (t) => t.staffId === member.id,
-      );
-
-      const trainings: StaffTrainingEntry[] = memberTrainings.map((t) => ({
-        courseName: t.courseName,
-        status: t.status,
-        expiryDate: t.expiryDate,
-      }));
-
+    if (params.filters?.status) {
+      const statuses = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
+      const filtered = data.filter((d) => statuses.includes(d.status));
+      const totalPages = Math.ceil(filtered.length / params.pagination.pageSize);
       return {
-        id: member.id,
-        name: member.name,
-        trainings,
+        data: filtered,
+        meta: { page: params.pagination.page, pageSize: params.pagination.pageSize, total: filtered.length, totalPages, hasMore: params.pagination.page < totalPages } as PaginationMeta,
       };
+    }
+
+    const totalPages = Math.ceil(total / params.pagination.pageSize);
+    return {
+      data,
+      meta: { page: params.pagination.page, pageSize: params.pagination.pageSize, total, totalPages, hasMore: params.pagination.page < totalPages } as PaginationMeta,
+    };
+  }
+
+  static async getById(id: string) {
+    const record = await db.trainingRecord.findUnique({ where: { id } });
+    if (!record) return null;
+    return { ...record, status: deriveTrainingStatus(record.expiryDate, record.isExpired) };
+  }
+
+  static async create(params: TrainingCreateParams) {
+    const expiryDate = params.expiryDate ? new Date(params.expiryDate) : null;
+    return db.trainingRecord.create({
+      data: {
+        staffMemberId: params.staffId,
+        courseName: params.courseName,
+        completedDate: new Date(params.completedDate),
+        expiryDate,
+        certificateUrl: params.certificateUrl ?? null,
+        isExpired: params.status === 'EXPIRED',
+      },
     });
+  }
+
+  static async update(params: TrainingUpdateParams) {
+    const data: Prisma.TrainingRecordUpdateInput = {};
+    if (params.courseName !== undefined) data.courseName = params.courseName;
+    if (params.completedDate !== undefined) data.completedDate = new Date(params.completedDate);
+    if (params.expiryDate !== undefined) data.expiryDate = new Date(params.expiryDate);
+    if (params.certificateUrl !== undefined) data.certificateUrl = params.certificateUrl;
+    if (params.status === 'EXPIRED') data.isExpired = true;
+    if (params.status === 'VALID') data.isExpired = false;
+
+    return db.trainingRecord.update({ where: { id: params.id }, data });
+  }
+
+  static async delete(id: string) {
+    await db.trainingRecord.delete({ where: { id } });
+    return true;
+  }
+
+  static async getMatrix(organizationId: string) {
+    const activeStaff = await db.staffMember.findMany({
+      where: { organizationId, isActive: true },
+      include: {
+        trainingRecords: {
+          select: { courseName: true, expiryDate: true, isExpired: true },
+        },
+      },
+      orderBy: { firstName: 'asc' },
+    });
+
+    const staffRows = activeStaff.map((member) => ({
+      id: member.id,
+      name: `${member.firstName} ${member.lastName}`,
+      trainings: member.trainingRecords.map((t) => ({
+        courseName: t.courseName,
+        status: deriveTrainingStatus(t.expiryDate, t.isExpired),
+        expiryDate: t.expiryDate?.toISOString() ?? '',
+      })),
+    }));
 
     return { staff: staffRows };
   }

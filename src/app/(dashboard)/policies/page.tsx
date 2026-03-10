@@ -8,16 +8,42 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
-import { cx } from "@/utils/cx";
-import { mockPolicies } from "@/lib/mock-data";
+import { usePolicies } from "@/hooks/use-policies";
 import type { PolicyStatus } from "@/types";
 
 const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray" | "brand"> = {
     PUBLISHED: "success", APPROVED: "brand", REVIEW: "warning", DRAFT: "gray", ARCHIVED: "error",
+    ACTIVE: "success", UNDER_REVIEW: "warning",
 };
 
-const CATEGORIES = [...new Set(mockPolicies.map((p) => p.category))];
 const STATUSES: PolicyStatus[] = ["PUBLISHED", "APPROVED", "REVIEW", "DRAFT"];
+
+type ApiPolicy = {
+    id: string;
+    title: string;
+    status: string;
+    version?: string;
+    category?: string;
+    domains?: string[];
+    createdBy?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    lastReviewDate?: string;
+    nextReviewDate?: string;
+};
+
+function toDisplayPolicy(p: ApiPolicy) {
+    const category = p.category ?? p.domains?.[0] ?? "—";
+    const status = p.status;
+    return {
+        ...p,
+        category,
+        version: p.version ?? "1.0",
+        createdBy: p.createdBy ?? "—",
+        updatedAt: p.updatedAt ?? "",
+        nextReviewDate: p.nextReviewDate ?? null,
+    };
+}
 
 export default function PoliciesPage() {
     const router = useRouter();
@@ -27,21 +53,38 @@ export default function PoliciesPage() {
     const [sortBy, setSortBy] = useState<"updated" | "review">("updated");
     const [showFilters, setShowFilters] = useState(false);
 
+    const { data, isLoading, error } = usePolicies({
+        search: search || undefined,
+        status: statusFilter ?? undefined,
+        category: categoryFilter ?? undefined,
+        pageSize: 100,
+    });
+
+    const policies = (data?.success && data?.data ? data.data : []) as ApiPolicy[];
+    const displayPolicies = policies.map(toDisplayPolicy);
+    const categories = useMemo(() => [...new Set(displayPolicies.map((p) => p.category).filter(Boolean))], [displayPolicies]);
+
+    const statusMatches = (apiStatus: string, filter: PolicyStatus) => {
+        if (filter === "REVIEW") return apiStatus === "UNDER_REVIEW";
+        if (filter === "APPROVED" || filter === "PUBLISHED") return apiStatus === "ACTIVE";
+        return apiStatus === filter;
+    };
+
     const filtered = useMemo(() => {
-        let result = mockPolicies.filter((p) => {
+        let result = displayPolicies.filter((p) => {
             if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
-            if (statusFilter && p.status !== statusFilter) return false;
+            if (statusFilter && !statusMatches(p.status, statusFilter)) return false;
             if (categoryFilter && p.category !== categoryFilter) return false;
             return true;
         });
-        if (sortBy === "updated") result = [...result].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        if (sortBy === "updated") result = [...result].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
         else result = [...result].sort((a, b) => {
             if (!a.nextReviewDate) return 1;
             if (!b.nextReviewDate) return -1;
             return new Date(a.nextReviewDate).getTime() - new Date(b.nextReviewDate).getTime();
         });
         return result;
-    }, [search, statusFilter, categoryFilter, sortBy]);
+    }, [displayPolicies, search, statusFilter, categoryFilter, sortBy]);
 
     const hasFilters = !!(statusFilter || categoryFilter);
     const activeFilterCount = [statusFilter, categoryFilter].filter(Boolean).length;
@@ -51,13 +94,56 @@ export default function PoliciesPage() {
         setCategoryFilter(null);
     }
 
+    if (error) {
+        return (
+            <div className="flex flex-col gap-6">
+                <h1 className="text-display-xs font-semibold text-primary">Policies</h1>
+                <div className="rounded-xl border border-error bg-error-secondary/20 p-6">
+                    <p className="text-sm font-medium text-error-primary">Failed to load policies</p>
+                    <p className="mt-1 text-sm text-tertiary">{String(error)}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <div className="h-8 w-32 animate-pulse rounded bg-secondary" />
+                        <div className="mt-2 h-4 w-24 animate-pulse rounded bg-secondary" />
+                    </div>
+                    <div className="flex gap-2">
+                        <div className="h-10 w-24 animate-pulse rounded-lg bg-secondary" />
+                        <div className="h-10 w-32 animate-pulse rounded-lg bg-secondary" />
+                    </div>
+                </div>
+                <div className="h-10 w-full animate-pulse rounded-lg bg-secondary" />
+                <div className="rounded-xl border border-secondary bg-primary p-6">
+                    <div className="space-y-4">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                            <div key={i} className="flex gap-4">
+                                <div className="h-10 w-10 animate-pulse rounded-lg bg-secondary" />
+                                <div className="flex-1 space-y-2">
+                                    <div className="h-4 w-48 animate-pulse rounded bg-secondary" />
+                                    <div className="h-4 w-32 animate-pulse rounded bg-secondary" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Policies</h1>
-                    <p className="mt-1 text-sm text-tertiary">{mockPolicies.length} policies</p>
+                    <p className="mt-1 text-sm text-tertiary">{filtered.length} policies</p>
                 </div>
                 <div className="flex gap-2">
                     <Button color="secondary" size="lg" onClick={() => router.push("/policies/templates")}>Templates</Button>
@@ -112,7 +198,7 @@ export default function PoliciesPage() {
                             size="sm"
                             selectedKey={categoryFilter}
                             onSelectionChange={(key) => setCategoryFilter(key === "" ? null : String(key))}
-                            items={[{ id: "" }, ...CATEGORIES.map((c) => ({ id: c }))]}
+                            items={[{ id: "" }, ...categories.map((c) => ({ id: c }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All categories"}</Select.Item>}
                         </Select>
@@ -173,7 +259,7 @@ export default function PoliciesPage() {
                                     <span className="text-sm text-tertiary whitespace-nowrap">{policy.createdBy}</span>
                                 </Table.Cell>
                                 <Table.Cell>
-                                    <BadgeWithDot size="sm" color={STATUS_BADGE[policy.status]}>{policy.status}</BadgeWithDot>
+                                    <BadgeWithDot size="sm" color={STATUS_BADGE[policy.status] ?? "gray"}>{policy.status}</BadgeWithDot>
                                 </Table.Cell>
                                 <Table.Cell>
                                     <span className="text-sm text-tertiary whitespace-nowrap">{policy.updatedAt}</span>

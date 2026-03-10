@@ -5,30 +5,65 @@ import { ChevronLeft, Edit02, Mail01, Calendar, ShieldTick, Award02 } from "@unt
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
-import { mockStaff } from "@/lib/mock-data";
+import { useStaffDetail } from "@/hooks/use-staff";
+import { useTrainingRecords } from "@/hooks/use-staff";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
 
 const DBS_BADGE: Record<string, "success" | "warning" | "error"> = {
     CLEAR: "success", PENDING: "warning", EXPIRED: "error",
 };
 
-const MOCK_TRAINING = [
-    { id: "tr1", course: "Fire Safety Awareness", completed: "2025-11-15", expiry: "2026-11-15", status: "VALID" as const },
-    { id: "tr2", course: "Safeguarding Adults Level 2", completed: "2025-09-20", expiry: "2026-09-20", status: "VALID" as const },
-    { id: "tr3", course: "Manual Handling", completed: "2025-06-10", expiry: "2026-06-10", status: "VALID" as const },
-    { id: "tr4", course: "Infection Control", completed: "2024-12-01", expiry: "2025-12-01", status: "EXPIRED" as const },
-    { id: "tr5", course: "First Aid at Work", completed: "2025-03-15", expiry: "2026-03-15", status: "EXPIRING_SOON" as const },
-];
-
 const TRAINING_BADGE: Record<string, "success" | "warning" | "error"> = {
     VALID: "success", EXPIRING_SOON: "warning", EXPIRED: "error",
 };
 
+interface ApiStaffMember {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email?: string | null;
+    jobTitle: string;
+    staffRole: string;
+    department?: string | null;
+    isActive: boolean;
+    startDate: string;
+    dbsCertificateDate?: string | null;
+    dbsNumber?: string | null;
+    registrationBody?: string | null;
+    registrationNumber?: string | null;
+    registrationExpiry?: string | null;
+    trainingRecords?: { id: string; courseName: string; completedDate: string; expiryDate: string; status: string }[];
+}
+
 export default function StaffDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const staff = mockStaff.find((s) => s.id === params.id);
+    const id = typeof params.id === "string" ? params.id : "";
+    const { data: rawStaff, isLoading, error, refetch } = useStaffDetail(id);
+    const { data: trainingData } = useTrainingRecords({ staffId: id });
+    const trainingRecords = (trainingData?.data ?? []) as { id: string; courseName: string; completedDate: string; expiryDate: string; status: string }[];
+    const apiStaff = rawStaff as ApiStaffMember | null | undefined;
+    const staff = apiStaff ? {
+        ...apiStaff,
+        name: `${apiStaff.firstName} ${apiStaff.lastName}`,
+        role: apiStaff.jobTitle,
+        department: apiStaff.department ?? apiStaff.staffRole ?? "—",
+        dbsStatus: apiStaff.dbsCertificateDate ? "CLEAR" : "PENDING",
+        dbsExpiry: apiStaff.dbsCertificateDate ?? "N/A",
+    } : null;
 
-    if (!staff) return <p className="text-tertiary">Staff member not found.</p>;
+    if (isLoading) return <PageSkeleton variant="detail" />;
+
+    if (error || !staff) {
+        return (
+            <div className="flex flex-col gap-4">
+                <p className="text-sm text-tertiary">Staff member not found.</p>
+                {error && (
+                    <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
@@ -89,18 +124,18 @@ export default function StaffDetailPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {MOCK_TRAINING.map((t, i) => (
-                                <tr key={t.id} className={i < MOCK_TRAINING.length - 1 ? "border-b border-secondary" : ""}>
+                            {trainingRecords.map((t: { id: string; courseName: string; completedDate: string; expiryDate: string; status: string }, i: number) => (
+                                <tr key={t.id} className={i < trainingRecords.length - 1 ? "border-b border-secondary" : ""}>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">
                                             <Award02 className="size-4 text-fg-quaternary" />
-                                            <span className="text-sm font-medium text-primary">{t.course}</span>
+                                            <span className="text-sm font-medium text-primary">{t.courseName}</span>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 text-sm text-tertiary">{t.completed}</td>
-                                    <td className="px-4 py-3 text-sm text-tertiary">{t.expiry}</td>
+                                    <td className="px-4 py-3 text-sm text-tertiary">{t.completedDate}</td>
+                                    <td className="px-4 py-3 text-sm text-tertiary">{t.expiryDate}</td>
                                     <td className="px-4 py-3">
-                                        <Badge size="sm" color={TRAINING_BADGE[t.status]} type="pill-color">{t.status.replace("_", " ")}</Badge>
+                                        <Badge size="sm" color={TRAINING_BADGE[t.status] as "success" | "warning" | "error"} type="pill-color">{t.status.replace("_", " ")}</Badge>
                                     </td>
                                 </tr>
                             ))}

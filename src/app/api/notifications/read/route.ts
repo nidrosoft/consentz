@@ -7,7 +7,11 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = markReadSchema.parse(body);
 
-  NotificationService.markRead(validated.notificationIds, validated.markAll);
+  await NotificationService.markRead(
+    auth.organizationId,
+    validated.notificationIds,
+    validated.markAll,
+  );
 
   return apiSuccess({ success: true });
 });

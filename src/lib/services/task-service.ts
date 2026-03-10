@@ -2,180 +2,137 @@
 // Task Service — CRUD, filtering, and gap resolution checks
 // =============================================================================
 
-import type { Task, TaskStatus, TaskPriority, DomainSlug } from '@/types';
-import type { PaginationInput } from '@/lib/pagination';
-import type { PaginationMeta } from '@/lib/api-response';
-import { taskStore, gapStore, generateId } from '@/lib/mock-data/store';
-import { paginateArray } from '@/lib/pagination';
+import { db } from '@/lib/db';
+import type { Prisma, TaskStatus, Priority, TaskSource } from '@prisma/client';
 
 interface TaskListParams {
   organizationId: string;
-  pagination: PaginationInput;
-  userRole?: 'OWNER' | 'ADMIN' | 'MANAGER' | 'STAFF' | 'VIEWER';
+  pagination: { page: number; limit: number; search?: string };
+  userRole?: string;
   userId?: string;
   filters?: {
-    status?: TaskStatus | TaskStatus[];
-    priority?: TaskPriority | TaskPriority[];
+    status?: string | string[];
+    priority?: string | string[];
     assignee?: string;
-    domain?: DomainSlug | DomainSlug[];
+    domain?: string | string[];
   };
 }
 
-interface TaskListResult {
-  data: Task[];
-  meta: PaginationMeta;
-}
-
-interface TaskCreateParams {
-  organizationId: string;
-  title: string;
-  description: string;
-  status?: TaskStatus;
-  priority: TaskPriority;
-  assignee: string;
-  dueDate: string;
-  relatedGapId?: string | null;
-  domain: DomainSlug;
-}
-
-interface TaskUpdateParams {
-  id: string;
-  title?: string;
-  description?: string;
-  status?: TaskStatus;
-  priority?: TaskPriority;
-  assignee?: string;
-  dueDate?: string;
-  domain?: DomainSlug;
-}
-
 export class TaskService {
-  /**
-   * List tasks with optional filters and pagination.
-   * For STAFF role, automatically filters by assignee.
-   */
-  static list(params: TaskListParams): TaskListResult {
-    let items = taskStore.getAll();
-
-    // For STAFF role, restrict to their own tasks
-    if (params.userRole === 'STAFF' && params.userId) {
-      items = items.filter((t) => t.assignee === params.userId);
-    }
-
-    // Apply filters
-    if (params.filters) {
-      const { status, priority, assignee, domain } = params.filters;
-
-      if (status) {
-        const statuses = Array.isArray(status) ? status : [status];
-        items = items.filter((t) => statuses.includes(t.status));
-      }
-
-      if (priority) {
-        const priorities = Array.isArray(priority) ? priority : [priority];
-        items = items.filter((t) => priorities.includes(t.priority));
-      }
-
-      if (assignee) {
-        items = items.filter(
-          (t) => t.assignee.toLowerCase().includes(assignee.toLowerCase()),
-        );
-      }
-
-      if (domain) {
-        const domains = Array.isArray(domain) ? domain : [domain];
-        items = items.filter((t) => domains.includes(t.domain));
-      }
-    }
-
-    // Apply search
-    if (params.pagination.search) {
-      const query = params.pagination.search.toLowerCase();
-      items = items.filter(
-        (t) =>
-          t.title.toLowerCase().includes(query) ||
-          t.description.toLowerCase().includes(query),
-      );
-    }
-
-    // Sort by dueDate ascending by default (most urgent first)
-    items.sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
-    );
-
-    return paginateArray(items, params.pagination);
-  }
-
-  /**
-   * Get a single task by ID.
-   */
-  static getById(id: string): Task | undefined {
-    return taskStore.getById(id);
-  }
-
-  /**
-   * Create a new task.
-   */
-  static create(params: TaskCreateParams): Task {
-    const task: Task = {
-      id: generateId('task'),
-      title: params.title,
-      description: params.description,
-      status: params.status ?? 'TODO',
-      priority: params.priority,
-      assignee: params.assignee,
-      dueDate: params.dueDate,
-      relatedGapId: params.relatedGapId ?? null,
-      domain: params.domain,
+  static async list(params: TaskListParams) {
+    const where: Prisma.TaskWhereInput = {
+      organizationId: params.organizationId,
     };
 
-    return taskStore.create(task);
-  }
-
-  /**
-   * Update an existing task.
-   */
-  static update(params: TaskUpdateParams): Task | undefined {
-    const existing = taskStore.getById(params.id);
-    if (!existing) return undefined;
-
-    const updates: Partial<Task> = {};
-
-    if (params.title !== undefined) updates.title = params.title;
-    if (params.description !== undefined) updates.description = params.description;
-    if (params.status !== undefined) updates.status = params.status;
-    if (params.priority !== undefined) updates.priority = params.priority;
-    if (params.assignee !== undefined) updates.assignee = params.assignee;
-    if (params.dueDate !== undefined) updates.dueDate = params.dueDate;
-    if (params.domain !== undefined) updates.domain = params.domain;
-
-    return taskStore.update(params.id, updates);
-  }
-
-  /**
-   * Delete a task permanently.
-   */
-  static delete(id: string): boolean {
-    return taskStore.remove(id);
-  }
-
-  /**
-   * Check if all tasks related to a gap are DONE.
-   * If so, resolve the gap automatically.
-   */
-  static checkAndResolveGap(gapId: string): boolean {
-    const relatedTasks = taskStore.filter((t) => t.relatedGapId === gapId);
-
-    // No related tasks means we cannot auto-resolve
-    if (relatedTasks.length === 0) return false;
-
-    const allDone = relatedTasks.every((t) => t.status === 'DONE');
-
-    if (allDone) {
-      gapStore.update(gapId, { status: 'RESOLVED' });
-      return true;
+    if (params.userRole === 'STAFF' && params.userId) {
+      where.assignedTo = params.userId;
     }
 
+    if (params.filters?.status) {
+      const statuses = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
+      const mapped = statuses.map((s) => (s === 'DONE' ? 'COMPLETED' : s)).filter((s) => s !== 'OVERDUE');
+      if (mapped.length > 0) where.status = { in: mapped as TaskStatus[] };
+    }
+    if (params.filters?.priority) {
+      const priorities = Array.isArray(params.filters.priority) ? params.filters.priority : [params.filters.priority];
+      const mapped = priorities.map((p) => (p === 'URGENT' ? 'CRITICAL' : p));
+      if (mapped.length > 0) where.priority = { in: mapped as Priority[] };
+    }
+    if (params.filters?.assignee) {
+      where.assignedToName = { contains: params.filters.assignee, mode: 'insensitive' };
+    }
+    if (params.filters?.domain) {
+      const doms = Array.isArray(params.filters.domain) ? params.filters.domain : [params.filters.domain];
+      where.domains = { hasSome: doms };
+    }
+    if (params.pagination.search) {
+      where.OR = [
+        { title: { contains: params.pagination.search, mode: 'insensitive' } },
+        { description: { contains: params.pagination.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      db.task.findMany({
+        where,
+        orderBy: { dueDate: 'asc' },
+        skip: (params.pagination.page - 1) * params.pagination.limit,
+        take: params.pagination.limit,
+      }),
+      db.task.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        page: params.pagination.page,
+        limit: params.pagination.limit,
+        total,
+        totalPages: Math.ceil(total / params.pagination.limit),
+      },
+    };
+  }
+
+  static async getById(id: string) {
+    return db.task.findUnique({ where: { id }, include: { complianceGap: true } });
+  }
+
+  static async create(params: {
+    organizationId: string;
+    title: string;
+    description?: string;
+    status?: string;
+    priority: string;
+    assignedTo?: string;
+    assignedToName?: string;
+    dueDate?: string;
+    domains?: string[];
+    kloeCode?: string;
+    gapId?: string;
+    source?: string;
+    sourceId?: string;
+  }) {
+    return db.task.create({
+      data: {
+        organizationId: params.organizationId,
+        title: params.title,
+        description: params.description,
+        status: (params.status as TaskStatus) || 'TODO',
+        priority: params.priority as Priority,
+        assignedTo: params.assignedTo,
+        assignedToName: params.assignedToName,
+        dueDate: params.dueDate ? new Date(params.dueDate) : null,
+        domains: params.domains || [],
+        kloeCode: params.kloeCode,
+        gapId: params.gapId,
+        source: (params.source as TaskSource) || 'MANUAL',
+        sourceId: params.sourceId,
+      },
+    });
+  }
+
+  static async update(id: string, data: Record<string, unknown>) {
+    const updateData = { ...data };
+    if (updateData.dueDate) updateData.dueDate = new Date(updateData.dueDate as string);
+    if (updateData.status === 'COMPLETED' && !updateData.completedAt) {
+      updateData.completedAt = new Date();
+    }
+    return db.task.update({ where: { id }, data: updateData as Prisma.TaskUpdateInput });
+  }
+
+  static async delete(id: string) {
+    await db.task.delete({ where: { id } });
+    return true;
+  }
+
+  static async checkAndResolveGap(gapId: string) {
+    const relatedTasks = await db.task.findMany({ where: { gapId } });
+    if (relatedTasks.length === 0) return false;
+    const allDone = relatedTasks.every((t) => t.status === 'COMPLETED');
+    if (allDone) {
+      await db.complianceGap.update({ where: { id: gapId }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
+      return true;
+    }
     return false;
   }
 }

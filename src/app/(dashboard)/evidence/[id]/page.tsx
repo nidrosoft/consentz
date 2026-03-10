@@ -4,7 +4,8 @@ import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Download01, Trash01, File06, Calendar, User01, Link01 } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
-import { mockEvidence } from "@/lib/mock-data";
+import { useEvidenceDetail } from "@/hooks/use-evidence";
+import { toEvidence } from "@/lib/evidence-mapper";
 
 const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray"> = {
     VALID: "success", EXPIRING_SOON: "warning", EXPIRED: "error", PENDING_REVIEW: "gray",
@@ -13,7 +14,48 @@ const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray"> = {
 export default function EvidenceDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const evidence = mockEvidence.find((e) => e.id === params.id);
+    const id = typeof params.id === "string" ? params.id : "";
+    const { data: rawData, isLoading, error } = useEvidenceDetail(id);
+    const evidence = rawData ? toEvidence(rawData as unknown as Record<string, unknown>) : null;
+
+    if (error) {
+        return (
+            <div className="flex flex-col gap-6">
+                <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/evidence")}>Back to Evidence</Button>
+                <div className="rounded-xl border border-error bg-error-secondary p-6">
+                    <p className="text-sm font-medium text-error-primary">Failed to load evidence</p>
+                    <p className="mt-1 text-sm text-tertiary">{error instanceof Error ? error.message : "An error occurred"}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="h-8 w-24 animate-pulse rounded bg-secondary" />
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-4">
+                        <div className="size-12 shrink-0 animate-pulse rounded-xl bg-secondary" />
+                        <div className="flex-1 space-y-2">
+                            <div className="h-6 w-48 animate-pulse rounded bg-secondary" />
+                            <div className="h-4 w-32 animate-pulse rounded bg-secondary" />
+                        </div>
+                    </div>
+                </div>
+                <div className="rounded-xl border border-secondary bg-primary p-6">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {[...Array(6)].map((_, i) => (
+                            <div key={i} className="flex items-center gap-3">
+                                <div className="h-4 w-20 animate-pulse rounded bg-secondary" />
+                                <div className="h-4 w-32 animate-pulse rounded bg-secondary" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (!evidence) return <p className="text-tertiary">Evidence not found.</p>;
 

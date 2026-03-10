@@ -26,7 +26,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
   if (rawFilters.severity) filters.severity = rawFilters.severity;
   if (rawFilters.domain) filters.domain = rawFilters.domain as DomainSlug;
 
-  const result = GapService.list({
+  const result = await GapService.list({
     organizationId: auth.organizationId,
     pagination,
     filters,

@@ -19,15 +19,21 @@ export const GET = withAuth(async (req, { params, auth }) => {
 
   const filters: {
     isActive?: boolean;
-    department?: string;
+    department?: string | string[];
+    staffRole?: string | string[];
   } = {};
 
   if (rawFilters.isActive !== undefined) filters.isActive = rawFilters.isActive;
   if (rawFilters.department) filters.department = rawFilters.department;
+  if (rawFilters.staffRole) filters.staffRole = rawFilters.staffRole;
 
-  const result = StaffService.list({
+  const result = await StaffService.list({
     organizationId: auth.organizationId,
-    pagination,
+    pagination: {
+      page: pagination.page,
+      limit: pagination.pageSize,
+      search: pagination.search,
+    },
     filters,
   });
 
@@ -40,16 +46,25 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = createStaffSchema.parse(body);
 
-  const member = StaffService.create({
+  const member = await StaffService.create({
     organizationId: auth.organizationId,
-    name: `${validated.firstName} ${validated.lastName}`,
-    email: validated.email ?? '',
-    role: validated.jobTitle,
-    department: validated.department ?? '',
+    firstName: validated.firstName,
+    lastName: validated.lastName,
+    email: validated.email,
+    phone: validated.phone,
+    jobTitle: validated.jobTitle,
+    staffRole: validated.staffRole,
+    department: validated.department,
     startDate: validated.startDate,
+    registrationBody: validated.registrationBody,
+    registrationNumber: validated.registrationNumber,
+    registrationExpiry: validated.registrationExpiry,
+    dbsNumber: validated.dbsNumber,
+    dbsCertificateDate: validated.dbsCertificateDate,
+    dbsLevel: validated.dbsLevel,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'STAFF_CREATED',

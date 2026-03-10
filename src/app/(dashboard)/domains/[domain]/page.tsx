@@ -1,12 +1,12 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, ChevronRight } from "@untitledui/icons";
+import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, ChevronRight, AlertTriangle } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { mockComplianceScore, mockGaps, mockEvidence } from "@/lib/mock-data";
+import { useComplianceScore, useComplianceGaps } from "@/hooks/use-compliance";
 import { RATING_LABELS, KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
 import type { DomainSlug } from "@/types";
 import type { FC } from "react";
@@ -39,17 +39,55 @@ const SEVERITY_BADGE: Record<string, "error" | "warning" | "brand" | "gray"> = {
     CRITICAL: "error", HIGH: "warning", MEDIUM: "brand", LOW: "gray",
 };
 
+function DomainDetailSkeleton() {
+    return (
+        <div className="flex flex-col gap-6 animate-pulse">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="size-6 rounded bg-quaternary" />
+                    <div>
+                        <div className="h-6 w-48 rounded bg-quaternary" />
+                        <div className="mt-2 h-4 w-72 rounded bg-quaternary" />
+                    </div>
+                </div>
+                <div className="h-8 w-24 rounded bg-quaternary" />
+            </div>
+            <div className="h-24 rounded-xl border border-secondary bg-primary" />
+            <div className="space-y-3">
+                <div className="h-6 w-48 rounded bg-quaternary" />
+                {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-20 rounded-xl border border-secondary bg-primary" />
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function DomainDetailPage() {
     const params = useParams();
     const router = useRouter();
     const slug = params.domain as DomainSlug;
 
-    const domainScore = mockComplianceScore.domains.find((d) => d.slug === slug);
+    const { data: score, isLoading: scoreLoading, error: scoreError } = useComplianceScore();
+    const { data: gapsResponse, isLoading: gapsLoading } = useComplianceGaps({ domain: slug, pageSize: 100 });
+    const gaps = gapsResponse?.data ?? [];
+    const domainScore = score?.domains.find((d) => d.slug === slug);
     const domainKloes = KLOES.filter((k) => k.domain === slug);
-    const domainGaps = mockGaps.filter((g) => g.domain === slug && g.status !== "RESOLVED");
+    const domainGaps = gaps.filter((g) => g.domain === slug && g.status !== "RESOLVED");
     const Icon = DOMAIN_ICONS[slug];
     const color = DOMAIN_COLORS[slug];
+    const isLoading = scoreLoading || gapsLoading;
 
+    if (isLoading) return <DomainDetailSkeleton />;
+    if (scoreError || !score) {
+        return (
+            <div className="flex flex-col items-center justify-center gap-4 py-20">
+                <AlertTriangle className="size-10 text-warning-primary" />
+                <p className="text-sm text-tertiary">Failed to load compliance data. Please try again.</p>
+                <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+            </div>
+        );
+    }
     if (!domainScore) return <p className="text-tertiary">Domain not found.</p>;
 
     return (
@@ -96,8 +134,8 @@ export default function DomainDetailPage() {
                 <h2 className="mb-4 text-lg font-semibold text-primary">Key Lines of Enquiry</h2>
                 <div className="flex flex-col gap-3">
                     {domainKloes.map((kloe) => {
-                        const kloeGaps = mockGaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
-                        const kloeEvidence = mockEvidence.filter((e) => e.linkedKloes.includes(kloe.code));
+                        const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
+                        const kloeEvidence: { type: string }[] = [];
                         const mockKloeScore = kloeGaps.length === 0 ? 85 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 40 : 60;
 
                         return (

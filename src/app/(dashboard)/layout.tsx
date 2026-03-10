@@ -8,13 +8,12 @@ import {
     Settings01, Bell01,
     ShieldTick, Target02, Heart, Zap, Trophy01,
 } from "@untitledui/icons";
+import { UserButton } from "@clerk/nextjs";
 import { SidebarNavigationSectionsSubheadings } from "@/components/application/app-navigation/sidebar-navigation/sidebar-sections-subheadings";
-import { Avatar } from "@/components/base/avatar/avatar";
 import { Badge } from "@/components/base/badges/badges";
-import { mockUser, mockNotifications } from "@/lib/mock-data";
+import { useOrganization } from "@/hooks/use-organization";
+import { useNotifications } from "@/hooks/use-notifications";
 import type { NavItemType } from "@/components/application/app-navigation/config";
-
-const unreadCount = mockNotifications.filter((n) => !n.isRead).length;
 
 const navItems: Array<{ label: string; items: NavItemType[] }> = [
     {
@@ -103,6 +102,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     const router = useRouter();
     const breadcrumbs = getBreadcrumbs(pathname);
 
+    useOrganization();
+    const { data: notifications } = useNotifications();
+    const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
+
     return (
         <div className="flex min-h-screen bg-primary">
             {/* Sidebar — Untitled UI SidebarNavigationSectionsSubheadings */}
@@ -151,12 +154,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                 </span>
                             )}
                         </button>
-                        <button
-                            onClick={() => router.push("/settings")}
-                            className="flex size-10 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover"
-                        >
-                            <Avatar size="sm" initials={mockUser.name.split(" ").map((n) => n[0]).join("")} />
-                        </button>
+                        <UserButton
+                            appearance={{
+                                elements: {
+                                    avatarBox: "size-9",
+                                    userButtonTrigger: "rounded-lg focus:shadow-none focus:ring-0",
+                                },
+                            }}
+                        />
                     </div>
                 </header>
 

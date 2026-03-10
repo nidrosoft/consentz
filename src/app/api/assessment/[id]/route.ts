@@ -3,7 +3,7 @@ import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { AssessmentService } from '@/lib/services/assessment-service';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const assessment = AssessmentService.getById(params.id);
+  const assessment = await AssessmentService.getById(params.id);
 
   if (!assessment) {
     return ApiErrors.notFound('Assessment');

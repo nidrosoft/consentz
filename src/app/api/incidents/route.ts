@@ -26,7 +26,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
   if (rawFilters.from) filters.dateFrom = rawFilters.from;
   if (rawFilters.to) filters.dateTo = rawFilters.to;
 
-  const result = IncidentService.list({
+  const result = await IncidentService.list({
     organizationId: auth.organizationId,
     pagination,
     filters,
@@ -41,18 +41,40 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = createIncidentSchema.parse(body);
 
-  const incident = IncidentService.create({
+  const severityMap: Record<string, 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'> = {
+    CRITICAL: 'CRITICAL',
+    SEVERE: 'HIGH',
+    MODERATE: 'MEDIUM',
+    LOW: 'LOW',
+    NEAR_MISS: 'LOW',
+  };
+  const categoryToIncidentType: Record<string, string> = {
+    FALL: 'OTHER',
+    MEDICATION_ERROR: 'MEDICATION_ERROR',
+    SAFEGUARDING: 'SAFEGUARDING',
+    INFECTION: 'INFECTION',
+    PRESSURE_ULCER: 'COMPLICATION',
+    INJURY: 'COMPLICATION',
+    NEAR_MISS: 'NEAR_MISS',
+    COMPLAINT: 'COMPLAINT',
+    EQUIPMENT_FAILURE: 'PREMISES_INCIDENT',
+    MISSING_PERSON: 'SAFEGUARDING',
+    DEATH: 'OTHER',
+    OTHER: 'OTHER',
+  };
+  const incidentType = categoryToIncidentType[validated.category] ?? 'OTHER';
+
+  const incident = await IncidentService.create({
     organizationId: auth.organizationId,
     title: validated.title,
     description: validated.description,
-    severity: validated.severity as 'CRITICAL' | 'MAJOR' | 'MINOR' | 'NEAR_MISS',
+    severity: severityMap[validated.severity] ?? 'MEDIUM',
     reportedBy: auth.fullName,
-    category: validated.category,
-    incidentType: (validated as Record<string, unknown>).incidentType as 'PREMISES' | 'PATIENT_COMPLICATION' ?? 'PREMISES',
-    domain: 'safe',
+    incidentType,
+    domains: ['safe'],
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'INCIDENT_REPORTED',
@@ -63,7 +85,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
 
   // Create notification for severe incidents
   if (validated.severity === 'SEVERE' || validated.severity === 'CRITICAL') {
-    NotificationService.create({
+    await NotificationService.create({
       organizationId: auth.organizationId,
       type: 'WARNING',
       title: 'Severe incident reported',

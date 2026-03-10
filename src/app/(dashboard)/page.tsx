@@ -14,12 +14,10 @@ import { Table, TableCard } from "@/components/application/table/table";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import {
-    mockUser, mockOrganization, mockComplianceScore, mockGaps, mockTasks,
-    mockActivityLog, mockDeadlines,
-} from "@/lib/mock-data";
+import { useDashboard } from "@/hooks/use-dashboard";
 import { RATING_LABELS, RATING_THRESHOLDS, KLOES } from "@/lib/constants/cqc-framework";
 import type { FC } from "react";
+import type { ComplianceGap, ActivityLogEntry, UpcomingDeadline } from "@/types";
 
 const DOMAIN_ICONS: Record<string, FC<{ className?: string }>> = {
     safe: ShieldTick,
@@ -64,11 +62,6 @@ const ENTITY_STYLE: Record<string, { bg: string; fg: string }> = {
     NOTIFICATION: { bg: "bg-[#EEF4FF]", fg: "text-[#3538CD]" },
 };
 
-const overdueTasks = mockTasks.filter((t) => t.status === "OVERDUE");
-const criticalGaps = mockGaps.filter((g) => g.severity === "CRITICAL" && g.status === "OPEN");
-const highGaps = mockGaps.filter((g) => g.severity === "HIGH" && g.status === "OPEN");
-const priorityGaps = [...criticalGaps, ...highGaps].slice(0, 5);
-
 function getGreeting(): string {
     const h = new Date().getHours();
     if (h < 12) return "Good morning";
@@ -96,252 +89,277 @@ function daysUntil(dateStr: string): number {
     return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
 }
 
+function DashboardSkeleton() {
+    return (
+        <div className="flex flex-col gap-6 animate-pulse">
+            <div className="h-10 w-72 rounded-lg bg-quaternary" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => <div key={i} className="h-36 rounded-xl bg-quaternary" />)}
+            </div>
+            <div className="h-64 rounded-xl bg-quaternary" />
+        </div>
+    );
+}
+
 export default function DashboardPage() {
     const router = useRouter();
-    const score = mockComplianceScore;
+    const { data: overview, isLoading, error } = useDashboard();
+
+    if (isLoading) return <DashboardSkeleton />;
+    if (error || !overview) {
+        return (
+            <div className="flex flex-col items-center justify-center gap-4 py-20">
+                <AlertTriangle className="size-10 text-warning-primary" />
+                <p className="text-sm text-tertiary">Failed to load dashboard data. Please try again.</p>
+                <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+            </div>
+        );
+    }
+
+    const score = overview.compliance;
+    const gaps = overview.gaps;
+    const activity = overview.activity ?? [];
+    const deadlines = overview.deadlines ?? [];
+
+    const criticalGaps = gaps?.CRITICAL ?? 0;
+    const highGaps = gaps?.HIGH ?? 0;
+    const totalOpenGaps = gaps?.total ?? 0;
+    const overdueCount = overview.tasks?.overdueCount ?? 0;
+    const pendingCount = overview.tasks?.totalActive ?? 0;
 
     return (
         <div className="flex flex-col gap-6">
             {/* Header */}
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">
-                    {getGreeting()}, {mockUser.name.split(" ")[0]}
+                    {getGreeting()}
                 </h1>
                 <p className="mt-1 text-sm text-tertiary">
-                    {mockOrganization.name} &mdash; last updated {timeAgo(score.lastUpdated)}
+                    Last updated {score?.lastUpdated ? timeAgo(score.lastUpdated) : "recently"}
                 </p>
             </div>
 
             {/* Metric Cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {/* Compliance Score */}
                 <MetricsChart04
                     subtitle="Compliance Score"
-                    title={`${score.overall}%`}
+                    title={`${score?.overall ?? 0}%`}
                     change="+3%"
                     changeTrend="positive"
                     changeDescription="vs last month"
                     chartColor="text-fg-success-secondary"
-                    chartData={[{ value: 42 }, { value: 45 }, { value: 48 }, { value: 52 }, { value: 55 }, { value: 58 }]}
+                    chartData={[{ value: 42 }, { value: 45 }, { value: 48 }, { value: 52 }, { value: 55 }, { value: score?.overall ?? 58 }]}
                 />
 
-                {/* Predicted Rating — CQC uses terminology: Outstanding, Good, Requires Improvement, Inadequate */}
                 <div className="relative">
                     <MetricsChart04
                         subtitle="Predicted Rating"
-                        title={`${score.overall}%`}
-                        change={`${RATING_THRESHOLDS.GOOD - score.overall}% to Good`}
-                        changeTrend={score.overall >= RATING_THRESHOLDS.GOOD ? "positive" : "negative"}
-                        changeDescription={score.overall >= RATING_THRESHOLDS.GOOD ? "target met" : "remaining"}
-                        chartColor={score.predictedRating === "GOOD" || score.predictedRating === "OUTSTANDING" ? "text-fg-success-secondary" : "text-fg-warning-secondary"}
-                        chartData={[{ value: 30 }, { value: 35 }, { value: 38 }, { value: 45 }, { value: 50 }, { value: 58 }]}
+                        title={`${score?.overall ?? 0}%`}
+                        change={`${Math.max(0, RATING_THRESHOLDS.GOOD - (score?.overall ?? 0))}% to Good`}
+                        changeTrend={(score?.overall ?? 0) >= RATING_THRESHOLDS.GOOD ? "positive" : "negative"}
+                        changeDescription={(score?.overall ?? 0) >= RATING_THRESHOLDS.GOOD ? "target met" : "remaining"}
+                        chartColor={score?.predictedRating === "GOOD" || score?.predictedRating === "OUTSTANDING" ? "text-fg-success-secondary" : "text-fg-warning-secondary"}
+                        chartData={[{ value: 30 }, { value: 35 }, { value: 38 }, { value: 45 }, { value: 50 }, { value: score?.overall ?? 58 }]}
                     />
-                    <Badge
-                        size="sm"
-                        color={score.predictedRating === "OUTSTANDING" ? "success" : score.predictedRating === "GOOD" ? "blue" : score.predictedRating === "INADEQUATE" ? "error" : "warning"}
-                        type="pill-color"
-                        className="absolute top-4 right-4"
-                    >
-                        {RATING_LABELS[score.predictedRating]}
-                    </Badge>
+                    {score?.predictedRating && (
+                        <Badge
+                            size="sm"
+                            color={score.predictedRating === "OUTSTANDING" ? "success" : score.predictedRating === "GOOD" ? "blue" : score.predictedRating === "INADEQUATE" ? "error" : "warning"}
+                            type="pill-color"
+                            className="absolute top-4 right-4"
+                        >
+                            {RATING_LABELS[score.predictedRating]}
+                        </Badge>
+                    )}
                 </div>
 
-                {/* Open Gaps */}
                 <MetricsChart04
                     subtitle="Open Gaps"
-                    title={String(mockGaps.filter((g) => g.status === "OPEN").length)}
-                    change={`${criticalGaps.length} critical`}
+                    title={String(totalOpenGaps)}
+                    change={`${criticalGaps} critical`}
                     changeTrend="negative"
-                    changeDescription={`· ${highGaps.length} high`}
+                    changeDescription={`· ${highGaps} high`}
                     chartColor="text-fg-error-secondary"
-                    chartData={[{ value: 8 }, { value: 10 }, { value: 11 }, { value: 12 }, { value: 13 }, { value: 13 }]}
+                    chartData={[{ value: 8 }, { value: 10 }, { value: 11 }, { value: 12 }, { value: 13 }, { value: totalOpenGaps }]}
                 />
 
-                {/* Overdue Tasks */}
                 <MetricsChart04
                     subtitle="Overdue Tasks"
-                    title={String(overdueTasks.length)}
-                    change={`${mockTasks.filter((t) => t.status === "TODO").length} pending`}
+                    title={String(overdueCount)}
+                    change={`${pendingCount} active`}
                     changeTrend="negative"
-                    changeDescription="to do"
+                    changeDescription="total"
                     chartColor="text-fg-warning-secondary"
-                    chartData={[{ value: 0 }, { value: 1 }, { value: 1 }, { value: 2 }, { value: 1 }, { value: 1 }]}
+                    chartData={[{ value: 0 }, { value: 1 }, { value: 1 }, { value: 2 }, { value: 1 }, { value: overdueCount }]}
                 />
             </div>
 
             {/* Domain Overview */}
-            <div>
-                <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-primary">CQC Domain Overview</h2>
-                    <Button color="link-color" size="sm" onClick={() => router.push("/assessment/3")}>Retake Assessment &rarr;</Button>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    {score.domains.map((d) => {
-                        const Icon = DOMAIN_ICONS[d.slug];
-                        const colors = DOMAIN_COLORS[d.slug];
-                        const domainKloes = KLOES.filter((k) => k.domain === d.slug);
-                        return (
-                            <button
-                                key={d.slug}
-                                onClick={() => router.push(`/domains/${d.slug}`)}
-                                className="flex flex-col gap-2 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 hover:shadow-xs"
-                            >
-                                <div className="flex items-center justify-between gap-1">
-                                    <div className="flex items-center gap-1.5">
-                                        {Icon && <Icon className={cx("size-4", colors.text)} />}
-                                        <span className="text-sm font-medium text-primary">{d.domainName}</span>
-                                    </div>
-                                    <span className={cx(
-                                        "inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-medium leading-tight",
-                                        d.rating === "GOOD" || d.rating === "OUTSTANDING"
-                                            ? "bg-success-primary text-success-primary"
-                                            : d.rating === "INADEQUATE"
-                                                ? "bg-error-primary text-error-primary"
-                                                : "bg-warning-primary text-warning-primary",
-                                    )}>
-                                        {RATING_LABELS[d.rating]}
-                                    </span>
-                                </div>
-                                <div className="flex items-baseline gap-1.5">
-                                    <span className="font-mono text-xl font-bold text-primary">{d.score}%</span>
-                                    <TrendIndicator value={d.trend} />
-                                </div>
-                                <ProgressBarBase value={d.score} min={0} max={100} />
-                                <span className="text-[11px] text-tertiary">{d.gapCount} gaps</span>
-                                <div className="flex flex-wrap gap-0.5 pt-1 border-t border-secondary">
-                                    {domainKloes.map((k) => (
-                                        <span key={k.code} className={cx("rounded px-1 py-px text-[9px] font-semibold leading-tight", colors.text, colors.bg)}>
-                                            {k.code}
+            {score?.domains && score.domains.length > 0 && (
+                <div>
+                    <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-primary">CQC Domain Overview</h2>
+                        <Button color="link-color" size="sm" onClick={() => router.push("/assessment/3")}>Retake Assessment &rarr;</Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                        {score.domains.map((d) => {
+                            const Icon = DOMAIN_ICONS[d.slug];
+                            const colors = DOMAIN_COLORS[d.slug] ?? { text: "text-tertiary", bg: "bg-secondary" };
+                            const domainKloes = KLOES.filter((k) => k.domain === d.slug);
+                            return (
+                                <button
+                                    key={d.slug}
+                                    onClick={() => router.push(`/domains/${d.slug}`)}
+                                    className="flex flex-col gap-2 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 hover:shadow-xs"
+                                >
+                                    <div className="flex items-center justify-between gap-1">
+                                        <div className="flex items-center gap-1.5">
+                                            {Icon && <Icon className={cx("size-4", colors.text)} />}
+                                            <span className="text-sm font-medium text-primary">{d.domainName}</span>
+                                        </div>
+                                        <span className={cx(
+                                            "inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-medium leading-tight",
+                                            d.rating === "GOOD" || d.rating === "OUTSTANDING"
+                                                ? "bg-success-primary text-success-primary"
+                                                : d.rating === "INADEQUATE"
+                                                    ? "bg-error-primary text-error-primary"
+                                                    : "bg-warning-primary text-warning-primary",
+                                        )}>
+                                            {RATING_LABELS[d.rating]}
                                         </span>
-                                    ))}
-                                </div>
-                            </button>
-                        );
-                    })}
+                                    </div>
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="font-mono text-xl font-bold text-primary">{d.score}%</span>
+                                        <TrendIndicator value={d.trend} />
+                                    </div>
+                                    <ProgressBarBase value={d.score} min={0} max={100} />
+                                    <span className="text-[11px] text-tertiary">{d.gapCount} gaps</span>
+                                    <div className="flex flex-wrap gap-0.5 pt-1 border-t border-secondary">
+                                        {domainKloes.map((k) => (
+                                            <span key={k.code} className={cx("rounded px-1 py-px text-[9px] font-semibold leading-tight", colors.text, colors.bg)}>
+                                                {k.code}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Priority Gaps + Recent Activity */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-                {/* Priority Gaps (3/5) */}
                 <div className="lg:col-span-3 rounded-xl border border-secondary bg-primary">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-secondary">
                         <h2 className="text-lg font-semibold text-primary">Priority Gaps</h2>
-                        <Button color="link-color" size="sm" onClick={() => router.push("/domains")}>View all {mockGaps.length} gaps &rarr;</Button>
+                        <Button color="link-color" size="sm" onClick={() => router.push("/domains")}>View all gaps &rarr;</Button>
                     </div>
                     <div className="flex flex-col gap-3 p-4">
-                        {priorityGaps.map((gap) => (
-                            <div key={gap.id} className="flex items-start gap-3 rounded-lg border border-secondary p-3">
-                                <span className="relative mt-1 flex size-2.5 shrink-0 items-center justify-center">
-                                    <span className={cx("absolute inset-0 rounded-full animate-pulse-dot", SEVERITY_DOT[gap.severity])} />
-                                    <span className={cx("relative size-2 rounded-full", SEVERITY_DOT[gap.severity])} />
-                                </span>
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-primary">{gap.title}</p>
-                                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                                        <Badge size="sm" color={SEVERITY_BADGE_COLOR[gap.severity]} type="pill-color">{gap.severity}</Badge>
-                                        <span className="text-xs text-tertiary capitalize">{gap.domain}</span>
-                                        <span className="text-xs text-tertiary">&middot; {gap.kloe}</span>
-                                        <span className="text-xs text-tertiary">&middot; {gap.regulation}</span>
-                                    </div>
-                                </div>
-                                <Button color="secondary" size="sm" onClick={() => router.push(`/domains/${gap.domain}`)}>Fix now &rarr;</Button>
-                            </div>
-                        ))}
+                        {totalOpenGaps === 0 ? (
+                            <p className="py-8 text-center text-sm text-tertiary">No open gaps — great job!</p>
+                        ) : (
+                            <p className="text-sm text-tertiary">{criticalGaps} critical, {highGaps} high priority gaps require attention.</p>
+                        )}
                     </div>
                 </div>
 
-                {/* Recent Activity (2/5) */}
                 <div className="lg:col-span-2 rounded-xl border border-secondary bg-primary">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-secondary">
                         <h2 className="text-lg font-semibold text-primary">Recent Activity</h2>
                         <Button color="link-color" size="sm" onClick={() => router.push("/audits")}>View all &rarr;</Button>
                     </div>
                     <div className="flex flex-col gap-3 p-4">
-                        {mockActivityLog.slice(0, 5).map((entry) => (
-                            <div key={entry.id} className="flex items-start gap-3 rounded-lg border border-secondary p-3">
-                                <span className={cx("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full", ENTITY_STYLE[entry.entityType]?.bg ?? "bg-secondary")}>
-                                    {entry.entityType === "EVIDENCE" && <File06 className={cx("size-4", ENTITY_STYLE.EVIDENCE.fg)} />}
-                                    {entry.entityType === "TASK" && <CheckSquareIcon className={cx("size-4", ENTITY_STYLE.TASK.fg)} />}
-                                    {entry.entityType === "ORGANIZATION" && <PieChart01 className={cx("size-4", ENTITY_STYLE.ORGANIZATION.fg)} />}
-                                    {entry.entityType === "POLICY" && <File06 className={cx("size-4", ENTITY_STYLE.POLICY.fg)} />}
-                                    {entry.entityType === "INCIDENT" && <AlertCircle className={cx("size-4", ENTITY_STYLE.INCIDENT.fg)} />}
-                                    {entry.entityType === "STAFF" && <Users01 className={cx("size-4", ENTITY_STYLE.STAFF.fg)} />}
-                                    {entry.entityType === "TRAINING" && <Award02 className={cx("size-4", ENTITY_STYLE.TRAINING.fg)} />}
-                                    {entry.entityType === "GAP" && <AlertTriangle className={cx("size-4", ENTITY_STYLE.GAP.fg)} />}
-                                </span>
-                                <div className="flex-1">
-                                    <p className="text-sm text-primary">{entry.description}</p>
-                                    <p className="mt-0.5 text-xs text-tertiary">{entry.user} &middot; {timeAgo(entry.createdAt)}</p>
+                        {activity.length === 0 ? (
+                            <p className="py-8 text-center text-sm text-tertiary">No recent activity.</p>
+                        ) : (
+                            activity.slice(0, 5).map((entry: ActivityLogEntry) => (
+                                <div key={entry.id} className="flex items-start gap-3 rounded-lg border border-secondary p-3">
+                                    <span className={cx("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full", ENTITY_STYLE[entry.entityType]?.bg ?? "bg-secondary")}>
+                                        {entry.entityType === "EVIDENCE" && <File06 className={cx("size-4", ENTITY_STYLE.EVIDENCE.fg)} />}
+                                        {entry.entityType === "TASK" && <CheckSquareIcon className={cx("size-4", ENTITY_STYLE.TASK.fg)} />}
+                                        {entry.entityType === "ORGANIZATION" && <PieChart01 className={cx("size-4", ENTITY_STYLE.ORGANIZATION.fg)} />}
+                                        {entry.entityType === "POLICY" && <File06 className={cx("size-4", ENTITY_STYLE.POLICY.fg)} />}
+                                        {entry.entityType === "INCIDENT" && <AlertCircle className={cx("size-4", ENTITY_STYLE.INCIDENT.fg)} />}
+                                        {entry.entityType === "STAFF" && <Users01 className={cx("size-4", ENTITY_STYLE.STAFF.fg)} />}
+                                        {entry.entityType === "TRAINING" && <Award02 className={cx("size-4", ENTITY_STYLE.TRAINING.fg)} />}
+                                        {entry.entityType === "GAP" && <AlertTriangle className={cx("size-4", ENTITY_STYLE.GAP.fg)} />}
+                                    </span>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-primary">{entry.description}</p>
+                                        <p className="mt-0.5 text-xs text-tertiary">{entry.user} &middot; {timeAgo(entry.createdAt)}</p>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Upcoming Deadlines */}
-            <TableCard.Root>
-                <TableCard.Header
-                    title="Upcoming Deadlines"
-                    badge={String(mockDeadlines.length)}
-                    description="Tasks and renewals requiring attention soon."
-                />
-                <Table aria-label="Upcoming deadlines" selectionMode="none">
-                    <Table.Header>
-                        <Table.Head id="title" label="Deadline" isRowHeader />
-                        <Table.Head id="type" label="Type" />
-                        <Table.Head id="severity" label="Severity" />
-                        <Table.Head id="urgency" label="Urgency" className="min-w-40" />
-                    </Table.Header>
-                    <Table.Body items={mockDeadlines}>
-                        {(dl) => {
-                            const days = daysUntil(dl.dueDate);
-                            const urgencyPercent = Math.max(0, Math.min(100, 100 - (days / 30) * 100));
-                            const urgencyLabel = days <= 0 ? "Today" : `${days} days`;
-                            const severityBadgeColor: Record<string, "error" | "warning" | "brand" | "gray"> = { CRITICAL: "error", HIGH: "warning", MEDIUM: "brand", LOW: "gray" };
-                            const typeLabels: Record<string, string> = { POLICY_REVIEW: "Policy Review", DBS_RENEWAL: "DBS Renewal", EVIDENCE_EXPIRY: "Evidence Expiry", TRAINING_DUE: "Training Due", AUDIT_DUE: "Audit Due" };
-                            return (
-                                <Table.Row id={dl.id}>
-                                    <Table.Cell>
-                                        <div className="flex items-center gap-3">
-                                            <span className="relative flex size-2.5 shrink-0 items-center justify-center">
-                                                {(dl.severity === "CRITICAL" || dl.severity === "HIGH") && <span className={cx("absolute inset-0 rounded-full animate-pulse-dot", SEVERITY_DOT[dl.severity])} />}
-                                                <span className={cx("relative size-2 rounded-full", SEVERITY_DOT[dl.severity])} />
-                                            </span>
-                                            <div>
-                                                <p className="text-sm font-medium text-primary whitespace-nowrap">{dl.title}</p>
-                                                <p className="text-xs text-tertiary">{new Date(dl.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+            {deadlines.length > 0 && (
+                <TableCard.Root>
+                    <TableCard.Header
+                        title="Upcoming Deadlines"
+                        badge={String(deadlines.length)}
+                        description="Tasks and renewals requiring attention soon."
+                    />
+                    <Table aria-label="Upcoming deadlines" selectionMode="none">
+                        <Table.Header>
+                            <Table.Head id="title" label="Deadline" isRowHeader />
+                            <Table.Head id="type" label="Type" />
+                            <Table.Head id="severity" label="Severity" />
+                            <Table.Head id="urgency" label="Urgency" className="min-w-40" />
+                        </Table.Header>
+                        <Table.Body items={deadlines}>
+                            {(dl: UpcomingDeadline) => {
+                                const days = daysUntil(dl.dueDate);
+                                const urgencyPercent = Math.max(0, Math.min(100, 100 - (days / 30) * 100));
+                                const urgencyLabel = days <= 0 ? "Today" : `${days} days`;
+                                const severityBadgeColor: Record<string, "error" | "warning" | "brand" | "gray"> = { CRITICAL: "error", HIGH: "warning", MEDIUM: "brand", LOW: "gray" };
+                                const typeLabels: Record<string, string> = { POLICY_REVIEW: "Policy Review", DBS_RENEWAL: "DBS Renewal", EVIDENCE_EXPIRY: "Evidence Expiry", TRAINING_DUE: "Training Due", AUDIT_DUE: "Audit Due", TASK: "Task" };
+                                return (
+                                    <Table.Row id={dl.id}>
+                                        <Table.Cell>
+                                            <div className="flex items-center gap-3">
+                                                <span className="relative flex size-2.5 shrink-0 items-center justify-center">
+                                                    {(dl.severity === "CRITICAL" || dl.severity === "HIGH") && <span className={cx("absolute inset-0 rounded-full animate-pulse-dot", SEVERITY_DOT[dl.severity])} />}
+                                                    <span className={cx("relative size-2 rounded-full", SEVERITY_DOT[dl.severity])} />
+                                                </span>
+                                                <div>
+                                                    <p className="text-sm font-medium text-primary whitespace-nowrap">{dl.title}</p>
+                                                    <p className="text-xs text-tertiary">{new Date(dl.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </Table.Cell>
-                                    <Table.Cell>
-                                        <Badge size="sm" color="gray" type="modern">{typeLabels[dl.type] ?? dl.type}</Badge>
-                                    </Table.Cell>
-                                    <Table.Cell>
-                                        <BadgeWithDot size="sm" color={severityBadgeColor[dl.severity] ?? "gray"}>
-                                            {dl.severity.charAt(0) + dl.severity.slice(1).toLowerCase()}
-                                        </BadgeWithDot>
-                                    </Table.Cell>
-                                    <Table.Cell>
-                                        <ProgressBar
-                                            labelPosition="right"
-                                            value={urgencyPercent}
-                                            valueFormatter={() => urgencyLabel}
-                                            progressClassName={cx(
-                                                days <= 0 && "bg-error-solid",
-                                                days > 0 && days <= 7 && "bg-warning-solid",
-                                                days > 7 && days <= 14 && "bg-brand-solid",
-                                                days > 14 && "bg-success-solid",
-                                            )}
-                                        />
-                                    </Table.Cell>
-                                </Table.Row>
-                            );
-                        }}
-                    </Table.Body>
-                </Table>
-            </TableCard.Root>
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            <Badge size="sm" color="gray" type="modern">{typeLabels[dl.type] ?? dl.type}</Badge>
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            <BadgeWithDot size="sm" color={severityBadgeColor[dl.severity] ?? "gray"}>
+                                                {dl.severity.charAt(0) + dl.severity.slice(1).toLowerCase()}
+                                            </BadgeWithDot>
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            <ProgressBar
+                                                labelPosition="right"
+                                                value={urgencyPercent}
+                                                valueFormatter={() => urgencyLabel}
+                                                progressClassName={cx(
+                                                    days <= 0 && "bg-error-solid",
+                                                    days > 0 && days <= 7 && "bg-warning-solid",
+                                                    days > 7 && days <= 14 && "bg-brand-solid",
+                                                    days > 14 && "bg-success-solid",
+                                                )}
+                                            />
+                                        </Table.Cell>
+                                    </Table.Row>
+                                );
+                            }}
+                        </Table.Body>
+                    </Table>
+                </TableCard.Root>
+            )}
         </div>
     );
 }

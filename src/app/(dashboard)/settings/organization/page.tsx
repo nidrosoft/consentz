@@ -3,12 +3,40 @@
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Lock01, AlertTriangle } from "@untitledui/icons";
 import { Input } from "@/components/base/input/input";
-import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
-import { mockOrganization } from "@/lib/mock-data";
+import { useOrganization } from "@/hooks/use-organization";
+
+function OrganizationSkeleton() {
+    return (
+        <div className="flex flex-col gap-6 animate-pulse">
+            <div className="h-8 w-48 rounded-lg bg-quaternary" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="h-10 w-full rounded-lg bg-quaternary" />
+                <div className="h-10 w-full rounded-lg bg-quaternary" />
+            </div>
+            <div className="h-64 rounded-xl bg-quaternary" />
+        </div>
+    );
+}
 
 export default function OrganizationSettingsPage() {
     const router = useRouter();
+    const { data: org, isLoading, error } = useOrganization();
+
+    if (isLoading) return <OrganizationSkeleton />;
+
+    if (error || !org) {
+        return (
+            <div className="flex flex-col gap-6">
+                <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/settings")}>Settings</Button>
+                <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-secondary bg-primary py-20">
+                    <AlertTriangle className="size-10 text-warning-primary" />
+                    <p className="text-sm text-tertiary">Failed to load organisation details.</p>
+                    <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
@@ -23,29 +51,29 @@ export default function OrganizationSettingsPage() {
             </div>
 
             <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
-                <Input label="Organisation name *" defaultValue={mockOrganization.name} isRequired />
+                <Input label="Organisation name *" defaultValue={org.name} isRequired />
 
                 {/* Service type — locked after onboarding */}
                 <div>
                     <label className="mb-1.5 block text-sm font-medium text-primary">Service type</label>
                     <div className="flex items-center gap-3 rounded-lg border border-secondary bg-disabled_subtle px-3 py-2.5">
-                        <span className="text-sm text-primary">{mockOrganization.serviceType === "CARE_HOME" ? "Care Home" : "Aesthetic Clinic"}</span>
+                        <span className="text-sm text-primary">{org.serviceType === "CARE_HOME" ? "Care Home" : "Aesthetic Clinic"}</span>
                         <Lock01 className="size-4 text-fg-disabled" />
                         <span className="text-xs text-tertiary">Cannot change after onboarding</span>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    <Input label="CQC Provider ID" defaultValue={mockOrganization.cqcProviderId} />
-                    <Input label="CQC Location ID" defaultValue={mockOrganization.cqcLocationId} />
+                    <Input label="CQC Provider ID" defaultValue={org.cqcProviderId} />
+                    <Input label="CQC Location ID" defaultValue={org.cqcLocationId} />
                 </div>
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    <Input label="Registered Manager" defaultValue={mockOrganization.registeredManager} />
-                    <Input label="Number of beds" type="number" defaultValue={String(mockOrganization.bedCount)} isRequired />
+                    <Input label="Registered Manager" defaultValue={org.registeredManager} />
+                    <Input label="Number of beds" type="number" defaultValue={String(org.bedCount)} isRequired />
                 </div>
 
-                <Input label="Address" defaultValue="123 Oak Street, London, SW1A 1AA" />
+                <Input label="Address" defaultValue={org.postcode} />
             </div>
 
             {/* Danger Zone */}

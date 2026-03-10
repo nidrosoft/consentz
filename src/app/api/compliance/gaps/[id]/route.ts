@@ -7,7 +7,7 @@ import { AuditService } from '@/lib/services/audit-service';
 import { updateGapSchema } from '@/lib/validations/gap';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const gap = GapService.getById(params.id);
+  const gap = await GapService.getById(params.id, auth.organizationId);
 
   if (!gap) {
     return ApiErrors.notFound('Gap');
@@ -19,7 +19,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
 export const PATCH = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
 
-  const existing = GapService.getById(params.id);
+  const existing = await GapService.getById(params.id, auth.organizationId);
   if (!existing) {
     return ApiErrors.notFound('Gap');
   }
@@ -27,8 +27,9 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = updateGapSchema.parse(body);
 
-  const updated = GapService.update({
+  const updated = await GapService.update({
     gapId: params.id,
+    organizationId: auth.organizationId,
     status: validated.status,
     resolutionNotes: validated.resolutionNotes,
     dueDate: validated.dueDate ?? undefined,
@@ -38,7 +39,7 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
     return ApiErrors.notFound('Gap');
   }
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'GAP_STATUS_CHANGED',

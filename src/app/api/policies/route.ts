@@ -17,10 +17,13 @@ export const GET = withAuth(async (req, { params, auth }) => {
     reviewDueSoon: searchParams.get('reviewDueSoon') ?? undefined,
   });
 
-  const result = PolicyService.list({
+  const result = await PolicyService.list({
     organizationId: auth.organizationId,
     pagination,
-    filters: rawFilters,
+    filters: {
+      status: rawFilters.status,
+      domain: rawFilters.category ? [rawFilters.category] : undefined,
+    },
   });
 
   return apiSuccess(result.data, result.meta);
@@ -32,15 +35,15 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = createPolicySchema.parse(body);
 
-  const policy = PolicyService.create({
+  const policy = await PolicyService.create({
     organizationId: auth.organizationId,
     title: validated.title,
-    category: validated.category,
     content: validated.content,
     createdBy: auth.fullName,
+    category: validated.category,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'POLICY_CREATED',

@@ -29,7 +29,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
   if (rawFilters.status) filters.status = rawFilters.status;
   if (rawFilters.domain) filters.domain = rawFilters.domain as DomainSlug;
 
-  const result = EvidenceService.list({
+  const result = await EvidenceService.list({
     organizationId: auth.organizationId,
     pagination,
     filters,
@@ -44,19 +44,18 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = createEvidenceSchema.parse(body);
 
-  const evidence = EvidenceService.create({
+  const evidence = await EvidenceService.create({
     organizationId: auth.organizationId,
     name: validated.name,
-    type: validated.category as EvidenceType,
+    category: validated.category as EvidenceType,
     fileName: validated.fileName,
-    fileSize: `${Math.round(validated.fileSize / 1024)} KB`,
     uploadedBy: auth.fullName,
     expiresAt: validated.validUntil ?? null,
     linkedDomains: [],
     linkedKloes: validated.linkedKloes ?? [],
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'EVIDENCE_UPLOADED',

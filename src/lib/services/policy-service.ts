@@ -2,208 +2,198 @@
 // Policy Service — CRUD, approval workflow, and version history
 // =============================================================================
 
-import type { Policy, PolicyStatus } from '@/types';
+import { db } from '@/lib/db';
+import type { Prisma, PolicyStatus } from '@prisma/client';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
-import type { PolicyVersion } from '@/lib/mock-data/store';
-import {
-  policyStore,
-  policyVersionStore,
-  generateId,
-} from '@/lib/mock-data/store';
-import { paginateArray } from '@/lib/pagination';
-
-/** Extended policy type used internally by the store. */
-type StoredPolicy = Policy & { content?: string; isAiGenerated?: boolean; deletedAt?: string };
 
 interface PolicyListParams {
   organizationId: string;
   pagination: PaginationInput;
   filters?: {
-    status?: PolicyStatus | PolicyStatus[];
-    category?: string | string[];
+    status?: string | string[];
+    domain?: string | string[];
   };
 }
 
 interface PolicyListResult {
-  data: Policy[];
+  data: Awaited<ReturnType<typeof db.policy.findMany>>;
   meta: PaginationMeta;
 }
 
 interface PolicyCreateParams {
   organizationId: string;
   title: string;
-  category: string;
   createdBy: string;
   content?: string;
-  isAiGenerated?: boolean;
+  category?: string;
 }
 
 interface PolicyUpdateParams {
   id: string;
   title?: string;
-  category?: string;
   content?: string;
-  status?: PolicyStatus;
+  status?: string;
 }
 
 export class PolicyService {
-  /**
-   * List policies, excluding soft-deleted items.
-   */
-  static list(params: PolicyListParams): PolicyListResult {
-    // Filter out deleted items
-    let items = policyStore.filter(
-      (p) => !(p as StoredPolicy).deletedAt,
-    );
+  static async list(params: PolicyListParams): Promise<PolicyListResult> {
+    const where: Prisma.PolicyWhereInput = {
+      organizationId: params.organizationId,
+    };
 
-    // Apply filters
-    if (params.filters) {
-      const { status, category } = params.filters;
-
-      if (status) {
-        const statuses = Array.isArray(status) ? status : [status];
-        items = items.filter((p) => statuses.includes(p.status));
-      }
-
-      if (category) {
-        const categories = Array.isArray(category) ? category : [category];
-        items = items.filter((p) => categories.includes(p.category));
-      }
-    }
-
-    // Apply search
-    if (params.pagination.search) {
-      const query = params.pagination.search.toLowerCase();
-      items = items.filter(
-        (p) =>
-          p.title.toLowerCase().includes(query) ||
-          p.category.toLowerCase().includes(query),
+    if (params.filters?.status) {
+      const stats = Array.isArray(params.filters.status)
+        ? params.filters.status
+        : [params.filters.status];
+      const mapped = stats.map((s) =>
+        s === 'REVIEW' ? 'UNDER_REVIEW' : s === 'APPROVED' || s === 'PUBLISHED' ? 'ACTIVE' : s,
       );
+      where.status = { in: mapped as PolicyStatus[] };
+    }
+    if (params.filters?.domain) {
+      const doms = Array.isArray(params.filters.domain)
+        ? params.filters.domain
+        : [params.filters.domain];
+      where.domains = { hasSome: doms };
+    }
+    if (params.pagination.search) {
+      where.OR = [
+        { title: { contains: params.pagination.search, mode: 'insensitive' } },
+        { content: { contains: params.pagination.search, mode: 'insensitive' } },
+      ];
     }
 
-    // Sort by updatedAt descending
-    items.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
+    const skip = (params.pagination.page - 1) * params.pagination.pageSize;
+    const take = params.pagination.pageSize;
 
-    return paginateArray(items, params.pagination);
-  }
+    const [data, total] = await Promise.all([
+      db.policy.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take,
+      }),
+      db.policy.count({ where }),
+    ]);
 
-  /**
-   * Get a single policy by ID (excluding soft-deleted).
-   */
-  static getById(id: string): StoredPolicy | undefined {
-    const item = policyStore.getById(id) as StoredPolicy | undefined;
-    if (!item || item.deletedAt) return undefined;
-    return item;
-  }
+    const totalPages = Math.ceil(total / params.pagination.pageSize);
 
-  /**
-   * Create a new policy.
-   */
-  static create(params: PolicyCreateParams): Policy {
-    const now = new Date().toISOString();
-
-    const policy: StoredPolicy = {
-      id: generateId('pol'),
-      title: params.title,
-      status: 'DRAFT' as PolicyStatus,
-      version: 'v1.0',
-      category: params.category,
-      createdBy: params.createdBy,
-      createdAt: now,
-      updatedAt: now,
-      lastReviewDate: '',
-      nextReviewDate: '',
-      content: params.content ?? '',
-      isAiGenerated: params.isAiGenerated ?? false,
-      deletedAt: undefined,
+    return {
+      data,
+      meta: {
+        page: params.pagination.page,
+        pageSize: params.pagination.pageSize,
+        total,
+        totalPages,
+        hasMore: params.pagination.page < totalPages,
+      },
     };
-
-    return policyStore.create(policy);
   }
 
-  /**
-   * Update an existing policy.
-   */
-  static update(params: PolicyUpdateParams): Policy | undefined {
-    const existing = policyStore.getById(params.id) as StoredPolicy | undefined;
-    if (!existing || existing.deletedAt) return undefined;
-
-    const updates: Partial<StoredPolicy> = {
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (params.title !== undefined) updates.title = params.title;
-    if (params.category !== undefined) updates.category = params.category;
-    if (params.content !== undefined) updates.content = params.content;
-    if (params.status !== undefined) updates.status = params.status;
-
-    return policyStore.update(params.id, updates);
+  static async getById(id: string) {
+    return db.policy.findUnique({ where: { id } });
   }
 
-  /**
-   * Soft-delete a policy.
-   */
-  static softDelete(id: string): boolean {
-    const existing = policyStore.getById(id) as StoredPolicy | undefined;
-    if (!existing || existing.deletedAt) return false;
+  static async create(params: PolicyCreateParams) {
+    return db.policy.create({
+      data: {
+        organizationId: params.organizationId,
+        title: params.title,
+        content: params.content ?? '',
+        createdBy: params.createdBy,
+        status: 'DRAFT',
+        version: '1.0',
+      },
+    });
+  }
 
-    policyStore.update(id, { deletedAt: new Date().toISOString() } as Partial<StoredPolicy>);
+  static async update(params: PolicyUpdateParams) {
+    const { id, ...updates } = params;
+    const data: Prisma.PolicyUpdateInput = {};
+    if (updates.title !== undefined) data.title = updates.title;
+    if (updates.content !== undefined) data.content = updates.content;
+    if (updates.status !== undefined)
+      data.status = updates.status as PolicyStatus;
+    data.lastUpdated = new Date();
+
+    return db.policy.update({ where: { id }, data });
+  }
+
+  static async softDelete(id: string) {
+    await db.policy.update({
+      where: { id },
+      data: { status: 'ARCHIVED' },
+    });
     return true;
   }
 
-  /**
-   * Approve a policy — sets status to APPROVED.
-   */
-  static approve(id: string): Policy | undefined {
-    const existing = policyStore.getById(id) as StoredPolicy | undefined;
-    if (!existing || existing.deletedAt) return undefined;
-
-    return policyStore.update(id, {
-      status: 'APPROVED' as PolicyStatus,
-      updatedAt: new Date().toISOString(),
+  static async approve(id: string, approvedBy: string) {
+    return db.policy.update({
+      where: { id },
+      data: {
+        status: 'ACTIVE',
+        approvedBy,
+        approvedAt: new Date(),
+        lastUpdated: new Date(),
+      },
     });
   }
 
-  /**
-   * Publish a policy — sets status to PUBLISHED and creates a version entry.
-   */
-  static publish(id: string, changedBy: string): Policy | undefined {
-    const existing = policyStore.getById(id) as StoredPolicy | undefined;
-    if (!existing || existing.deletedAt) return undefined;
+  static async publish(id: string, changedBy: string) {
+    const policy = await db.policy.findUnique({ where: { id } });
+    if (!policy) return null;
 
-    const now = new Date().toISOString();
+    const versionCount = await db.policyVersion.count({ where: { policyId: id } });
+    const nextVersionNumber = versionCount + 1;
 
-    // Update policy status
-    const updated = policyStore.update(id, {
-      status: 'PUBLISHED' as PolicyStatus,
-      updatedAt: now,
-      lastReviewDate: now,
-    });
-
-    // Create version entry
-    policyVersionStore.create({
-      id: generateId('pv'),
-      policyId: id,
-      version: existing.version,
-      content: existing.content ?? '',
-      changedBy,
-      createdAt: now,
-    });
+    const [updated] = await db.$transaction([
+      db.policy.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          lastUpdated: new Date(),
+          version: `${nextVersionNumber}.0`,
+        },
+      }),
+      db.policyVersion.create({
+        data: {
+          policyId: id,
+          versionNumber: nextVersionNumber,
+          content: policy.content ?? '',
+          createdById: changedBy,
+        },
+      }),
+    ]);
 
     return updated;
   }
 
-  /**
-   * Get version history for a policy.
-   */
-  static getVersionHistory(policyId: string): PolicyVersion[] {
-    return policyVersionStore
-      .filter((v) => v.policyId === policyId)
-      .sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+  static async getVersionHistory(policyId: string) {
+    return db.policyVersion.findMany({
+      where: { policyId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  static async recordAcknowledgement(
+    policyId: string,
+    userId: string,
+    userName: string,
+  ) {
+    return db.policyAcknowledgement.upsert({
+      where: {
+        policyId_userId: { policyId, userId },
+      },
+      create: {
+        policyId,
+        userId,
+        userName,
+      },
+      update: {
+        userName,
+        signedAt: new Date(),
+      },
+    });
   }
 }

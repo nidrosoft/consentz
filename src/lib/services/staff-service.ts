@@ -2,165 +2,124 @@
 // Staff Service — CRUD for staff members with training records
 // =============================================================================
 
-import type { StaffMember, TrainingRecord } from '@/types';
-import type { PaginationInput } from '@/lib/pagination';
-import type { PaginationMeta } from '@/lib/api-response';
-import { staffStore, trainingStore, generateId } from '@/lib/mock-data/store';
-import { paginateArray } from '@/lib/pagination';
+import { db } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 
 interface StaffListParams {
   organizationId: string;
-  pagination: PaginationInput;
+  pagination: { page: number; limit: number; search?: string };
   filters?: {
     isActive?: boolean;
     department?: string | string[];
-    dbsStatus?: string | string[];
+    staffRole?: string | string[];
   };
 }
 
-interface StaffListResult {
-  data: StaffMember[];
-  meta: PaginationMeta;
-}
-
-interface StaffWithTraining extends StaffMember {
-  trainingRecords: TrainingRecord[];
-}
-
-interface StaffCreateParams {
-  organizationId: string;
-  name: string;
-  email: string;
-  role: string;
-  department: string;
-  startDate: string;
-  dbsStatus?: StaffMember['dbsStatus'];
-  dbsExpiry?: string;
-}
-
-interface StaffUpdateParams {
-  id: string;
-  name?: string;
-  email?: string;
-  role?: string;
-  department?: string;
-  dbsStatus?: StaffMember['dbsStatus'];
-  dbsExpiry?: string;
-  isActive?: boolean;
-}
-
 export class StaffService {
-  /**
-   * List staff members with optional filters and pagination.
-   */
-  static list(params: StaffListParams): StaffListResult {
-    let items = staffStore.getAll();
+  static async list(params: StaffListParams) {
+    const where: Prisma.StaffMemberWhereInput = {
+      organizationId: params.organizationId,
+      deletedAt: null,
+    };
 
-    // Apply filters
-    if (params.filters) {
-      const { isActive, department, dbsStatus } = params.filters;
-
-      if (isActive !== undefined) {
-        items = items.filter((s) => s.isActive === isActive);
-      }
-
-      if (department) {
-        const departments = Array.isArray(department) ? department : [department];
-        items = items.filter((s) => departments.includes(s.department));
-      }
-
-      if (dbsStatus) {
-        const statuses = Array.isArray(dbsStatus) ? dbsStatus : [dbsStatus];
-        items = items.filter((s) => statuses.includes(s.dbsStatus));
-      }
+    if (params.filters?.isActive !== undefined) {
+      where.isActive = params.filters.isActive;
     }
-
-    // Apply search
+    if (params.filters?.department) {
+      const depts = Array.isArray(params.filters.department) ? params.filters.department : [params.filters.department];
+      where.department = { in: depts };
+    }
+    if (params.filters?.staffRole) {
+      const roles = Array.isArray(params.filters.staffRole) ? params.filters.staffRole : [params.filters.staffRole];
+      where.staffRole = { in: roles };
+    }
     if (params.pagination.search) {
-      const query = params.pagination.search.toLowerCase();
-      items = items.filter(
-        (s) =>
-          s.name.toLowerCase().includes(query) ||
-          s.email.toLowerCase().includes(query) ||
-          s.role.toLowerCase().includes(query),
-      );
+      where.OR = [
+        { firstName: { contains: params.pagination.search, mode: 'insensitive' } },
+        { lastName: { contains: params.pagination.search, mode: 'insensitive' } },
+        { email: { contains: params.pagination.search, mode: 'insensitive' } },
+        { jobTitle: { contains: params.pagination.search, mode: 'insensitive' } },
+      ];
     }
 
-    // Sort by name ascending by default
-    items.sort((a, b) => a.name.localeCompare(b.name));
-
-    return paginateArray(items, params.pagination);
-  }
-
-  /**
-   * Get a single staff member by ID, including their training records.
-   */
-  static getById(id: string): StaffWithTraining | undefined {
-    const member = staffStore.getById(id);
-    if (!member) return undefined;
-
-    const trainingRecords = trainingStore.filter((t) => t.staffId === id);
+    const [data, total] = await Promise.all([
+      db.staffMember.findMany({
+        where,
+        include: { trainingRecords: true },
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        skip: (params.pagination.page - 1) * params.pagination.limit,
+        take: params.pagination.limit,
+      }),
+      db.staffMember.count({ where }),
+    ]);
 
     return {
-      ...member,
-      trainingRecords,
+      data,
+      meta: {
+        page: params.pagination.page,
+        limit: params.pagination.limit,
+        total,
+        totalPages: Math.ceil(total / params.pagination.limit),
+      },
     };
   }
 
-  /**
-   * Create a new staff member.
-   */
-  static create(params: StaffCreateParams): StaffMember {
-    const member: StaffMember = {
-      id: generateId('staff'),
-      name: params.name,
-      email: params.email,
-      role: params.role,
-      department: params.department,
-      startDate: params.startDate,
-      dbsStatus: params.dbsStatus ?? 'PENDING',
-      dbsExpiry: params.dbsExpiry ?? '',
-      isActive: true,
-      gmcNumber: null,
-      gmcStatus: 'NOT_APPLICABLE',
-      gmcExpiry: null,
-      aestheticQualification: null,
-      aestheticQualificationStatus: 'NOT_APPLICABLE',
-      aestheticQualificationExpiry: null,
-      staffType: 'NON_MEDICAL',
-    };
-
-    return staffStore.create(member);
+  static async getById(id: string) {
+    return db.staffMember.findUnique({
+      where: { id },
+      include: { trainingRecords: { orderBy: { completedDate: 'desc' } } },
+    });
   }
 
-  /**
-   * Update an existing staff member.
-   */
-  static update(params: StaffUpdateParams): StaffMember | undefined {
-    const existing = staffStore.getById(params.id);
-    if (!existing) return undefined;
-
-    const updates: Partial<StaffMember> = {};
-
-    if (params.name !== undefined) updates.name = params.name;
-    if (params.email !== undefined) updates.email = params.email;
-    if (params.role !== undefined) updates.role = params.role;
-    if (params.department !== undefined) updates.department = params.department;
-    if (params.dbsStatus !== undefined) updates.dbsStatus = params.dbsStatus;
-    if (params.dbsExpiry !== undefined) updates.dbsExpiry = params.dbsExpiry;
-    if (params.isActive !== undefined) updates.isActive = params.isActive;
-
-    return staffStore.update(params.id, updates);
+  static async create(params: {
+    organizationId: string;
+    firstName: string;
+    lastName: string;
+    email?: string;
+    phone?: string;
+    jobTitle: string;
+    staffRole?: string;
+    department?: string;
+    startDate?: string;
+    registrationBody?: string;
+    registrationNumber?: string;
+    registrationExpiry?: string;
+    dbsNumber?: string;
+    dbsCertificateDate?: string;
+    dbsLevel?: string;
+  }) {
+    return db.staffMember.create({
+      data: {
+        organizationId: params.organizationId,
+        firstName: params.firstName,
+        lastName: params.lastName,
+        email: params.email,
+        phone: params.phone,
+        jobTitle: params.jobTitle,
+        staffRole: params.staffRole || 'OTHER',
+        department: params.department,
+        startDate: params.startDate ? new Date(params.startDate) : new Date(),
+        registrationBody: params.registrationBody,
+        registrationNumber: params.registrationNumber,
+        registrationExpiry: params.registrationExpiry ? new Date(params.registrationExpiry) : null,
+        dbsNumber: params.dbsNumber,
+        dbsCertificateDate: params.dbsCertificateDate ? new Date(params.dbsCertificateDate) : null,
+        dbsLevel: params.dbsLevel,
+      },
+    });
   }
 
-  /**
-   * Soft-delete a staff member by marking them as inactive.
-   */
-  static softDelete(id: string): boolean {
-    const existing = staffStore.getById(id);
-    if (!existing) return false;
+  static async update(id: string, data: Record<string, unknown>) {
+    const dateFields = ['startDate', 'endDate', 'registrationExpiry', 'dbsCertificateDate', 'insuranceExpiry', 'rightToWorkDate'];
+    const updateData = { ...data };
+    for (const field of dateFields) {
+      if (updateData[field]) updateData[field] = new Date(updateData[field] as string);
+    }
+    return db.staffMember.update({ where: { id }, data: updateData as Prisma.StaffMemberUpdateInput });
+  }
 
-    staffStore.update(id, { isActive: false });
+  static async softDelete(id: string) {
+    await db.staffMember.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
     return true;
   }
 }

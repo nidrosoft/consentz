@@ -7,7 +7,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
   const { searchParams } = new URL(req.url);
   const pagination = parsePagination(searchParams);
 
-  const result = NotificationService.listForUser(auth.organizationId, pagination);
+  const result = await NotificationService.listForUser(auth.organizationId, pagination);
 
   return apiSuccess(result.data, {
     ...result.meta,

@@ -7,7 +7,7 @@ export type ServiceType = 'AESTHETIC_CLINIC' | 'CARE_HOME';
 export type CqcRating = 'OUTSTANDING' | 'GOOD' | 'REQUIRES_IMPROVEMENT' | 'INADEQUATE' | 'NOT_RATED';
 
 export type GapSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-export type GapStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'ACCEPTED_RISK';
+export type GapStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'ACCEPTED_RISK' | 'NOT_APPLICABLE';
 
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'OVERDUE';
 export type TaskPriority = 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW';

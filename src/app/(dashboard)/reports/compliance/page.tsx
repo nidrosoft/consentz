@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Download01, ShieldTick, Target02, Heart, Zap, Trophy01 } from "@untitledui/icons";
+import { ChevronLeft, Download01, ShieldTick, Target02, Heart, Zap, Trophy01, AlertTriangle } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
-import { mockComplianceScore, mockGaps } from "@/lib/mock-data";
+import { useComplianceScore, useComplianceGaps } from "@/hooks/use-compliance";
 import { RATING_LABELS } from "@/lib/constants/cqc-framework";
 import type { FC } from "react";
 
@@ -13,8 +13,43 @@ const DOMAIN_ICONS: Record<string, FC<{ className?: string }>> = {
     safe: ShieldTick, effective: Target02, caring: Heart, responsive: Zap, "well-led": Trophy01,
 };
 
+function ComplianceSkeleton() {
+    return (
+        <div className="flex flex-col gap-6 animate-pulse">
+            <div className="h-8 w-48 rounded-lg bg-quaternary" />
+            <div className="h-32 rounded-xl bg-quaternary" />
+            <div className="flex flex-col gap-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="h-24 rounded-xl bg-quaternary" />
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function ComplianceReportPage() {
     const router = useRouter();
+    const { data: score, isLoading: scoreLoading, error: scoreError } = useComplianceScore();
+    const { data: gapsResponse, isLoading: gapsLoading } = useComplianceGaps({});
+    const gaps = gapsResponse?.data ?? [];
+
+    const isLoading = scoreLoading || gapsLoading;
+    const hasError = scoreError || (!score && !scoreLoading);
+
+    if (isLoading) return <ComplianceSkeleton />;
+
+    if (hasError) {
+        return (
+            <div className="flex flex-col gap-6">
+                <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/reports")}>Back to Reports</Button>
+                <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-secondary bg-primary py-20">
+                    <AlertTriangle className="size-10 text-warning-primary" />
+                    <p className="text-sm text-tertiary">Failed to load compliance report.</p>
+                    <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
@@ -32,16 +67,16 @@ export default function ComplianceReportPage() {
             <div className="rounded-xl border border-secondary bg-primary p-6">
                 <h2 className="mb-4 text-lg font-semibold text-primary">Overall Compliance</h2>
                 <div className="flex items-center gap-6">
-                    <span className="font-mono text-4xl font-bold text-primary">{mockComplianceScore.overall}%</span>
+                    <span className="font-mono text-4xl font-bold text-primary">{score!.overall}%</span>
                     <div>
                         <Badge
                             size="lg"
-                            color={mockComplianceScore.predictedRating === "GOOD" ? "success" : "warning"}
+                            color={score!.predictedRating === "GOOD" ? "success" : "warning"}
                             type="pill-color"
                         >
-                            {RATING_LABELS[mockComplianceScore.predictedRating]}
+                            {RATING_LABELS[score!.predictedRating]}
                         </Badge>
-                        <p className="mt-1 text-sm text-tertiary">{mockGaps.filter((g) => g.status === "OPEN").length} open gaps &middot; {mockGaps.filter((g) => g.severity === "CRITICAL").length} critical</p>
+                        <p className="mt-1 text-sm text-tertiary">{gaps.filter((g) => g.status === "OPEN").length} open gaps &middot; {gaps.filter((g) => g.severity === "CRITICAL").length} critical</p>
                     </div>
                 </div>
             </div>
@@ -50,9 +85,9 @@ export default function ComplianceReportPage() {
             <div>
                 <h2 className="mb-4 text-lg font-semibold text-primary">Domain Breakdown</h2>
                 <div className="flex flex-col gap-3">
-                    {mockComplianceScore.domains.map((d) => {
+                    {score!.domains.map((d) => {
                         const Icon = DOMAIN_ICONS[d.slug];
-                        const gaps = mockGaps.filter((g) => g.domain === d.slug && g.status === "OPEN");
+                        const domainGaps = gaps.filter((g) => g.domain === d.slug && g.status === "OPEN");
                         return (
                             <div key={d.slug} className="rounded-xl border border-secondary bg-primary p-5">
                                 <div className="flex items-center justify-between">
@@ -68,7 +103,7 @@ export default function ComplianceReportPage() {
                                     </div>
                                 </div>
                                 <ProgressBarBase value={d.score} min={0} max={100} className="mt-3" />
-                                <p className="mt-2 text-xs text-tertiary">{gaps.length} open gaps &middot; {d.kloeCount} KLOEs assessed</p>
+                                <p className="mt-2 text-xs text-tertiary">{domainGaps.length} open gaps &middot; {d.kloeCount} KLOEs assessed</p>
                             </div>
                         );
                     })}

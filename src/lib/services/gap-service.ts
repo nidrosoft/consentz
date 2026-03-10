@@ -3,10 +3,11 @@
 // =============================================================================
 
 import type { ComplianceGap, DomainSlug, GapSeverity, GapStatus } from '@/types';
+import type { Prisma } from '@prisma/client';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
-import { gapStore } from '@/lib/mock-data/store';
-import { paginateArray } from '@/lib/pagination';
+import { db } from '@/lib/db';
+import { buildPagination } from '@/lib/pagination';
 
 interface GapListParams {
   organizationId: string;
@@ -25,73 +26,126 @@ interface GapListResult {
 
 interface GapUpdateParams {
   gapId: string;
+  organizationId: string;
   status?: GapStatus;
   resolutionNotes?: string;
   dueDate?: string;
+}
+
+function mapPrismaGapToComplianceGap(row: {
+  id: string;
+  title: string;
+  description: string;
+  severity: GapSeverity;
+  status: GapStatus;
+  domain: string;
+  kloeCode: string | null;
+  regulationCode: string | null;
+  createdAt: Date;
+}): ComplianceGap {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    severity: row.severity,
+    status: row.status,
+    domain: row.domain as DomainSlug,
+    kloe: row.kloeCode ?? '',
+    regulation: row.regulationCode ?? '',
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 export class GapService {
   /**
    * List gaps with optional filters and pagination.
    */
-  static list(params: GapListParams): GapListResult {
-    let items = gapStore.getAll();
+  static async list(params: GapListParams): Promise<GapListResult> {
+    const where: Prisma.ComplianceGapWhereInput = {
+      organizationId: params.organizationId,
+    };
 
-    // Apply filters
     if (params.filters) {
       const { status, severity, domain } = params.filters;
 
       if (status) {
         const statuses = Array.isArray(status) ? status : [status];
-        items = items.filter((g) => statuses.includes(g.status));
+        where.status = { in: statuses };
       }
 
       if (severity) {
         const severities = Array.isArray(severity) ? severity : [severity];
-        items = items.filter((g) => severities.includes(g.severity));
+        where.severity = { in: severities };
       }
 
       if (domain) {
         const domains = Array.isArray(domain) ? domain : [domain];
-        items = items.filter((g) => domains.includes(g.domain));
+        where.domain = { in: domains };
       }
     }
 
-    // Apply search
     if (params.pagination.search) {
       const query = params.pagination.search.toLowerCase();
-      items = items.filter(
-        (g) =>
-          g.title.toLowerCase().includes(query) ||
-          g.description.toLowerCase().includes(query),
-      );
+      where.OR = [
+        { title: { contains: query, mode: 'insensitive' } },
+        { description: { contains: query, mode: 'insensitive' } },
+      ];
     }
 
-    // Sort by createdAt descending by default
-    items.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    const [items, total] = await Promise.all([
+      db.complianceGap.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (params.pagination.page - 1) * params.pagination.pageSize,
+        take: params.pagination.pageSize,
+      }),
+      db.complianceGap.count({ where }),
+    ]);
 
-    return paginateArray(items, params.pagination);
+    const { meta } = buildPagination(params.pagination, total);
+
+    return {
+      data: items.map((row) => mapPrismaGapToComplianceGap(row)),
+      meta,
+    };
   }
 
   /**
    * Get a single gap by ID.
    */
-  static getById(id: string): ComplianceGap | undefined {
-    return gapStore.getById(id);
+  static async getById(id: string, organizationId: string): Promise<ComplianceGap | null> {
+    const gap = await db.complianceGap.findFirst({
+      where: { id, organizationId },
+    });
+
+    return gap ? mapPrismaGapToComplianceGap(gap) : null;
   }
 
   /**
    * Update a gap's status and optional fields.
    */
-  static update(params: GapUpdateParams): ComplianceGap | undefined {
-    const updates: Partial<ComplianceGap> = {};
+  static async update(params: GapUpdateParams): Promise<ComplianceGap | null> {
+    const data: Parameters<typeof db.complianceGap.update>[0]['data'] = {};
 
     if (params.status !== undefined) {
-      updates.status = params.status;
+      data.status = params.status;
+    }
+    if (params.resolutionNotes !== undefined) {
+      data.resolutionNotes = params.resolutionNotes;
+    }
+    if (params.dueDate !== undefined) {
+      data.dueDate = params.dueDate ? new Date(params.dueDate) : null;
     }
 
-    return gapStore.update(params.gapId, updates);
+    const updated = await db.complianceGap.updateMany({
+      where: { id: params.gapId, organizationId: params.organizationId },
+      data,
+    });
+
+    if (updated.count === 0) {
+      return null;
+    }
+
+    return GapService.getById(params.gapId, params.organizationId);
   }
 }

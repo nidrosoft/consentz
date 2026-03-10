@@ -19,24 +19,21 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const validated = generatePolicySchema.parse(body);
 
   const generated = await AIService.generatePolicy({
-    organizationId: auth.organizationId,
-    title: validated.templateId,
-    category: 'General',
+    policyType: validated.templateId,
     serviceType: 'CARE_HOME',
     additionalContext: validated.customInstructions,
   });
 
   // Save as a DRAFT policy
-  const policy = PolicyService.create({
+  const policy = await PolicyService.create({
     organizationId: auth.organizationId,
     title: generated.title,
-    category: generated.category,
     content: generated.content,
     createdBy: auth.fullName,
-    isAiGenerated: true,
+    category: generated.category,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'POLICY_AI_GENERATED',

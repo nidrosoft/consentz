@@ -7,7 +7,7 @@ import { saveAssessmentSchema } from '@/lib/validations/assessment';
 import { checkRateLimit } from '@/lib/rate-limiter';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const assessment = AssessmentService.getLatest(auth.organizationId);
+  const assessment = await AssessmentService.getLatest(auth.organizationId);
 
   if (!assessment) {
     return ApiErrors.notFound('Assessment');
@@ -25,7 +25,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = saveAssessmentSchema.parse(body);
 
-  const assessment = AssessmentService.saveAnswers({
+  const assessment = await AssessmentService.saveAnswers({
     assessmentId: validated.assessmentId,
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
@@ -34,7 +34,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
     answers: validated.answers,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'ASSESSMENT_SAVED',

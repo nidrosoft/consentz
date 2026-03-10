@@ -10,8 +10,9 @@ import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
 import { cx } from "@/utils/cx";
-import { mockStaff } from "@/lib/mock-data";
-import type { CredentialStatus } from "@/types";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { useStaff } from "@/hooks/use-staff";
+import type { CredentialStatus, StaffMember } from "@/types";
 
 const DBS_BADGE: Record<string, "success" | "warning" | "error"> = {
     CLEAR: "success", PENDING: "warning", EXPIRED: "error",
@@ -20,9 +21,6 @@ const DBS_BADGE: Record<string, "success" | "warning" | "error"> = {
 const CREDENTIAL_BADGE: Record<CredentialStatus, "success" | "warning" | "error" | "gray"> = {
     VALID: "success", EXPIRING_SOON: "warning", EXPIRED: "error", NOT_APPLICABLE: "gray",
 };
-
-const ROLES = [...new Set(mockStaff.map((s) => s.role))];
-const DEPARTMENTS = [...new Set(mockStaff.map((s) => s.department))];
 
 function daysUntil(dateStr: string) {
     return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -36,6 +34,11 @@ const STAFF_TYPE_LABELS: Record<string, string> = {
 
 export default function StaffPage() {
     const router = useRouter();
+    const { data, isLoading, error, refetch } = useStaff();
+    const staffList = (data?.data ?? []) as StaffMember[];
+    const roles = useMemo(() => [...new Set(staffList.map((s) => s.role))], [staffList]);
+    const departments = useMemo(() => [...new Set(staffList.map((s) => s.department))], [staffList]);
+
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState<string | null>(null);
     const [deptFilter, setDeptFilter] = useState<string | null>(null);
@@ -44,7 +47,7 @@ export default function StaffPage() {
     const [showFilters, setShowFilters] = useState(false);
 
     const filtered = useMemo(() => {
-        return mockStaff.filter((s) => {
+        return staffList.filter((s) => {
             if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !s.email.toLowerCase().includes(search.toLowerCase())) return false;
             if (roleFilter && s.role !== roleFilter) return false;
             if (deptFilter && s.department !== deptFilter) return false;
@@ -53,14 +56,14 @@ export default function StaffPage() {
             if (statusFilter === "inactive" && s.isActive) return false;
             return true;
         });
-    }, [search, roleFilter, deptFilter, typeFilter, statusFilter]);
+    }, [staffList, search, roleFilter, deptFilter, typeFilter, statusFilter]);
 
-    const dbsDone = mockStaff.filter((s) => s.dbsStatus === "CLEAR").length;
-    const dbsExpiringSoon = mockStaff.filter((s) => s.dbsStatus === "CLEAR" && daysUntil(s.dbsExpiry) <= 30).length;
-    const dbsExpired = mockStaff.filter((s) => s.dbsStatus === "EXPIRED").length;
-    const activeCount = mockStaff.filter((s) => s.isActive).length;
-    const gmcRegistered = mockStaff.filter((s) => s.gmcStatus === "VALID").length;
-    const aestheticQualified = mockStaff.filter((s) => s.aestheticQualificationStatus === "VALID" || s.aestheticQualificationStatus === "EXPIRING_SOON").length;
+    const dbsDone = staffList.filter((s) => s.dbsStatus === "CLEAR").length;
+    const dbsExpiringSoon = staffList.filter((s) => s.dbsStatus === "CLEAR" && daysUntil(s.dbsExpiry) <= 30).length;
+    const dbsExpired = staffList.filter((s) => s.dbsStatus === "EXPIRED").length;
+    const activeCount = staffList.filter((s) => s.isActive).length;
+    const gmcRegistered = staffList.filter((s) => s.gmcStatus === "VALID").length;
+    const aestheticQualified = staffList.filter((s) => s.aestheticQualificationStatus === "VALID" || s.aestheticQualificationStatus === "EXPIRING_SOON").length;
 
     const hasFilters = !!(roleFilter || deptFilter || statusFilter || typeFilter);
     const activeFilterCount = [roleFilter, deptFilter, statusFilter, typeFilter].filter(Boolean).length;
@@ -72,13 +75,24 @@ export default function StaffPage() {
         setTypeFilter(null);
     }
 
+    if (isLoading) return <PageSkeleton variant="list" rows={8} />;
+
+    if (error) {
+        return (
+            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-6">
+                <p className="text-sm text-error-primary">Failed to load staff.</p>
+                <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Staff Directory</h1>
-                    <p className="mt-1 text-sm text-tertiary">{mockStaff.length} staff members</p>
+                    <p className="mt-1 text-sm text-tertiary">{staffList.length} staff members</p>
                 </div>
                 <div className="flex gap-2">
                     <Button color="secondary" size="lg" onClick={() => router.push("/staff/training")}>Training Matrix</Button>
@@ -93,7 +107,7 @@ export default function StaffPage() {
                         <ShieldTick className="size-5 text-success-primary" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{dbsDone} / {mockStaff.length}</p>
+                        <p className="text-xl font-semibold text-primary">{dbsDone} / {staffList.length}</p>
                         <p className="text-xs text-tertiary">DBS cleared</p>
                     </div>
                 </div>
@@ -102,7 +116,7 @@ export default function StaffPage() {
                         <BookOpen02 className="size-5 text-brand-secondary" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{activeCount} / {mockStaff.length}</p>
+                        <p className="text-xl font-semibold text-primary">{activeCount} / {staffList.length}</p>
                         <p className="text-xs text-tertiary">Active staff</p>
                     </div>
                 </div>
@@ -178,7 +192,7 @@ export default function StaffPage() {
                             size="sm"
                             selectedKey={roleFilter}
                             onSelectionChange={(key) => setRoleFilter(key === "" ? null : String(key))}
-                            items={[{ id: "" }, ...ROLES.map((r) => ({ id: r }))]}
+                            items={[{ id: "" }, ...roles.map((r) => ({ id: r }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All roles"}</Select.Item>}
                         </Select>
@@ -189,7 +203,7 @@ export default function StaffPage() {
                             size="sm"
                             selectedKey={deptFilter}
                             onSelectionChange={(key) => setDeptFilter(key === "" ? null : String(key))}
-                            items={[{ id: "" }, ...DEPARTMENTS.map((d) => ({ id: d }))]}
+                            items={[{ id: "" }, ...departments.map((d) => ({ id: d }))]}
                         >
                             {(item) => <Select.Item id={item.id}>{item.id || "All departments"}</Select.Item>}
                         </Select>

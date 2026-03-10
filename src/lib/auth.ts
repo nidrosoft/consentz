@@ -1,9 +1,17 @@
-// =============================================================================
-// Authentication & Authorization
-// Mock implementation — replace getAuthContext() with Clerk when wiring auth
-// =============================================================================
+import { auth } from '@clerk/nextjs/server';
+import { db as prisma } from '@/lib/db';
 
-export type UserRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'STAFF' | 'VIEWER';
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'COMPLIANCE_MANAGER'
+  | 'DEPARTMENT_LEAD'
+  | 'STAFF_MEMBER'
+  | 'AUDITOR'
+  | 'OWNER'
+  | 'ADMIN'
+  | 'MANAGER'
+  | 'STAFF'
+  | 'VIEWER';
 
 export interface AuthContext {
   userId: string;
@@ -15,10 +23,15 @@ export interface AuthContext {
 }
 
 const ROLE_HIERARCHY: Record<UserRole, number> = {
+  SUPER_ADMIN: 5,
   OWNER: 5,
+  COMPLIANCE_MANAGER: 4,
   ADMIN: 4,
+  DEPARTMENT_LEAD: 3,
   MANAGER: 3,
+  STAFF_MEMBER: 2,
   STAFF: 2,
+  AUDITOR: 1,
   VIEWER: 1,
 };
 
@@ -34,44 +47,78 @@ export class AuthError extends Error {
   }
 }
 
+const DEV_FALLBACK: AuthContext = {
+  userId: 'demo_clerk_user',
+  dbUserId: '28cdb01f-107f-42e1-9d30-1cd01ff92b49',
+  organizationId: 'c9a2e3fc-23d7-4443-9c09-b1b6a67a32e6',
+  role: 'COMPLIANCE_MANAGER',
+  email: 'admin@consentz.com',
+  fullName: 'Dr. Sarah Johnson',
+};
+
 /**
- * Get the authenticated user context.
- * MOCK: Always returns a hardcoded admin user.
- * TODO: Replace with Clerk auth() + DB user lookup when auth is wired.
+ * Get the authenticated user context from Clerk + DB lookup.
+ * Falls back to a demo user when Clerk keys are not configured.
  */
 export async function getAuthContext(): Promise<AuthContext> {
+  const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  if (!clerkPublishableKey) {
+    return DEV_FALLBACK;
+  }
+
+  const { userId: clerkUserId } = await auth();
+
+  if (!clerkUserId) {
+    throw new AuthError('UNAUTHORIZED', 'Not authenticated');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { clerkId: clerkUserId },
+    include: { organization: true },
+  });
+
+  if (!user) {
+    const member = await prisma.organizationMember.findFirst({
+      where: { clerkUserId },
+      include: { organization: true },
+    });
+
+    if (member) {
+      return {
+        userId: clerkUserId,
+        dbUserId: member.id,
+        organizationId: member.organizationId,
+        role: member.role as UserRole,
+        email: member.email,
+        fullName: member.fullName,
+      };
+    }
+
+    throw new AuthError('UNAUTHORIZED', 'User not found in database. Complete onboarding first.');
+  }
+
   return {
-    userId: 'clerk-user-1',
-    dbUserId: 'user-1',
-    organizationId: 'org-1',
-    role: 'ADMIN',
-    email: 'jane@brightwood.co.uk',
-    fullName: 'Jane Smith',
+    userId: clerkUserId,
+    dbUserId: user.id,
+    organizationId: user.organizationId ?? '',
+    role: user.role as UserRole,
+    email: user.email,
+    fullName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
   };
 }
 
-/**
- * Require the user to have at least the specified role level.
- * Throws AuthError if the user's role is below the minimum.
- */
 export function requireMinRole(auth: AuthContext, minRole: UserRole): void {
   if (ROLE_HIERARCHY[auth.role] < ROLE_HIERARCHY[minRole]) {
     throw new AuthError('FORBIDDEN', `Requires at least ${minRole} role`);
   }
 }
 
-/**
- * Require the user to have one of the specified roles.
- */
 export function requireRole(auth: AuthContext, allowedRoles: UserRole[]): void {
   if (!allowedRoles.includes(auth.role)) {
     throw new AuthError('FORBIDDEN', `Requires one of: ${allowedRoles.join(', ')}`);
   }
 }
 
-/**
- * Check if user has at least the given role level (non-throwing).
- */
 export function hasMinRole(auth: AuthContext, minRole: UserRole): boolean {
   return ROLE_HIERARCHY[auth.role] >= ROLE_HIERARCHY[minRole];
 }

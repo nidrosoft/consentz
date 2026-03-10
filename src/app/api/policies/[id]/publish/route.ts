@@ -8,23 +8,23 @@ import { AuditService } from '@/lib/services/audit-service';
 export const POST = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'ADMIN');
 
-  const existing = PolicyService.getById(params.id);
+  const existing = await PolicyService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Policy');
   }
 
-  if (existing.status !== 'APPROVED') {
+  if (existing.status !== 'ACTIVE') {
     return ApiErrors.badRequest(
-      `Cannot publish a policy with status "${existing.status}". Only APPROVED policies can be published.`,
+      `Cannot publish a policy with status "${existing.status}". Only ACTIVE (approved) policies can be published.`,
     );
   }
 
-  const published = PolicyService.publish(params.id, auth.dbUserId);
+  const published = await PolicyService.publish(params.id, auth.dbUserId);
   if (!published) {
     return ApiErrors.notFound('Policy');
   }
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'POLICY_PUBLISHED',

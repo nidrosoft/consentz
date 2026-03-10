@@ -27,7 +27,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
     serviceType: validated.serviceType ?? 'CARE_HOME',
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'INSPECTION_PREP_GENERATED',

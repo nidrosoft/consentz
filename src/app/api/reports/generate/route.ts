@@ -2,14 +2,7 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { generateReportSchema } from '@/lib/validations/report';
-import {
-  complianceScoreStore,
-  gapStore,
-  evidenceStore,
-  staffStore,
-  trainingStore,
-  policyStore,
-} from '@/lib/mock-data/store';
+import { db } from '@/lib/db';
 
 export const POST = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
@@ -17,99 +10,119 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = generateReportSchema.parse(body);
 
+  const orgId = auth.organizationId;
   const now = new Date().toISOString();
-  const score = complianceScoreStore.current;
-  const gaps = gapStore.getAll();
-  const evidence = evidenceStore.filter((e) => !e.deletedAt);
-  const staff = staffStore.filter((s) => s.isActive);
-  const training = trainingStore.getAll();
-  const policies = policyStore.filter((p) => !p.deletedAt);
 
   let reportData: Record<string, unknown> = {};
 
   switch (validated.type) {
-    case 'full_compliance':
+    case 'full_compliance': {
+      const [score, gapCounts, evidenceCount, policyCount, staffCount] = await Promise.all([
+        db.complianceScore.findFirst({ where: { organizationId: orgId }, orderBy: { calculatedAt: 'desc' }, include: { domainScores: true } }),
+        db.complianceGap.groupBy({ by: ['status'], where: { organizationId: orgId }, _count: true }),
+        db.evidenceItem.count({ where: { organizationId: orgId, status: { not: 'ARCHIVED' } } }),
+        db.policy.count({ where: { organizationId: orgId, status: { not: 'ARCHIVED' } } }),
+        db.staffMember.count({ where: { organizationId: orgId, isActive: true } }),
+      ]);
+
+      const gapSummary: Record<string, number> = { total: 0, open: 0, inProgress: 0, resolved: 0 };
+      for (const g of gapCounts) {
+        gapSummary.total += g._count;
+        if (g.status === 'OPEN') gapSummary.open = g._count;
+        if (g.status === 'IN_PROGRESS') gapSummary.inProgress = g._count;
+        if (g.status === 'RESOLVED') gapSummary.resolved = g._count;
+      }
+
       reportData = {
         type: 'full_compliance',
         generatedAt: now,
-        compliance: score,
-        gapSummary: {
-          total: gaps.length,
-          open: gaps.filter((g) => g.status === 'OPEN').length,
-          inProgress: gaps.filter((g) => g.status === 'IN_PROGRESS').length,
-          resolved: gaps.filter((g) => g.status === 'RESOLVED').length,
-        },
-        evidenceCount: evidence.length,
-        policyCount: policies.length,
-        staffCount: staff.length,
+        compliance: score ? {
+          overall: score.score,
+          predictedRating: score.predictedRating,
+          domains: score.domainScores.map((d) => ({
+            domainName: d.domain,
+            score: d.score,
+            rating: d.status,
+            gapCount: d.totalGaps,
+          })),
+        } : null,
+        gapSummary,
+        evidenceCount,
+        policyCount,
+        staffCount,
       };
       break;
+    }
 
-    case 'domain_summary':
-      reportData = {
-        type: 'domain_summary',
-        generatedAt: now,
-        domain: validated.domain,
-        domainScore: validated.domain
-          ? score.domains.find((d) => d.slug === validated.domain)
-          : score.domains,
-        gaps: validated.domain
-          ? gaps.filter((g) => g.domain === validated.domain)
-          : gaps,
-      };
-      break;
-
-    case 'gap_analysis':
+    case 'gap_analysis': {
+      const gaps = await db.complianceGap.findMany({ where: { organizationId: orgId } });
       reportData = {
         type: 'gap_analysis',
         generatedAt: now,
-        gaps,
+        totalGaps: gaps.length,
         bySeverity: {
           CRITICAL: gaps.filter((g) => g.severity === 'CRITICAL').length,
           HIGH: gaps.filter((g) => g.severity === 'HIGH').length,
           MEDIUM: gaps.filter((g) => g.severity === 'MEDIUM').length,
           LOW: gaps.filter((g) => g.severity === 'LOW').length,
         },
-        byDomain: score.domains.map((d) => ({
-          domain: d.domainName,
-          gapCount: d.gapCount,
-          score: d.score,
-        })),
       };
       break;
+    }
 
-    case 'evidence_summary':
+    case 'evidence_summary': {
+      const evidence = await db.evidenceItem.findMany({
+        where: { organizationId: orgId, status: { not: 'ARCHIVED' } },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+      const statusCounts = await db.evidenceItem.groupBy({
+        by: ['status'],
+        where: { organizationId: orgId, status: { not: 'ARCHIVED' } },
+        _count: true,
+      });
+
+      const byStatus: Record<string, number> = {};
+      for (const s of statusCounts) byStatus[s.status] = s._count;
+
       reportData = {
         type: 'evidence_summary',
         generatedAt: now,
-        totalEvidence: evidence.length,
-        byStatus: {
-          VALID: evidence.filter((e) => e.status === 'VALID').length,
-          EXPIRING_SOON: evidence.filter((e) => e.status === 'EXPIRING_SOON').length,
-          EXPIRED: evidence.filter((e) => e.status === 'EXPIRED').length,
-        },
-        recentUploads: evidence.slice(0, 10),
+        totalEvidence: Object.values(byStatus).reduce((a, b) => a + b, 0),
+        byStatus,
+        recentUploads: evidence,
       };
       break;
+    }
 
-    case 'staff_compliance':
+    case 'staff_compliance': {
+      const [staff, training] = await Promise.all([
+        db.staffMember.findMany({ where: { organizationId: orgId, isActive: true } }),
+        db.trainingRecord.findMany({ where: { staffMember: { organizationId: orgId } } }),
+      ]);
+
+      const now30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
       reportData = {
         type: 'staff_compliance',
         generatedAt: now,
         totalStaff: staff.length,
         trainingRecords: training.length,
         dbsStatus: {
-          clear: staff.filter((s) => s.dbsStatus === 'CLEAR').length,
-          pending: staff.filter((s) => s.dbsStatus === 'PENDING').length,
-          expired: staff.filter((s) => s.dbsStatus === 'EXPIRED').length,
+          clear: staff.filter((s) => s.dbsCertificateDate != null).length,
+          pending: staff.filter((s) => !s.dbsCertificateDate).length,
         },
         trainingStatus: {
-          valid: training.filter((t) => t.status === 'VALID').length,
-          expiringSoon: training.filter((t) => t.status === 'EXPIRING_SOON').length,
-          expired: training.filter((t) => t.status === 'EXPIRED').length,
+          valid: training.filter((t) => !t.isExpired && (!t.expiryDate || t.expiryDate > now30)).length,
+          expiringSoon: training.filter((t) => !t.isExpired && t.expiryDate && t.expiryDate <= now30 && t.expiryDate > new Date()).length,
+          expired: training.filter((t) => t.isExpired).length,
         },
       };
       break;
+    }
+
+    default:
+      reportData = { type: validated.type, generatedAt: now };
   }
 
   return apiSuccess(reportData);

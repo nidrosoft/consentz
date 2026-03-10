@@ -11,13 +11,11 @@ export const GET = withAuth(async (req, { params, auth }) => {
   const { searchParams } = new URL(req.url);
   const view = searchParams.get('view');
 
-  // If ?view=matrix, return the training matrix
   if (view === 'matrix') {
-    const matrix = TrainingService.getMatrix(auth.organizationId);
+    const matrix = await TrainingService.getMatrix(auth.organizationId);
     return apiSuccess(matrix);
   }
 
-  // Otherwise, return paginated training list
   const pagination = parsePagination(searchParams);
 
   const rawFilters = trainingFilterSchema.parse({
@@ -26,7 +24,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
     expiringSoon: searchParams.get('expiringSoon') ?? undefined,
   });
 
-  const result = TrainingService.listAll({
+  const result = await TrainingService.listAll({
     organizationId: auth.organizationId,
     pagination,
     filters: {
@@ -43,7 +41,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = createTrainingSchema.parse(body);
 
-  const record = TrainingService.create({
+  const record = await TrainingService.create({
     organizationId: auth.organizationId,
     staffId: validated.staffMemberId,
     courseName: validated.courseName,
@@ -52,7 +50,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
     certificateUrl: validated.certificateUrl,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'TRAINING_CREATED',
@@ -61,8 +59,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
     description: `Added training record: ${validated.courseName} for ${validated.staffMemberId}`,
   });
 
-  // Trigger compliance recalculation
-  ComplianceService.queueRecalculation(auth.organizationId);
+  await ComplianceService.queueRecalculation(auth.organizationId);
 
   return apiSuccess(record, undefined, 201);
 });

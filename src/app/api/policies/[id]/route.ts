@@ -6,7 +6,7 @@ import { AuditService } from '@/lib/services/audit-service';
 import { updatePolicySchema } from '@/lib/validations/policy';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const policy = PolicyService.getById(params.id);
+  const policy = await PolicyService.getById(params.id);
 
   if (!policy) {
     return ApiErrors.notFound('Policy');
@@ -18,34 +18,42 @@ export const GET = withAuth(async (req, { params, auth }) => {
 export const PATCH = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
 
-  const existing = PolicyService.getById(params.id);
+  const existing = await PolicyService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Policy');
   }
 
-  // Only DRAFT and REVIEW policies can be edited
-  if (existing.status !== 'DRAFT' && existing.status !== 'REVIEW') {
+  // Only DRAFT and UNDER_REVIEW policies can be edited
+  if (existing.status !== 'DRAFT' && existing.status !== 'UNDER_REVIEW') {
     return ApiErrors.badRequest(
-      `Cannot edit a policy with status "${existing.status}". Only DRAFT and REVIEW policies can be edited.`,
+      `Cannot edit a policy with status "${existing.status}". Only DRAFT and UNDER_REVIEW policies can be edited.`,
     );
   }
 
   const body = await req.json();
   const validated = updatePolicySchema.parse(body);
 
-  const updated = PolicyService.update({
+  const statusMap: Record<string, string> = {
+    REVIEW: 'UNDER_REVIEW',
+    APPROVED: 'ACTIVE',
+    PUBLISHED: 'ACTIVE',
+  };
+  const mappedStatus = validated.status
+    ? (statusMap[validated.status] ?? validated.status)
+    : undefined;
+
+  const updated = await PolicyService.update({
     id: params.id,
     title: validated.title,
     content: validated.content,
-    category: validated.category,
-    status: validated.status,
+    status: mappedStatus,
   });
 
   if (!updated) {
     return ApiErrors.notFound('Policy');
   }
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'POLICY_UPDATED',
@@ -60,24 +68,24 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
 export const DELETE = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'ADMIN');
 
-  const existing = PolicyService.getById(params.id);
+  const existing = await PolicyService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Policy');
   }
 
-  // Cannot delete published policies
-  if (existing.status === 'PUBLISHED') {
+  // Cannot delete active (published) policies
+  if (existing.status === 'ACTIVE') {
     return ApiErrors.badRequest(
-      'Cannot delete a published policy. Archive it instead.',
+      'Cannot delete an active policy. Archive it instead.',
     );
   }
 
-  const deleted = PolicyService.softDelete(params.id);
+  const deleted = await PolicyService.softDelete(params.id);
   if (!deleted) {
     return ApiErrors.notFound('Policy');
   }
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'POLICY_DELETED',

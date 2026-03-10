@@ -8,7 +8,12 @@
         "start": "next start"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.78.0",
+        "@clerk/nextjs": "^7.0.1",
         "@hookform/resolvers": "^5.2.2",
+        "@prisma/client": "^6.19.2",
+        "@react-stately/utils": "^3.11.0",
+        "@supabase/supabase-js": "^2.98.0",
         "@tailwindcss/postcss": "^4.1.18",
         "@tailwindcss/typography": "^0.5.19",
         "@tanstack/react-query": "^5.90.20",
@@ -16,18 +21,21 @@
         "@untitledui/icons": "^0.0.21",
         "date-fns": "^4.1.0",
         "input-otp": "^1.4.2",
+        "lucide-react": "^0.577.0",
         "motion": "^12.29.0",
         "next": "^16.1.4",
         "next-themes": "^0.4.6",
+        "prisma": "^6.19.2",
         "qr-code-styling": "^1.9.2",
         "react": "^19.2.3",
         "react-aria": "^3.46.0",
-        "react-aria-components": "^1.15.1",
+        "react-aria-components": "^1.16.0",
         "react-dom": "^19.2.3",
         "react-hook-form": "^7.71.1",
         "react-hotkeys-hook": "^5.2.3",
         "recharts": "^3.7.0",
-        "tailwind-merge": "^3.4.0",
+        "svix": "^1.87.0",
+        "tailwind-merge": "^3.5.0",
         "tailwindcss": "^4.1.18",
         "tailwindcss-animate": "^1.0.7",
         "tailwindcss-react-aria-components": "^2.0.1",
@@ -43,6 +51,10 @@
         "postcss-loader": "^8.2.0",
         "prettier": "^3.8.1",
         "prettier-plugin-tailwindcss": "^0.6.14",
+        "tsx": "^4.19.0",
         "typescript": "^5.9.3"
+    },
+    "prisma": {
+        "seed": "npx tsx prisma/seed.ts"
     }
 }

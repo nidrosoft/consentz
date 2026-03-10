@@ -2,26 +2,27 @@
 // Incident Service — CRUD and filtered listing for incidents
 // =============================================================================
 
-import type { Incident, IncidentSeverity, IncidentStatus, IncidentType, DomainSlug } from '@/types';
+import { db } from '@/lib/db';
+import type { Prisma, Severity, IncidentType, IncidentStatus } from '@prisma/client';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
-import { incidentStore, generateId } from '@/lib/mock-data/store';
-import { paginateArray } from '@/lib/pagination';
 
 interface IncidentListParams {
   organizationId: string;
   pagination: PaginationInput;
   filters?: {
+    incidentType?: string | string[];
     category?: string | string[];
-    severity?: IncidentSeverity | IncidentSeverity[];
-    status?: IncidentStatus | IncidentStatus[];
+    severity?: string | string[];
+    status?: string | string[];
+    domain?: string | string[];
     dateFrom?: string;
     dateTo?: string;
   };
 }
 
 interface IncidentListResult {
-  data: Incident[];
+  data: Awaited<ReturnType<typeof db.incident.findMany>>;
   meta: PaginationMeta;
 }
 
@@ -29,122 +30,159 @@ interface IncidentCreateParams {
   organizationId: string;
   title: string;
   description: string;
-  severity: IncidentSeverity;
+  severity: string;
   reportedBy: string;
-  category: string;
-  incidentType: IncidentType;
-  domain: DomainSlug;
+  incidentType: string;
+  domains?: string[];
+  patientName?: string;
 }
 
 interface IncidentUpdateParams {
   id: string;
   title?: string;
   description?: string;
-  severity?: IncidentSeverity;
-  status?: IncidentStatus;
-  category?: string;
-  domain?: DomainSlug;
+  severity?: string;
+  status?: string;
+  incidentType?: string;
+  domains?: string[];
+  patientName?: string;
+  rootCause?: string;
+  actionsTaken?: string;
+  lessonsLearned?: string;
+  resolvedAt?: string | null;
+  resolvedBy?: string | null;
 }
 
 export class IncidentService {
-  /**
-   * List incidents with optional filters and pagination.
-   */
-  static list(params: IncidentListParams): IncidentListResult {
-    let items = incidentStore.getAll();
-
-    // Apply filters
-    if (params.filters) {
-      const { category, severity, status, dateFrom, dateTo } = params.filters;
-
-      if (category) {
-        const categories = Array.isArray(category) ? category : [category];
-        items = items.filter((i) => categories.includes(i.category));
-      }
-
-      if (severity) {
-        const severities = Array.isArray(severity) ? severity : [severity];
-        items = items.filter((i) => severities.includes(i.severity));
-      }
-
-      if (status) {
-        const statuses = Array.isArray(status) ? status : [status];
-        items = items.filter((i) => statuses.includes(i.status));
-      }
-
-      if (dateFrom) {
-        const from = new Date(dateFrom).getTime();
-        items = items.filter((i) => new Date(i.reportedAt).getTime() >= from);
-      }
-
-      if (dateTo) {
-        const to = new Date(dateTo).getTime();
-        items = items.filter((i) => new Date(i.reportedAt).getTime() <= to);
-      }
-    }
-
-    // Apply search
-    if (params.pagination.search) {
-      const query = params.pagination.search.toLowerCase();
-      items = items.filter(
-        (i) =>
-          i.title.toLowerCase().includes(query) ||
-          i.description.toLowerCase().includes(query),
-      );
-    }
-
-    // Sort by reportedAt descending
-    items.sort(
-      (a, b) =>
-        new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime(),
-    );
-
-    return paginateArray(items, params.pagination);
-  }
-
-  /**
-   * Get a single incident by ID.
-   */
-  static getById(id: string): Incident | undefined {
-    return incidentStore.getById(id);
-  }
-
-  /**
-   * Create a new incident.
-   */
-  static create(params: IncidentCreateParams): Incident {
-    const incident: Incident = {
-      id: generateId('inc'),
-      title: params.title,
-      description: params.description,
-      severity: params.severity,
-      status: 'REPORTED',
-      reportedBy: params.reportedBy,
-      reportedAt: new Date().toISOString(),
-      category: params.category,
-      incidentType: params.incidentType,
-      domain: params.domain,
+  static async list(params: IncidentListParams): Promise<IncidentListResult> {
+    const where: Prisma.IncidentWhereInput = {
+      organizationId: params.organizationId,
     };
 
-    return incidentStore.create(incident);
+    const incidentTypes = [
+      ...(params.filters?.incidentType
+        ? Array.isArray(params.filters.incidentType)
+          ? params.filters.incidentType
+          : [params.filters.incidentType]
+        : []),
+      ...(params.filters?.category
+        ? Array.isArray(params.filters.category)
+          ? params.filters.category
+          : [params.filters.category]
+        : []),
+    ];
+    if (incidentTypes.length > 0) {
+      where.incidentType = { in: incidentTypes as IncidentType[] };
+    }
+    if (params.filters?.severity) {
+      const sevs = Array.isArray(params.filters.severity)
+        ? params.filters.severity
+        : [params.filters.severity];
+      where.severity = { in: sevs as Severity[] };
+    }
+    if (params.filters?.status) {
+      const stats = Array.isArray(params.filters.status)
+        ? params.filters.status
+        : [params.filters.status];
+      where.status = { in: stats as IncidentStatus[] };
+    }
+    if (params.filters?.domain) {
+      const doms = Array.isArray(params.filters.domain)
+        ? params.filters.domain
+        : [params.filters.domain];
+      where.domains = { hasSome: doms };
+    }
+    if (params.filters?.dateFrom || params.filters?.dateTo) {
+      where.reportedAt = {};
+      if (params.filters.dateFrom) {
+        where.reportedAt.gte = new Date(params.filters.dateFrom);
+      }
+      if (params.filters.dateTo) {
+        where.reportedAt.lte = new Date(params.filters.dateTo);
+      }
+    }
+    if (params.pagination.search) {
+      where.OR = [
+        { title: { contains: params.pagination.search, mode: 'insensitive' } },
+        {
+          description: {
+            contains: params.pagination.search,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
+    const skip = (params.pagination.page - 1) * params.pagination.pageSize;
+    const take = params.pagination.pageSize;
+
+    const [data, total] = await Promise.all([
+      db.incident.findMany({
+        where,
+        orderBy: { reportedAt: 'desc' },
+        skip,
+        take,
+      }),
+      db.incident.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / params.pagination.pageSize);
+
+    return {
+      data,
+      meta: {
+        page: params.pagination.page,
+        pageSize: params.pagination.pageSize,
+        total,
+        totalPages,
+        hasMore: params.pagination.page < totalPages,
+      },
+    };
   }
 
-  /**
-   * Update an existing incident.
-   */
-  static update(params: IncidentUpdateParams): Incident | undefined {
-    const existing = incidentStore.getById(params.id);
-    if (!existing) return undefined;
+  static async getById(id: string) {
+    return db.incident.findUnique({ where: { id } });
+  }
 
-    const updates: Partial<Incident> = {};
+  static async create(params: IncidentCreateParams) {
+    return db.incident.create({
+      data: {
+        organizationId: params.organizationId,
+        title: params.title,
+        description: params.description,
+        severity: params.severity as Severity,
+        incidentType: params.incidentType as IncidentType,
+        reportedBy: params.reportedBy,
+        status: 'OPEN',
+        patientName: params.patientName,
+        domains: params.domains ?? [],
+      },
+    });
+  }
 
-    if (params.title !== undefined) updates.title = params.title;
-    if (params.description !== undefined) updates.description = params.description;
-    if (params.severity !== undefined) updates.severity = params.severity;
-    if (params.status !== undefined) updates.status = params.status;
-    if (params.category !== undefined) updates.category = params.category;
-    if (params.domain !== undefined) updates.domain = params.domain;
+  static async update(params: IncidentUpdateParams) {
+    const { id, ...updates } = params;
+    const data: Prisma.IncidentUpdateInput = {};
 
-    return incidentStore.update(params.id, updates);
+    if (updates.title !== undefined) data.title = updates.title;
+    if (updates.description !== undefined) data.description = updates.description;
+    if (updates.severity !== undefined)
+      data.severity = updates.severity as Severity;
+    if (updates.status !== undefined)
+      data.status = updates.status as IncidentStatus;
+    if (updates.incidentType !== undefined)
+      data.incidentType = updates.incidentType as IncidentType;
+    if (updates.domains !== undefined) data.domains = updates.domains;
+    if (updates.patientName !== undefined) data.patientName = updates.patientName;
+    if (updates.rootCause !== undefined) data.rootCause = updates.rootCause;
+    if (updates.actionsTaken !== undefined)
+      data.actionsTaken = updates.actionsTaken;
+    if (updates.lessonsLearned !== undefined)
+      data.lessonsLearned = updates.lessonsLearned;
+    if (updates.resolvedAt !== undefined)
+      data.resolvedAt = updates.resolvedAt ? new Date(updates.resolvedAt) : null;
+    if (updates.resolvedBy !== undefined) data.resolvedBy = updates.resolvedBy;
+
+    return db.incident.update({ where: { id }, data });
   }
 }

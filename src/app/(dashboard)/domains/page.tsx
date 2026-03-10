@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, Minus } from "@untitledui/icons";
+import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, Minus, AlertTriangle } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
-import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
+import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
-import { mockComplianceScore, mockGaps } from "@/lib/mock-data";
+import { useComplianceScore, useComplianceGaps } from "@/hooks/use-compliance";
 import { RATING_LABELS, KLOES } from "@/lib/constants/cqc-framework";
 import type { FC } from "react";
 
@@ -23,8 +23,40 @@ const DOMAIN_QUESTIONS: Record<string, string> = {
     responsive: "Is care responsive to people's needs?", "well-led": "Is care well-led?",
 };
 
+function DomainsSkeleton() {
+    return (
+        <div className="flex flex-col gap-6">
+            <div>
+                <div className="h-8 w-48 animate-pulse rounded-lg bg-quaternary" />
+                <div className="mt-2 h-4 w-64 animate-pulse rounded bg-quaternary" />
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="h-56 animate-pulse rounded-xl border border-secondary bg-primary" />
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function DomainsPage() {
     const router = useRouter();
+    const { data: score, isLoading: scoreLoading, error: scoreError } = useComplianceScore();
+    const { data: gapsResponse, isLoading: gapsLoading } = useComplianceGaps({ pageSize: 100 });
+    const gaps = gapsResponse?.data ?? [];
+    const domains = score?.domains ?? [];
+    const isLoading = scoreLoading || gapsLoading;
+
+    if (isLoading) return <DomainsSkeleton />;
+    if (scoreError || !score) {
+        return (
+            <div className="flex flex-col items-center justify-center gap-4 py-20">
+                <AlertTriangle className="size-10 text-warning-primary" />
+                <p className="text-sm text-tertiary">Failed to load compliance data. Please try again.</p>
+                <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
@@ -34,11 +66,11 @@ export default function DomainsPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {mockComplianceScore.domains.map((d) => {
+                {domains.map((d) => {
                     const Icon = DOMAIN_ICONS[d.slug];
                     const color = DOMAIN_COLORS[d.slug];
                     const domainKloes = KLOES.filter((k) => k.domain === d.slug);
-                    const domainGaps = mockGaps.filter((g) => g.domain === d.slug && g.status === "OPEN");
+                    const domainGaps = gaps.filter((g) => g.domain === d.slug && g.status === "OPEN");
 
                     return (
                         <button
@@ -89,7 +121,7 @@ export default function DomainsPage() {
 
                             <div className="flex flex-wrap gap-1.5">
                                 {domainKloes.map((k) => {
-                                    const hasGap = mockGaps.some((g) => g.kloe === k.code && g.status === "OPEN");
+                                    const hasGap = gaps.some((g) => g.kloe === k.code && g.status === "OPEN");
                                     return (
                                         <span
                                             key={k.code}

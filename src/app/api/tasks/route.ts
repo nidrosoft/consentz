@@ -19,12 +19,21 @@ export const GET = withAuth(async (req, { params, auth }) => {
     source: searchParams.get('source') ?? undefined,
   });
 
-  const result = TaskService.list({
+  const result = await TaskService.list({
     organizationId: auth.organizationId,
-    pagination,
+    pagination: {
+      page: pagination.page,
+      limit: pagination.pageSize,
+      search: pagination.search,
+    },
     userRole: auth.role,
     userId: auth.dbUserId,
-    filters: rawFilters,
+    filters: {
+      status: rawFilters.status,
+      priority: rawFilters.priority,
+      assignee: rawFilters.assignedToId,
+      domain: rawFilters.domain,
+    },
   });
 
   return apiSuccess(result.data, result.meta);
@@ -36,18 +45,19 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = createTaskSchema.parse(body);
 
-  const task = TaskService.create({
+  const task = await TaskService.create({
     organizationId: auth.organizationId,
     title: validated.title,
     description: validated.description ?? '',
-    priority: validated.priority,
-    domain: validated.domain ?? 'safe',
-    assignee: validated.assignedToId ?? '',
-    dueDate: validated.dueDate ?? '',
-    relatedGapId: validated.gapId,
+    priority: validated.priority === 'URGENT' ? 'CRITICAL' : validated.priority,
+    domains: validated.domain ? [validated.domain] : [],
+    assignedTo: validated.assignedToId ?? undefined,
+    dueDate: validated.dueDate,
+    gapId: validated.gapId,
+    kloeCode: validated.kloeCode,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'TASK_CREATED',

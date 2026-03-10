@@ -26,6 +26,7 @@ export const updateIncidentSchema = z.object({
   title: shortString(255).optional(),
   description: longString(5000).optional(),
   status: z.enum(['REPORTED', 'INVESTIGATING', 'RESOLVED', 'CLOSED']).optional(),
+  severity: incidentSeveritySchema.optional(),
   rootCause: longString(5000).optional(),
   actionsTaken: longString(5000).optional(),
   lessonsLearned: longString(5000).optional(),

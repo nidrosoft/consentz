@@ -2,8 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { FilterLines, ArrowsUp } from "@untitledui/icons";
+import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
-import { mockTasks, mockUser } from "@/lib/mock-data";
+import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { useTasks, useUpdateTask } from "@/hooks/use-tasks";
+import { useMe } from "@/hooks/use-me";
 import type { Task, TaskStatus, TaskPriority, DomainSlug } from "@/types";
 import { TaskBoard } from "./_components/task-board";
 import { TaskListView } from "./_components/task-list-view";
@@ -13,8 +16,13 @@ import { AddTaskModal } from "./_components/add-task-modal";
 type ViewMode = "board" | "list" | "my";
 
 export default function TasksPage() {
-    const [tasks, setTasks] = useState<Task[]>(mockTasks);
+    const { data: meData } = useMe();
+    const currentUserId = meData?.id;
     const [view, setView] = useState<ViewMode>("board");
+    const { data, isLoading, error, refetch } = useTasks({
+        assignedToId: view === "my" ? (currentUserId ?? undefined) : undefined,
+    });
+    const tasks = (data?.data ?? []) as Task[];
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [slideOverOpen, setSlideOverOpen] = useState(false);
 
@@ -23,27 +31,27 @@ export default function TasksPage() {
     const [domainFilter, setDomainFilter] = useState<DomainSlug | null>(null);
     const [sortBy, setSortBy] = useState<"dueDate" | "priority">("dueDate");
     const [showFilters, setShowFilters] = useState(false);
+    const updateTaskMutation = useUpdateTask();
 
     const overdueCount = tasks.filter((t) => t.status === "OVERDUE").length;
 
     const filtered = useMemo(() => {
         let result = [...tasks];
-        if (view === "my") result = result.filter((t) => t.assignee === mockUser.name);
         if (priorityFilter) result = result.filter((t) => t.priority === priorityFilter);
         if (domainFilter) result = result.filter((t) => t.domain === domainFilter);
         const priorityOrder: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
         if (sortBy === "dueDate") result.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
         else result.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
         return result;
-    }, [tasks, view, priorityFilter, domainFilter, sortBy]);
+    }, [tasks, priorityFilter, domainFilter, sortBy]);
 
     function handleMoveTask(taskId: string, newStatus: TaskStatus) {
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
+        updateTaskMutation.mutate({ id: taskId, status: newStatus }, { onSettled: () => refetch() });
     }
 
     function handleUpdateTask(taskId: string, updates: Partial<Task>) {
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t)));
         if (selectedTask?.id === taskId) setSelectedTask((prev) => prev ? { ...prev, ...updates } : prev);
+        updateTaskMutation.mutate({ id: taskId, ...updates }, { onSettled: () => refetch() });
     }
 
     function handleSelectTask(task: Task) {
@@ -51,8 +59,8 @@ export default function TasksPage() {
         setSlideOverOpen(true);
     }
 
-    function handleAddTask(task: Task) {
-        setTasks((prev) => [...prev, task]);
+    function handleAddTask(_task: Task) {
+        refetch();
     }
 
     const views: { id: ViewMode; label: string }[] = [
@@ -60,6 +68,17 @@ export default function TasksPage() {
         { id: "list", label: "List" },
         { id: "my", label: "My Tasks" },
     ];
+
+    if (isLoading) return <PageSkeleton variant="list" />;
+
+    if (error) {
+        return (
+            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-6">
+                <p className="text-sm text-error-primary">Failed to load tasks.</p>
+                <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">

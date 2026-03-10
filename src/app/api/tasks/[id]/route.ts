@@ -6,14 +6,14 @@ import { AuditService } from '@/lib/services/audit-service';
 import { updateTaskSchema } from '@/lib/validations/task';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const task = TaskService.getById(params.id);
+  const task = await TaskService.getById(params.id);
 
   if (!task) {
     return ApiErrors.notFound('Task');
   }
 
   // STAFF can only view their own tasks
-  if (auth.role === 'STAFF' && task.assignee !== auth.dbUserId) {
+  if (auth.role === 'STAFF' && task.assignedTo !== auth.dbUserId) {
     return ApiErrors.forbidden('You can only view your own tasks');
   }
 
@@ -21,7 +21,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
 });
 
 export const PATCH = withAuth(async (req, { params, auth }) => {
-  const existing = TaskService.getById(params.id);
+  const existing = await TaskService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Task');
   }
@@ -31,7 +31,7 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
 
   // STAFF can only update status and completionNotes on their own tasks
   if (auth.role === 'STAFF') {
-    if (existing.assignee !== auth.dbUserId) {
+    if (existing.assignedTo !== auth.dbUserId) {
       return ApiErrors.forbidden('You can only update your own tasks');
     }
 
@@ -52,21 +52,17 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
     requireMinRole(auth, 'MANAGER');
   }
 
-  const updated = TaskService.update({
-    id: params.id,
-    title: validated.title,
-    description: validated.description,
-    status: validated.status,
-    priority: validated.priority,
-    assignee: validated.assignedToId ?? undefined,
-    dueDate: validated.dueDate ?? undefined,
-  });
+  const updateData: Record<string, unknown> = {};
+  if (validated.title !== undefined) updateData.title = validated.title;
+  if (validated.description !== undefined) updateData.description = validated.description;
+  if (validated.status !== undefined) updateData.status = validated.status === 'DONE' ? 'COMPLETED' : validated.status;
+  if (validated.priority !== undefined) updateData.priority = validated.priority === 'URGENT' ? 'CRITICAL' : validated.priority;
+  if (validated.assignedToId !== undefined) updateData.assignedTo = validated.assignedToId;
+  if (validated.dueDate !== undefined) updateData.dueDate = validated.dueDate;
 
-  if (!updated) {
-    return ApiErrors.notFound('Task');
-  }
+  const updated = await TaskService.update(params.id, updateData);
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'TASK_UPDATED',
@@ -76,8 +72,8 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   });
 
   // Check if completing this task resolves the related gap
-  if (validated.status === 'DONE' && existing.relatedGapId) {
-    TaskService.checkAndResolveGap(existing.relatedGapId);
+  if (validated.status === 'DONE' && existing.gapId) {
+    await TaskService.checkAndResolveGap(existing.gapId);
   }
 
   return apiSuccess(updated);
@@ -86,17 +82,14 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
 export const DELETE = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
 
-  const existing = TaskService.getById(params.id);
+  const existing = await TaskService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Task');
   }
 
-  const deleted = TaskService.delete(params.id);
-  if (!deleted) {
-    return ApiErrors.notFound('Task');
-  }
+  await TaskService.delete(params.id);
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'TASK_DELETED',

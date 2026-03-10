@@ -6,7 +6,8 @@ import { AuditService } from '@/lib/services/audit-service';
 import { updateTrainingSchema } from '@/lib/validations/training';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const record = TrainingService.getById(params.id);
+  const resolvedParams = await params;
+  const record = await TrainingService.getById(resolvedParams.id);
 
   if (!record) {
     return ApiErrors.notFound('Training record');
@@ -18,7 +19,8 @@ export const GET = withAuth(async (req, { params, auth }) => {
 export const PATCH = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
 
-  const existing = TrainingService.getById(params.id);
+  const resolvedParams = await params;
+  const existing = await TrainingService.getById(resolvedParams.id);
   if (!existing) {
     return ApiErrors.notFound('Training record');
   }
@@ -26,8 +28,8 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = updateTrainingSchema.parse(body);
 
-  const updated = TrainingService.update({
-    id: params.id,
+  const updated = await TrainingService.update({
+    id: resolvedParams.id,
     courseName: validated.courseName,
     completedDate: validated.completedDate,
     expiryDate: validated.expiryDate,
@@ -38,12 +40,12 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
     return ApiErrors.notFound('Training record');
   }
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'TRAINING_UPDATED',
     entityType: 'TRAINING',
-    entityId: params.id,
+    entityId: resolvedParams.id,
     description: `Updated training record: ${existing.courseName}`,
   });
 
@@ -53,22 +55,20 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
 export const DELETE = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'ADMIN');
 
-  const existing = TrainingService.getById(params.id);
+  const resolvedParams = await params;
+  const existing = await TrainingService.getById(resolvedParams.id);
   if (!existing) {
     return ApiErrors.notFound('Training record');
   }
 
-  const deleted = TrainingService.delete(params.id);
-  if (!deleted) {
-    return ApiErrors.notFound('Training record');
-  }
+  await TrainingService.delete(resolvedParams.id);
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'TRAINING_DELETED',
     entityType: 'TRAINING',
-    entityId: params.id,
+    entityId: resolvedParams.id,
     description: `Deleted training record: ${existing.courseName}`,
   });
 

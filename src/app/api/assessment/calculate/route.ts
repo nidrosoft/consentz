@@ -14,13 +14,13 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = calculateAssessmentSchema.parse(body);
 
-  const result = AssessmentService.calculate({
+  const result = await AssessmentService.calculate({
     assessmentId: validated.assessmentId,
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
   });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'ASSESSMENT_CALCULATED',

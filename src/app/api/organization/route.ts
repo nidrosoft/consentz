@@ -3,35 +3,36 @@ import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { AuditService } from '@/lib/services/audit-service';
 import { updateOrganizationSchema } from '@/lib/validations/organization';
-import {
-  organizationStore,
-  userStore,
-  staffStore,
-  policyStore,
-  evidenceStore,
-} from '@/lib/mock-data/store';
+import { db } from '@/lib/db';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const org = organizationStore.getById(auth.organizationId);
+  const org = await db.organization.findUnique({
+    where: { id: auth.organizationId },
+  });
 
   if (!org) {
     return ApiErrors.notFound('Organization');
   }
 
-  const counts = {
-    users: userStore.count(),
-    activeStaff: staffStore.count((s) => s.isActive),
-    policies: policyStore.count((p) => !p.deletedAt),
-    evidence: evidenceStore.count((e) => !e.deletedAt),
-  };
+  const [userCount, staffCount, policyCount, evidenceCount] = await Promise.all([
+    db.user.count({ where: { organizationId: auth.organizationId } }),
+    db.staffMember.count({ where: { organizationId: auth.organizationId, isActive: true } }),
+    db.policy.count({ where: { organizationId: auth.organizationId, status: { not: 'ARCHIVED' } } }),
+    db.evidenceItem.count({ where: { organizationId: auth.organizationId, status: { not: 'ARCHIVED' } } }),
+  ]);
 
-  return apiSuccess({ ...org, counts });
+  return apiSuccess({
+    ...org,
+    counts: { users: userCount, activeStaff: staffCount, policies: policyCount, evidence: evidenceCount },
+  });
 });
 
 export const PATCH = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'ADMIN');
 
-  const existing = organizationStore.getById(auth.organizationId);
+  const existing = await db.organization.findUnique({
+    where: { id: auth.organizationId },
+  });
   if (!existing) {
     return ApiErrors.notFound('Organization');
   }
@@ -39,12 +40,12 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = updateOrganizationSchema.parse(body);
 
-  const updated = organizationStore.update(auth.organizationId, validated);
-  if (!updated) {
-    return ApiErrors.notFound('Organization');
-  }
+  const updated = await db.organization.update({
+    where: { id: auth.organizationId },
+    data: validated,
+  });
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'ORGANIZATION_UPDATED',

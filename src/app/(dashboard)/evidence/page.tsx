@@ -9,15 +9,16 @@ import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
 import { cx } from "@/utils/cx";
-import { mockEvidence } from "@/lib/mock-data";
-import { DomainBadge, DomainBadgeList } from "@/components/shared/domain-badge";
+import { useEvidence } from "@/hooks/use-evidence";
+import { toEvidence } from "@/lib/evidence-mapper";
+import { DomainBadgeList } from "@/components/shared/domain-badge";
 import type { EvidenceType, EvidenceStatus, DomainSlug } from "@/types";
 
 const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray"> = {
     VALID: "success", EXPIRING_SOON: "warning", EXPIRED: "error", PENDING_REVIEW: "gray",
 };
 
-const EVIDENCE_TYPES = [...new Set(mockEvidence.map((e) => e.type))];
+const EVIDENCE_TYPES: EvidenceType[] = ["POLICY", "CERTIFICATE", "TRAINING_RECORD", "AUDIT_REPORT", "RISK_ASSESSMENT", "MEETING_MINUTES", "PHOTO", "OTHER"];
 const EVIDENCE_STATUSES: EvidenceStatus[] = ["VALID", "EXPIRING_SOON", "EXPIRED"];
 const DOMAINS: DomainSlug[] = ["safe", "effective", "caring", "responsive", "well-led"];
 
@@ -31,18 +32,22 @@ export default function EvidencePage() {
     const [sortBy, setSortBy] = useState<"date" | "name">("date");
     const [showFilters, setShowFilters] = useState(false);
 
+    const { data, isLoading, error } = useEvidence({
+        search: search || undefined,
+        status: statusFilter ?? undefined,
+        category: categoryFilter ?? undefined,
+        domain: domainFilter ?? undefined,
+        page: 1,
+        pageSize: 100,
+    });
+
+    const evidenceList = (data?.data ?? []).map((item) => toEvidence(item as unknown as Record<string, unknown>));
     const filtered = useMemo(() => {
-        let result = mockEvidence.filter((e) => {
-            if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
-            if (statusFilter && e.status !== statusFilter) return false;
-            if (categoryFilter && e.type !== categoryFilter) return false;
-            if (domainFilter && !e.linkedDomains.includes(domainFilter)) return false;
-            return true;
-        });
-        if (sortBy === "date") result = [...result].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-        else result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+        let result = [...evidenceList];
+        if (sortBy === "date") result.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+        else result.sort((a, b) => a.name.localeCompare(b.name));
         return result;
-    }, [search, statusFilter, categoryFilter, domainFilter, sortBy]);
+    }, [evidenceList, sortBy]);
 
     const hasFilters = !!(statusFilter || categoryFilter || domainFilter);
     const activeFilterCount = [statusFilter, categoryFilter, domainFilter].filter(Boolean).length;
@@ -53,12 +58,55 @@ export default function EvidencePage() {
         setDomainFilter(null);
     }
 
+    if (error) {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="rounded-xl border border-error bg-error-secondary p-6">
+                    <p className="text-sm font-medium text-error-primary">Failed to load evidence</p>
+                    <p className="mt-1 text-sm text-tertiary">{error instanceof Error ? error.message : "An error occurred"}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <div className="h-8 w-48 animate-pulse rounded-lg bg-secondary" />
+                        <div className="mt-2 h-4 w-24 animate-pulse rounded bg-secondary" />
+                    </div>
+                </div>
+                <div className="h-10 w-full max-w-md animate-pulse rounded-lg bg-secondary" />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {[...Array(8)].map((_, i) => (
+                        <div key={i} className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-4">
+                            <div className="size-10 animate-pulse rounded-lg bg-secondary" />
+                            <div className="flex-1 space-y-2">
+                                <div className="h-4 w-3/4 animate-pulse rounded bg-secondary" />
+                                <div className="h-3 w-1/2 animate-pulse rounded bg-secondary" />
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="h-5 w-16 animate-pulse rounded-full bg-secondary" />
+                                <div className="h-5 w-20 animate-pulse rounded-full bg-secondary" />
+                            </div>
+                            <div className="h-3 w-full animate-pulse rounded bg-secondary" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    const documentCount = data?.meta?.total ?? evidenceList.length;
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Evidence Library</h1>
-                    <p className="mt-1 text-sm text-tertiary">{mockEvidence.length} documents</p>
+                    <p className="mt-1 text-sm text-tertiary">{documentCount} documents</p>
                 </div>
                 <Button color="primary" size="lg" iconLeading={Upload01} onClick={() => router.push("/evidence/upload")}>Upload Evidence</Button>
             </div>

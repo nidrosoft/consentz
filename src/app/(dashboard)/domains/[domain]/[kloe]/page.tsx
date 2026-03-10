@@ -6,7 +6,7 @@ import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { mockGaps, mockEvidence } from "@/lib/mock-data";
+import { useComplianceGaps } from "@/hooks/use-compliance";
 import { KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
 import type { DomainSlug } from "@/types";
 
@@ -17,6 +17,24 @@ const SEVERITY_BADGE: Record<string, "error" | "warning" | "brand" | "gray"> = {
     CRITICAL: "error", HIGH: "warning", MEDIUM: "brand", LOW: "gray",
 };
 
+function KloeDetailSkeleton() {
+    return (
+        <div className="flex flex-col gap-6 animate-pulse">
+            <div className="h-8 w-40 rounded bg-quaternary" />
+            <div className="flex items-center gap-2">
+                <div className="h-6 w-12 rounded bg-quaternary" />
+                <div className="h-6 w-48 rounded bg-quaternary" />
+            </div>
+            <div className="h-24 rounded-xl border border-secondary bg-primary" />
+            <div className="space-y-3">
+                <div className="h-6 w-40 rounded bg-quaternary" />
+                <div className="h-32 rounded-xl border border-secondary bg-primary" />
+            </div>
+            <div className="h-48 rounded-xl border border-secondary bg-primary" />
+        </div>
+    );
+}
+
 export default function KloeDetailPage() {
     const params = useParams();
     const router = useRouter();
@@ -24,13 +42,30 @@ export default function KloeDetailPage() {
     const kloeCode = (params.kloe as string).toUpperCase();
 
     const kloe = KLOES.find((k) => k.code === kloeCode);
-    const kloeGaps = mockGaps.filter((g) => g.kloe === kloeCode);
-    const kloeEvidence = mockEvidence.filter((e) => e.linkedKloes.includes(kloeCode));
+    const { data: gapsResponse, isLoading, error } = useComplianceGaps({ domain: domainSlug, pageSize: 100 });
+    const allGaps = gapsResponse?.data ?? [];
+    const kloeGaps = allGaps.filter((g) => g.kloe === kloeCode);
+    const kloeEvidence: { id: string; name: string; type: string; fileSize: string; uploadedBy: string; status: string }[] = [];
     const kloeRegulations = REGULATIONS.filter((r) => r.domains.includes(domainSlug));
     const mockScore = kloeGaps.filter((g) => g.status === "OPEN").length === 0 ? 85 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 40 : 60;
     const openGaps = kloeGaps.filter((g) => g.status === "OPEN");
 
     if (!kloe) return <p className="text-tertiary">KLOE not found.</p>;
+    if (isLoading) return <KloeDetailSkeleton />;
+    if (error) {
+        return (
+            <div className="flex flex-col gap-6">
+                <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push(`/domains/${domainSlug}`)}>
+                    Back to {domainSlug.charAt(0).toUpperCase() + domainSlug.slice(1)}
+                </Button>
+                <div className="flex flex-col items-center justify-center gap-4 py-20">
+                    <AlertTriangle className="size-10 text-warning-primary" />
+                    <p className="text-sm text-tertiary">Failed to load compliance gaps. Please try again.</p>
+                    <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">

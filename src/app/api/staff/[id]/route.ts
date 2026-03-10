@@ -6,7 +6,7 @@ import { AuditService } from '@/lib/services/audit-service';
 import { updateStaffSchema } from '@/lib/validations/staff';
 
 export const GET = withAuth(async (req, { params, auth }) => {
-  const member = StaffService.getById(params.id);
+  const member = await StaffService.getById(params.id);
 
   if (!member) {
     return ApiErrors.notFound('Staff member');
@@ -19,7 +19,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
 export const PATCH = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'MANAGER');
 
-  const existing = StaffService.getById(params.id);
+  const existing = await StaffService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Staff member');
   }
@@ -27,30 +27,27 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = updateStaffSchema.parse(body);
 
-  const name = validated.firstName && validated.lastName
-    ? `${validated.firstName} ${validated.lastName}`
-    : undefined;
+  const updateData: Record<string, unknown> = {};
+  if (validated.firstName !== undefined) updateData.firstName = validated.firstName;
+  if (validated.lastName !== undefined) updateData.lastName = validated.lastName;
+  if (validated.email !== undefined) updateData.email = validated.email;
+  if (validated.phone !== undefined) updateData.phone = validated.phone;
+  if (validated.jobTitle !== undefined) updateData.jobTitle = validated.jobTitle;
+  if (validated.staffRole !== undefined) updateData.staffRole = validated.staffRole;
+  if (validated.department !== undefined) updateData.department = validated.department;
+  if (validated.isActive !== undefined) updateData.isActive = validated.isActive;
+  if (validated.startDate !== undefined) updateData.startDate = validated.startDate;
+  if (validated.endDate !== undefined) updateData.endDate = validated.endDate;
 
-  const updated = StaffService.update({
-    id: params.id,
-    name,
-    email: validated.email,
-    role: validated.jobTitle,
-    department: validated.department,
-    isActive: validated.isActive,
-  });
+  const updated = await StaffService.update(params.id, updateData);
 
-  if (!updated) {
-    return ApiErrors.notFound('Staff member');
-  }
-
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'STAFF_UPDATED',
     entityType: 'STAFF',
     entityId: params.id,
-    description: `Updated staff record: ${existing.name}`,
+    description: `Updated staff record: ${existing.firstName} ${existing.lastName}`,
   });
 
   return apiSuccess(updated);
@@ -59,23 +56,20 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
 export const DELETE = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'ADMIN');
 
-  const existing = StaffService.getById(params.id);
+  const existing = await StaffService.getById(params.id);
   if (!existing) {
     return ApiErrors.notFound('Staff member');
   }
 
-  const deactivated = StaffService.softDelete(params.id);
-  if (!deactivated) {
-    return ApiErrors.notFound('Staff member');
-  }
+  await StaffService.softDelete(params.id);
 
-  AuditService.log({
+  await AuditService.log({
     organizationId: auth.organizationId,
     userId: auth.dbUserId,
     action: 'STAFF_DEACTIVATED',
     entityType: 'STAFF',
     entityId: params.id,
-    description: `Deactivated staff member: ${existing.name}`,
+    description: `Deactivated staff member: ${existing.firstName} ${existing.lastName}`,
   });
 
   return apiSuccess({ deleted: true });
