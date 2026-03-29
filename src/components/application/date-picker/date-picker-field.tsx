@@ -43,11 +43,11 @@ export function DatePickerField({
     hint,
     className,
 }: DatePickerFieldProps) {
-    const dateValue = value ? safeParseDate(value) : undefined;
+    const dateValue = value ? safeParseDate(value) ?? null : null;
 
     const [internalValue, setInternalValue] = useControlledState<DateValue | null | undefined>(
         dateValue,
-        undefined,
+        null,
         (newVal) => {
             if (newVal) {
                 const iso = `${newVal.year}-${String(newVal.month).padStart(2, "0")}-${String(newVal.day).padStart(2, "0")}`;
