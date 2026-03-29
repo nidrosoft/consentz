@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import {
-    BarChart01, Award02, AlertTriangle, Clock,
+    BarChart01, Award02, AlertTriangle, Clock, ClockRefresh, CheckCircle,
     ShieldTick, Target02, Heart, Zap, Trophy01,
     ArrowUpRight, ArrowDownRight, Minus,
     File06, CheckSquare as CheckSquareIcon, PieChart01, AlertCircle, ChevronRight, Users01,
 } from "@untitledui/icons";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { MetricsChart04 } from "@/components/application/metrics/metrics";
@@ -124,6 +125,7 @@ export default function DashboardPage() {
     const criticalGaps = gaps?.CRITICAL ?? 0;
     const highGaps = gaps?.HIGH ?? 0;
     const totalOpenGaps = gaps?.total ?? 0;
+    const domainCards = score?.domains ?? [];
     const overdueCount = overview.tasks?.overdueCount ?? 0;
     const pendingCount = overview.tasks?.totalActive ?? 0;
 
@@ -140,7 +142,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Metric Cards */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 xl:grid-cols-4">
                 <MetricsChart04
                     subtitle="Compliance Score"
                     title={`${score?.overall ?? 0}%`}
@@ -194,59 +196,81 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* Domain Overview */}
-            {score?.domains && score.domains.length > 0 && (
-                <div>
-                    <div className="mb-4 flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-primary">CQC Domain Overview</h2>
-                        <Button color="link-color" size="sm" onClick={() => router.push("/assessment/3")}>Retake Assessment &rarr;</Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                        {score.domains.map((d) => {
-                            const Icon = DOMAIN_ICONS[d.slug];
-                            const colors = DOMAIN_COLORS[d.slug] ?? { text: "text-tertiary", bg: "bg-secondary" };
-                            const domainKloes = KLOES.filter((k) => k.domain === d.slug);
-                            return (
-                                <button
-                                    key={d.slug}
-                                    onClick={() => router.push(`/domains/${d.slug}`)}
-                                    className="flex flex-col gap-2 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 hover:shadow-xs"
-                                >
-                                    <div className="flex items-center justify-between gap-1">
-                                        <div className="flex items-center gap-1.5">
-                                            {Icon && <Icon className={cx("size-4", colors.text)} />}
-                                            <span className="text-sm font-medium text-primary">{d.domainName}</span>
-                                        </div>
-                                        <span className={cx(
-                                            "inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-medium leading-tight",
-                                            d.rating === "GOOD" || d.rating === "OUTSTANDING"
-                                                ? "bg-success-primary text-success-primary"
-                                                : d.rating === "INADEQUATE"
-                                                    ? "bg-error-primary text-error-primary"
-                                                    : "bg-warning-primary text-warning-primary",
-                                        )}>
-                                            {RATING_LABELS[d.rating]}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-baseline gap-1.5">
-                                        <span className="font-mono text-xl font-bold text-primary">{d.score}%</span>
-                                        <TrendIndicator value={d.trend} />
-                                    </div>
-                                    <ProgressBarBase value={d.score} min={0} max={100} />
-                                    <span className="text-[11px] text-tertiary">{d.gapCount} gaps</span>
-                                    <div className="flex flex-wrap gap-0.5 pt-1 border-t border-secondary">
-                                        {domainKloes.map((k) => (
-                                            <span key={k.code} className={cx("rounded px-1 py-px text-[9px] font-semibold leading-tight", colors.text, colors.bg)}>
-                                                {k.code}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </button>
-                            );
-                        })}
-                    </div>
+            {/* Domain Overview — always show five domains; placeholders when no compliance data yet */}
+            <div>
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h2 className="text-lg font-semibold text-primary">CQC Domain Overview</h2>
+                    <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => router.push("/reassessment")}>
+                        Retake Assessment &rarr;
+                    </Button>
                 </div>
-            )}
+                <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    {domainCards.map((d) => {
+                        const Icon = DOMAIN_ICONS[d.slug];
+                        const colors = DOMAIN_COLORS[d.slug] ?? { text: "text-tertiary", bg: "bg-secondary" };
+                        const domainKloes = KLOES.filter((k) => k.domain === d.slug);
+                        const isPlaceholder = d.domainId.startsWith("empty-");
+                        const cardClass = cx(
+                            "flex min-w-0 flex-col gap-2 rounded-xl border border-secondary bg-primary p-3 text-left transition duration-100 sm:p-4",
+                            isPlaceholder ? "opacity-90" : "hover:border-brand-300 hover:shadow-xs",
+                        );
+                        const body = (
+                            <>
+                                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                        {Icon && <Icon className={cx("size-4 shrink-0", colors.text)} />}
+                                        <span className="truncate text-sm font-medium text-primary">{d.domainName}</span>
+                                    </div>
+                                    <span className={cx(
+                                        "inline-flex w-fit max-w-full shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-medium leading-tight",
+                                        d.rating === "GOOD" || d.rating === "OUTSTANDING"
+                                            ? "bg-success-primary text-success-primary"
+                                            : d.rating === "INADEQUATE"
+                                                ? "bg-error-primary text-error-primary"
+                                                : "bg-warning-primary text-warning-primary",
+                                    )}>
+                                        <span className="truncate">{RATING_LABELS[d.rating]}</span>
+                                    </span>
+                                </div>
+                                <div className="flex min-w-0 flex-wrap items-baseline gap-1.5">
+                                    <span className="font-mono text-lg font-bold text-primary sm:text-xl">{d.score}%</span>
+                                    {!isPlaceholder && <TrendIndicator value={d.trend} />}
+                                </div>
+                                <div className="min-w-0">
+                                    <ProgressBarBase value={d.score} min={0} max={100} />
+                                </div>
+                                <span className="text-[11px] leading-snug text-tertiary">
+                                    {isPlaceholder ? "No score yet — complete onboarding or add evidence" : `${d.gapCount} gaps`}
+                                </span>
+                                <div className="flex min-h-[1.25rem] min-w-0 flex-wrap gap-0.5 border-t border-secondary pt-1.5">
+                                    {domainKloes.map((k) => (
+                                        <span key={k.code} className={cx("rounded px-1 py-px text-[9px] font-semibold leading-tight", colors.text, colors.bg)}>
+                                            {k.code}
+                                        </span>
+                                    ))}
+                                </div>
+                            </>
+                        );
+                        if (isPlaceholder) {
+                            return (
+                                <div key={d.domainId} className={cardClass}>
+                                    {body}
+                                </div>
+                            );
+                        }
+                        return (
+                            <button
+                                key={d.domainId}
+                                type="button"
+                                onClick={() => router.push(`/domains/${d.slug}`)}
+                                className={cardClass}
+                            >
+                                {body}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
 
             {/* Priority Gaps + Recent Activity */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -257,7 +281,15 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex flex-col gap-3 p-4">
                         {totalOpenGaps === 0 ? (
-                            <p className="py-8 text-center text-sm text-tertiary">No open gaps — great job!</p>
+                            <EmptyState size="sm">
+                                <EmptyState.Header pattern="none">
+                                    <EmptyState.FeaturedIcon icon={CheckCircle} color="success" theme="light" size="sm" />
+                                </EmptyState.Header>
+                                <EmptyState.Content>
+                                    <EmptyState.Title>No open gaps — great job!</EmptyState.Title>
+                                    <EmptyState.Description>Your compliance gaps are all resolved. Keep monitoring for new ones.</EmptyState.Description>
+                                </EmptyState.Content>
+                            </EmptyState>
                         ) : (
                             <p className="text-sm text-tertiary">{criticalGaps} critical, {highGaps} high priority gaps require attention.</p>
                         )}
@@ -271,7 +303,15 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex flex-col gap-3 p-4">
                         {activity.length === 0 ? (
-                            <p className="py-8 text-center text-sm text-tertiary">No recent activity.</p>
+                            <EmptyState size="sm">
+                                <EmptyState.Header pattern="none">
+                                    <EmptyState.FeaturedIcon icon={ClockRefresh} color="gray" theme="light" size="sm" />
+                                </EmptyState.Header>
+                                <EmptyState.Content>
+                                    <EmptyState.Title>No recent activity</EmptyState.Title>
+                                    <EmptyState.Description>Activity from your team will appear here as they use the platform.</EmptyState.Description>
+                                </EmptyState.Content>
+                            </EmptyState>
                         ) : (
                             activity.slice(0, 5).map((entry: ActivityLogEntry) => (
                                 <div key={entry.id} className="flex items-start gap-3 rounded-lg border border-secondary p-3">

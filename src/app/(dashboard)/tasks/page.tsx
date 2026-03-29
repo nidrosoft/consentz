@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { FilterLines, ArrowsUp } from "@untitledui/icons";
+import { FilterLines, ArrowsUp, CheckSquare as CheckSquareIcon } from "@untitledui/icons";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
 import { PageSkeleton } from "@/components/shared/page-skeleton";
@@ -171,7 +172,20 @@ export default function TasksPage() {
             )}
 
             {/* Content */}
-            {view === "list" || view === "my" ? (
+            {tasks.length === 0 ? (
+                <EmptyState size="md">
+                    <EmptyState.Header>
+                        <EmptyState.FeaturedIcon icon={CheckSquareIcon} color="brand" theme="light" />
+                    </EmptyState.Header>
+                    <EmptyState.Content>
+                        <EmptyState.Title>No tasks yet</EmptyState.Title>
+                        <EmptyState.Description>Tasks are automatically created from compliance gaps, or you can add them manually.</EmptyState.Description>
+                    </EmptyState.Content>
+                    <EmptyState.Footer>
+                        <AddTaskModal onAdd={handleAddTask} />
+                    </EmptyState.Footer>
+                </EmptyState>
+            ) : view === "list" || view === "my" ? (
                 <TaskListView tasks={filtered} onSelectTask={handleSelectTask} />
             ) : (
                 <TaskBoard tasks={filtered} onMoveTask={handleMoveTask} onSelectTask={handleSelectTask} />

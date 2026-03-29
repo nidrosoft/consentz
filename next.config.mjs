@@ -1,3 +1,5 @@
+import { withSentryConfig } from "@sentry/nextjs";
+
 /** @type {import('next').NextConfig} */
 
 const securityHeaders = [
@@ -29,11 +31,11 @@ const securityHeaders = [
         key: 'Content-Security-Policy',
         value: [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.clerk.accounts.dev",
+            "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
             "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob: https://*.supabase.co https://img.clerk.com",
+            "img-src 'self' data: blob: https://*.supabase.co",
             "font-src 'self'",
-            "connect-src 'self' https://*.supabase.co https://*.clerk.accounts.dev https://*.sentry.io",
+            "connect-src 'self' https://*.supabase.co https://*.sentry.io wss://*.supabase.co",
             "frame-src 'none'",
             "object-src 'none'",
             "base-uri 'self'",
@@ -56,4 +58,10 @@ const nextConfig = {
     },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  disableLogger: true,
+});

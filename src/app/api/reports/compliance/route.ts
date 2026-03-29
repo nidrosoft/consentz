@@ -2,24 +2,27 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { ComplianceService } from '@/lib/services/compliance-service';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { params, auth }) => {
+  const client = await getDb();
   requireMinRole(auth, 'MANAGER');
 
   const orgId = auth.organizationId;
 
-  const [score, gaps, domainBreakdown] = await Promise.all([
+  const [score, { data: gaps }, { data: domainBreakdown }] = await Promise.all([
     ComplianceService.getCurrentScore(orgId),
-    db.complianceGap.findMany({
-      where: { organizationId: orgId },
-      orderBy: { severity: 'asc' },
-    }),
-    db.domainScore.findMany({
-      where: { complianceScore: { organizationId: orgId } },
-      orderBy: { score: 'asc' },
-    }),
+    client.from('compliance_gaps')
+      .select('*')
+      .eq('organization_id', orgId)
+      .order('severity', { ascending: true }),
+    client.from('domain_scores')
+      .select('*, compliance_scores!inner(organization_id)')
+      .eq('compliance_scores.organization_id', orgId)
+      .order('score', { ascending: true }),
   ]);
+
+  const gapItems = gaps ?? [];
 
   const gapsBySeverity: Record<string, number> = {
     CRITICAL: 0,
@@ -33,16 +36,32 @@ export const GET = withAuth(async (req, { params, auth }) => {
     RESOLVED: 0,
   };
 
-  for (const gap of gaps) {
+  for (const gap of gapItems) {
     gapsBySeverity[gap.severity] = (gapsBySeverity[gap.severity] ?? 0) + 1;
     gapsByStatus[gap.status] = (gapsByStatus[gap.status] ?? 0) + 1;
   }
 
-  const [evidenceCount, policyCount, staffCount, trainingCount] = await Promise.all([
-    db.evidenceItem.count({ where: { organizationId: orgId, status: { not: 'ARCHIVED' } } }),
-    db.policy.count({ where: { organizationId: orgId, status: { not: 'ARCHIVED' } } }),
-    db.staffMember.count({ where: { organizationId: orgId, isActive: true } }),
-    db.trainingRecord.count({ where: { staffMember: { organizationId: orgId } } }),
+  const [
+    { count: evidenceCount },
+    { count: policyCount },
+    { count: staffCount },
+    { count: trainingCount },
+  ] = await Promise.all([
+    client.from('evidence_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .neq('status', 'ARCHIVED'),
+    client.from('policies')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .neq('status', 'ARCHIVED'),
+    client.from('staff_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', orgId)
+      .eq('is_active', true),
+    client.from('training_records')
+      .select('*, staff_members!inner(organization_id)', { count: 'exact', head: true })
+      .eq('staff_members.organization_id', orgId),
   ]);
 
   return apiSuccess({
@@ -54,15 +73,15 @@ export const GET = withAuth(async (req, { params, auth }) => {
     },
     domains: score.domains,
     gaps: {
-      total: gaps.length,
+      total: gapItems.length,
       bySeverity: gapsBySeverity,
       byStatus: gapsByStatus,
     },
     coverage: {
-      evidenceCount,
-      policyCount,
-      staffCount,
-      trainingCount,
+      evidenceCount: evidenceCount ?? 0,
+      policyCount: policyCount ?? 0,
+      staffCount: staffCount ?? 0,
+      trainingCount: trainingCount ?? 0,
     },
   });
 });

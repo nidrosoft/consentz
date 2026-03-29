@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell01, CheckCircle, AlertTriangle, AlertCircle, InfoCircle } from "@untitledui/icons";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
@@ -90,7 +91,17 @@ export default function NotificationsPage() {
                     );
                 })}
                 {filtered.length === 0 && (
-                    <div className="p-8 text-center text-sm text-tertiary">No notifications</div>
+                    <div className="px-5 py-12">
+                        <EmptyState size="md">
+                            <EmptyState.Header>
+                                <EmptyState.FeaturedIcon icon={Bell01} color="gray" theme="light" />
+                            </EmptyState.Header>
+                            <EmptyState.Content>
+                                <EmptyState.Title>All caught up!</EmptyState.Title>
+                                <EmptyState.Description>You have no notifications. We'll let you know when something needs your attention.</EmptyState.Description>
+                            </EmptyState.Content>
+                        </EmptyState>
+                    </div>
                 )}
             </div>
         </div>

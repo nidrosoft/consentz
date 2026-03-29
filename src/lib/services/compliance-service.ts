@@ -3,7 +3,7 @@
 // =============================================================================
 
 import type { ComplianceScore, DomainSlug } from '@/types';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { CQC_DOMAINS, getRatingFromScore } from '@/lib/constants/cqc-framework';
 
 const BASE_DOMAIN_SCORE = 100;
@@ -17,51 +17,63 @@ const SEVERITY_PENALTY: Record<string, number> = {
 
 export class ComplianceService {
   static async getCurrentScore(organizationId: string): Promise<ComplianceScore> {
-    const score = await db.complianceScore.findFirst({
-      where: { organizationId },
-      orderBy: { calculatedAt: 'desc' },
-      include: { domainScores: true },
-    });
+    const client = await getDb();
+    const { data: score } = await client.from('compliance_scores')
+      .select('*, domain_scores(*)')
+      .eq('organization_id', organizationId)
+      .order('calculated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (!score) {
       return ComplianceService.recalculate(organizationId);
     }
 
+    const dbDomainToSlug = (domain: string): DomainSlug => {
+      if (domain === 'well_led') return 'well-led';
+      return domain as DomainSlug;
+    };
+    const domainDisplayName = (domain: string): string => {
+      if (domain === 'well_led') return 'Well-Led';
+      return domain.charAt(0).toUpperCase() + domain.slice(1);
+    };
+
     return {
       overall: score.score,
-      predictedRating: score.predictedRating as ComplianceScore['predictedRating'],
-      lastUpdated: score.calculatedAt.toISOString(),
-      domains: score.domainScores.map((d) => ({
+      predictedRating: score.predicted_rating as ComplianceScore['predictedRating'],
+      lastUpdated: score.calculated_at,
+      domains: (score.domain_scores ?? []).map((d: any) => ({
         domainId: d.domain,
-        domainName: d.domain.charAt(0).toUpperCase() + d.domain.slice(1).replace('-', '-'),
-        slug: d.domain as DomainSlug,
+        domainName: domainDisplayName(d.domain),
+        slug: dbDomainToSlug(d.domain),
         score: d.score,
         rating: d.status as ComplianceScore['predictedRating'],
-        gapCount: d.totalGaps,
+        gapCount: d.total_gaps,
         trend: d.trend,
-        kloeCount: d.coveredKloes ?? 0,
+        kloeCount: d.covered_kloes ?? 0,
       })),
     };
   }
 
   static async recalculate(organizationId: string): Promise<ComplianceScore> {
-    const openGaps = await db.complianceGap.findMany({
-      where: {
-        organizationId,
-        status: { in: ['OPEN', 'IN_PROGRESS'] },
-      },
-    });
+    const client = await getDb();
+    const { data: openGaps } = await client.from('compliance_gaps')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .in('status', ['OPEN', 'IN_PROGRESS']);
+
+    const gaps = openGaps ?? [];
 
     const domainScores = CQC_DOMAINS.map((domain) => {
-      const domainGaps = openGaps.filter((g) => g.domain === domain.slug);
+      const domainGaps = gaps.filter((g: any) => g.domain === domain.slug);
 
-      const totalPenalty = domainGaps.reduce((sum, gap) => {
+      const totalPenalty = domainGaps.reduce((sum: number, gap: any) => {
         return sum + (SEVERITY_PENALTY[gap.severity] ?? 0);
       }, 0);
 
       const score = Math.max(0, Math.min(100, BASE_DOMAIN_SCORE - totalPenalty));
       const rating = getRatingFromScore(score);
-      const uniqueKloes = new Set(domainGaps.map((g) => g.kloeCode).filter(Boolean));
+      const uniqueKloes = new Set(domainGaps.map((g: any) => g.kloe_code).filter(Boolean));
 
       return {
         domainId: domain.id,
@@ -70,10 +82,10 @@ export class ComplianceService {
         score,
         rating,
         gapCount: domainGaps.length,
-        criticalGaps: domainGaps.filter((g) => g.severity === 'CRITICAL').length,
-        highGaps: domainGaps.filter((g) => g.severity === 'HIGH').length,
-        mediumGaps: domainGaps.filter((g) => g.severity === 'MEDIUM').length,
-        lowGaps: domainGaps.filter((g) => g.severity === 'LOW').length,
+        criticalGaps: domainGaps.filter((g: any) => g.severity === 'CRITICAL').length,
+        highGaps: domainGaps.filter((g: any) => g.severity === 'HIGH').length,
+        mediumGaps: domainGaps.filter((g: any) => g.severity === 'MEDIUM').length,
+        lowGaps: domainGaps.filter((g: any) => g.severity === 'LOW').length,
         trend: 0,
         kloeCount: uniqueKloes.size,
       };
@@ -87,78 +99,74 @@ export class ComplianceService {
     const totalGaps = domainScores.reduce((s, d) => s + d.gapCount, 0);
     const criticalGaps = domainScores.reduce((s, d) => s + d.criticalGaps, 0);
 
-    const existing = await db.complianceScore.findFirst({
-      where: { organizationId },
-    });
+    const { data: existing } = await client.from('compliance_scores')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .limit(1)
+      .maybeSingle();
 
-    let complianceScore;
+    const domainScoreRows = domainScores.map((d) => ({
+      domain: d.slug,
+      score: d.score,
+      max_score: BASE_DOMAIN_SCORE,
+      percentage: d.score,
+      status: d.rating === 'NOT_RATED' ? 'INADEQUATE' : d.rating,
+      total_gaps: d.gapCount,
+      critical_gaps: d.criticalGaps,
+      high_gaps: d.highGaps,
+      medium_gaps: d.mediumGaps,
+      low_gaps: d.lowGaps,
+      trend: d.trend,
+      total_kloes: d.kloeCount,
+      covered_kloes: d.kloeCount,
+    }));
+
+    let complianceScore: any;
+
     if (existing) {
-      complianceScore = await db.complianceScore.update({
-        where: { id: existing.id },
-        data: {
+      const { data: updated } = await client.from('compliance_scores')
+        .update({
           score: overall,
-          predictedRating: predictedRating === 'NOT_RATED' ? 'INADEQUATE' : predictedRating,
-          totalGaps,
-          criticalGaps,
-          hasCriticalGap: criticalGaps > 0,
-          calculatedAt: new Date(),
-          previousScore: existing.score,
-          domainScores: {
-            deleteMany: {},
-            create: domainScores.map((d) => ({
-              domain: d.slug,
-              score: d.score,
-              maxScore: BASE_DOMAIN_SCORE,
-              percentage: d.score,
-              status: d.rating === 'NOT_RATED' ? 'INADEQUATE' : d.rating,
-              totalGaps: d.gapCount,
-              criticalGaps: d.criticalGaps,
-              highGaps: d.highGaps,
-              mediumGaps: d.mediumGaps,
-              lowGaps: d.lowGaps,
-              trend: d.trend,
-              totalKloes: d.kloeCount,
-              coveredKloes: d.kloeCount,
-            })),
-          },
-        },
-      });
+          predicted_rating: predictedRating === 'NOT_RATED' ? 'INADEQUATE' : predictedRating,
+          total_gaps: totalGaps,
+          critical_gaps: criticalGaps,
+          has_critical_gap: criticalGaps > 0,
+          calculated_at: new Date().toISOString(),
+          previous_score: existing.score,
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      complianceScore = updated;
+
+      await client.from('domain_scores').delete().eq('compliance_score_id', existing.id);
+      await client.from('domain_scores').insert(
+        domainScoreRows.map((d) => ({ ...d, compliance_score_id: existing.id })),
+      );
     } else {
-      complianceScore = await db.complianceScore.create({
-        data: {
-          organizationId,
-          domainCode: 'overall',
-          score: overall,
-          rating: predictedRating === 'NOT_RATED' ? 'INADEQUATE' : predictedRating,
-          predictedRating: predictedRating === 'NOT_RATED' ? 'INADEQUATE' : predictedRating,
-          totalGaps,
-          criticalGaps,
-          hasCriticalGap: criticalGaps > 0,
-          domainScores: {
-            create: domainScores.map((d) => ({
-              domain: d.slug,
-              score: d.score,
-              maxScore: BASE_DOMAIN_SCORE,
-              percentage: d.score,
-              status: d.rating === 'NOT_RATED' ? 'INADEQUATE' : d.rating,
-              totalGaps: d.gapCount,
-              criticalGaps: d.criticalGaps,
-              highGaps: d.highGaps,
-              mediumGaps: d.mediumGaps,
-              lowGaps: d.lowGaps,
-              trend: d.trend,
-              totalKloes: d.kloeCount,
-              coveredKloes: d.kloeCount,
-            })),
-          },
-        },
-      });
+      const { data: created } = await client.from('compliance_scores').insert({
+        organization_id: organizationId,
+        domain_code: 'overall',
+        score: overall,
+        rating: predictedRating === 'NOT_RATED' ? 'INADEQUATE' : predictedRating,
+        predicted_rating: predictedRating === 'NOT_RATED' ? 'INADEQUATE' : predictedRating,
+        total_gaps: totalGaps,
+        critical_gaps: criticalGaps,
+        has_critical_gap: criticalGaps > 0,
+      }).select().single();
+
+      complianceScore = created;
+
+      await client.from('domain_scores').insert(
+        domainScoreRows.map((d) => ({ ...d, compliance_score_id: created.id })),
+      );
     }
 
     return {
       overall: complianceScore.score,
-      predictedRating: complianceScore.predictedRating as ComplianceScore['predictedRating'],
-      lastUpdated: complianceScore.calculatedAt.toISOString(),
+      predictedRating: complianceScore.predicted_rating as ComplianceScore['predictedRating'],
+      lastUpdated: complianceScore.calculated_at,
       domains: domainScores.map((d) => ({
         domainId: d.domainId,
         domainName: d.domainName,

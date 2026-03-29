@@ -8,11 +8,14 @@ import {
     Settings01, Bell01,
     ShieldTick, Target02, Heart, Zap, Trophy01,
 } from "@untitledui/icons";
-import { UserButton } from "@clerk/nextjs";
 import { SidebarNavigationSectionsSubheadings } from "@/components/application/app-navigation/sidebar-navigation/sidebar-sections-subheadings";
+import { CommandPalette } from "@/components/application/command-palette/command-palette";
+import { ComplianceChat } from "./compliance-chat";
+import { DashboardUserMenu } from "./dashboard-user-menu";
 import { Badge } from "@/components/base/badges/badges";
 import { useOrganization } from "@/hooks/use-organization";
 import { useNotifications } from "@/hooks/use-notifications";
+import { useMe } from "@/hooks/use-me";
 import type { NavItemType } from "@/components/application/app-navigation/config";
 
 const navItems: Array<{ label: string; items: NavItemType[] }> = [
@@ -103,16 +106,21 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     const breadcrumbs = getBreadcrumbs(pathname);
 
     useOrganization();
+    const { data: me } = useMe();
     const { data: notifications } = useNotifications();
     const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
 
     return (
         <div className="flex min-h-screen bg-primary">
             {/* Sidebar — Untitled UI SidebarNavigationSectionsSubheadings */}
-            <SidebarNavigationSectionsSubheadings activeUrl={pathname} items={navItems} />
+            <SidebarNavigationSectionsSubheadings
+                activeUrl={pathname}
+                items={navItems}
+                user={me ? { name: me.fullName, email: me.email } : undefined}
+            />
 
             {/* Main area */}
-            <div className="flex flex-1 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col">
                 {/* Header bar */}
                 <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-secondary bg-primary px-4 md:px-6">
                     {/* Breadcrumbs */}
@@ -154,14 +162,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                                 </span>
                             )}
                         </button>
-                        <UserButton
-                            appearance={{
-                                elements: {
-                                    avatarBox: "size-9",
-                                    userButtonTrigger: "rounded-lg focus:shadow-none focus:ring-0",
-                                },
-                            }}
-                        />
+                        <DashboardUserMenu />
                     </div>
                 </header>
 
@@ -170,6 +171,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     <div className="px-4 py-6 md:py-8">{children}</div>
                 </main>
             </div>
+
+            <CommandPalette />
+            <ComplianceChat />
         </div>
     );
 }

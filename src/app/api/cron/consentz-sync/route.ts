@@ -3,22 +3,22 @@ import { apiSuccess } from '@/lib/api-response';
 import { checkRateLimit } from '@/lib/rate-limiter';
 import { ApiErrors } from '@/lib/api-response';
 import { syncConsentzData } from '@/lib/consentz/sync-service';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 export const GET = withPublic(async () => {
+  const client = await getDb();
   const rateCheck = checkRateLimit('cron', 'cron');
   if (!rateCheck.allowed) {
     return ApiErrors.tooManyRequests();
   }
 
-  const orgs = await db.organization.findMany({
-    where: { consentzClinicId: { not: null } },
-    select: { id: true, name: true, consentzClinicId: true },
-  });
+  const { data: orgs } = await client.from('organizations')
+    .select('id, name, consentz_clinic_id')
+    .not('consentz_clinic_id', 'is', null);
 
   const results: { organizationId: string; name: string; status: string; error?: string }[] = [];
 
-  for (const org of orgs) {
+  for (const org of orgs ?? []) {
     try {
       await syncConsentzData(org.id);
       results.push({ organizationId: org.id, name: org.name, status: 'success' });
@@ -31,7 +31,7 @@ export const GET = withPublic(async () => {
 
   return apiSuccess({
     synced: true,
-    totalOrganizations: orgs.length,
+    totalOrganizations: (orgs ?? []).length,
     results,
   });
 });

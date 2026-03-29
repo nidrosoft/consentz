@@ -1,11 +1,12 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { type ReactNode, useMemo } from "react";
 import { CheckCircle, ClipboardCheck, LogOut01, ChevronRight } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
+import { useSignOutConfirm } from "@/providers/sign-out-confirm-provider";
 
 const STEPS = [
     { number: 1, label: "Welcome", description: "Service type selection", path: "/welcome" },
@@ -23,7 +24,7 @@ function getActiveStep(pathname: string): number {
 
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname();
-    const router = useRouter();
+    const { requestSignOutConfirm } = useSignOutConfirm();
     const activeStep = useMemo(() => getActiveStep(pathname), [pathname]);
 
     return (
@@ -35,7 +36,12 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
                     </div>
                     <span className="text-lg font-semibold text-primary">CQC Compliance</span>
                 </div>
-                <Button color="secondary" size="sm" iconLeading={LogOut01} onClick={() => router.push("/sign-in")}>
+                <Button
+                    color="secondary"
+                    size="sm"
+                    iconLeading={LogOut01}
+                    onClick={() => requestSignOutConfirm()}
+                >
                     Sign Out
                 </Button>
             </header>
@@ -106,8 +112,8 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
                     </div>
                 </aside>
 
-                <main className="flex-1 overflow-y-auto">
-                    <div className="mx-auto max-w-3xl px-4 py-8 md:px-8 md:py-12">{children}</div>
+                <main className="flex-1 overflow-y-auto overflow-x-hidden">
+                    <div className="mx-auto w-full max-w-3xl px-3 py-6 sm:px-5 sm:py-8 md:px-8 md:py-12">{children}</div>
                 </main>
             </div>
         </div>

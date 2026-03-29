@@ -2,9 +2,10 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, SearchLg, FileCheck02, ArrowsUp, FilterLines, XClose } from "@untitledui/icons";
+import { Plus, SearchLg, FileCheck02, ArrowsUp, FilterLines, XClose, File06 } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
@@ -225,8 +226,30 @@ export default function PoliciesPage() {
                 </div>
             )}
 
+            {/* Empty state */}
+            {filtered.length === 0 && !isLoading && (
+                <div className="flex flex-1 items-center justify-center py-16">
+                    <EmptyState size="lg">
+                        <EmptyState.Header>
+                            <EmptyState.FeaturedIcon icon={File06} color="brand" theme="light" />
+                        </EmptyState.Header>
+                        <EmptyState.Content>
+                            <EmptyState.Title>No policies created yet</EmptyState.Title>
+                            <EmptyState.Description>
+                                Create and manage your organisation's policies to demonstrate CQC compliance. You can start from a template or create from scratch.
+                            </EmptyState.Description>
+                        </EmptyState.Content>
+                        <EmptyState.Footer>
+                            <Button color="primary" size="md" iconLeading={Plus} onClick={() => router.push("/policies/create")}>
+                                Create Policy
+                            </Button>
+                        </EmptyState.Footer>
+                    </EmptyState>
+                </div>
+            )}
+
             {/* Table */}
-            <TableCard.Root>
+            {filtered.length > 0 && <TableCard.Root>
                 <TableCard.Header title="Policy Library" badge={String(filtered.length)} description="Click any row to view or edit the policy." />
                 <Table aria-label="Policies" selectionMode="none">
                     <Table.Header>
@@ -271,7 +294,7 @@ export default function PoliciesPage() {
                         )}
                     </Table.Body>
                 </Table>
-            </TableCard.Root>
+            </TableCard.Root>}
         </div>
     );
 }

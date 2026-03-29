@@ -13,7 +13,7 @@ export const saveAssessmentSchema = z.object({
     kloeCode: kloeCodeSchema.optional(),
     answerValue: z.union([z.boolean(), z.string(), z.array(z.string()), z.number()]),
     answerType: z.enum(['yes_no', 'yes_no_partial', 'multi_select', 'scale', 'date', 'text']),
-  })).min(1).max(100),
+  })).min(1).max(250),
 });
 
 export type SaveAssessmentInput = z.infer<typeof saveAssessmentSchema>;

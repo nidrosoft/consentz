@@ -1,124 +1,166 @@
-import { auth } from '@clerk/nextjs/server';
-import { db as prisma } from '@/lib/db';
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type UserRole =
-  | 'SUPER_ADMIN'
-  | 'COMPLIANCE_MANAGER'
-  | 'DEPARTMENT_LEAD'
-  | 'STAFF_MEMBER'
-  | 'AUDITOR'
-  | 'OWNER'
-  | 'ADMIN'
-  | 'MANAGER'
-  | 'STAFF'
-  | 'VIEWER';
+    | "SUPER_ADMIN"
+    | "COMPLIANCE_MANAGER"
+    | "DEPARTMENT_LEAD"
+    | "STAFF_MEMBER"
+    | "AUDITOR"
+    | "OWNER"
+    | "ADMIN"
+    | "MANAGER"
+    | "STAFF"
+    | "VIEWER";
 
 export interface AuthContext {
-  userId: string;
-  dbUserId: string;
-  organizationId: string;
-  role: UserRole;
-  email: string;
-  fullName: string;
+    userId: string;
+    dbUserId: string;
+    organizationId: string;
+    role: UserRole;
+    email: string;
+    fullName: string;
+}
+
+/** Session without requiring a linked organisation (onboarding step 1). */
+export interface SessionAuth {
+    userId: string;
+    dbUserId: string;
+    organizationId: string | null;
+    role: UserRole;
+    email: string;
+    fullName: string;
 }
 
 const ROLE_HIERARCHY: Record<UserRole, number> = {
-  SUPER_ADMIN: 5,
-  OWNER: 5,
-  COMPLIANCE_MANAGER: 4,
-  ADMIN: 4,
-  DEPARTMENT_LEAD: 3,
-  MANAGER: 3,
-  STAFF_MEMBER: 2,
-  STAFF: 2,
-  AUDITOR: 1,
-  VIEWER: 1,
+    SUPER_ADMIN: 5,
+    OWNER: 5,
+    COMPLIANCE_MANAGER: 4,
+    ADMIN: 4,
+    DEPARTMENT_LEAD: 3,
+    MANAGER: 3,
+    STAFF_MEMBER: 2,
+    STAFF: 2,
+    AUDITOR: 1,
+    VIEWER: 1,
 };
 
 export class AuthError extends Error {
-  code: 'UNAUTHORIZED' | 'FORBIDDEN';
-  statusCode: number;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    statusCode: number;
 
-  constructor(code: 'UNAUTHORIZED' | 'FORBIDDEN', message: string) {
-    super(message);
-    this.name = 'AuthError';
-    this.code = code;
-    this.statusCode = code === 'FORBIDDEN' ? 403 : 401;
-  }
+    constructor(code: "UNAUTHORIZED" | "FORBIDDEN", message: string) {
+        super(message);
+        this.name = "AuthError";
+        this.code = code;
+        this.statusCode = code === "FORBIDDEN" ? 403 : 401;
+    }
 }
 
 const DEV_FALLBACK: AuthContext = {
-  userId: 'demo_clerk_user',
-  dbUserId: '28cdb01f-107f-42e1-9d30-1cd01ff92b49',
-  organizationId: 'c9a2e3fc-23d7-4443-9c09-b1b6a67a32e6',
-  role: 'COMPLIANCE_MANAGER',
-  email: 'admin@consentz.com',
-  fullName: 'Dr. Sarah Johnson',
+    userId: "a0000000-0000-4000-8000-000000000001",
+    dbUserId: "28cdb01f-107f-42e1-9d30-1cd01ff92b49",
+    organizationId: "c9a2e3fc-23d7-4443-9c09-b1b6a67a32e6",
+    role: "COMPLIANCE_MANAGER",
+    email: "admin@consentz.com",
+    fullName: "Dr. Sarah Johnson",
 };
 
 /**
- * Get the authenticated user context from Clerk + DB lookup.
- * Falls back to a demo user when Clerk keys are not configured.
+ * Supabase session + DB user (or org member). Organisation may be null during onboarding.
+ * Set AUTH_DEV_BYPASS=true only for local tooling without Supabase cookies.
  */
-export async function getAuthContext(): Promise<AuthContext> {
-  const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  if (!clerkPublishableKey) {
-    return DEV_FALLBACK;
-  }
-
-  const { userId: clerkUserId } = await auth();
-
-  if (!clerkUserId) {
-    throw new AuthError('UNAUTHORIZED', 'Not authenticated');
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { clerkId: clerkUserId },
-    include: { organization: true },
-  });
-
-  if (!user) {
-    const member = await prisma.organizationMember.findFirst({
-      where: { clerkUserId },
-      include: { organization: true },
-    });
-
-    if (member) {
-      return {
-        userId: clerkUserId,
-        dbUserId: member.id,
-        organizationId: member.organizationId,
-        role: member.role as UserRole,
-        email: member.email,
-        fullName: member.fullName,
-      };
+export async function resolveSessionAuth(): Promise<SessionAuth> {
+    if (process.env.AUTH_DEV_BYPASS === "true") {
+        return {
+            userId: DEV_FALLBACK.userId,
+            dbUserId: DEV_FALLBACK.dbUserId,
+            organizationId: DEV_FALLBACK.organizationId,
+            role: DEV_FALLBACK.role,
+            email: DEV_FALLBACK.email,
+            fullName: DEV_FALLBACK.fullName,
+        };
     }
 
-    throw new AuthError('UNAUTHORIZED', 'User not found in database. Complete onboarding first.');
-  }
+    const supabase = await createServerSupabaseClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
 
-  return {
-    userId: clerkUserId,
-    dbUserId: user.id,
-    organizationId: user.organizationId ?? '',
-    role: user.role as UserRole,
-    email: user.email,
-    fullName: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
-  };
+    if (!user) {
+        throw new AuthError("UNAUTHORIZED", "Not authenticated");
+    }
+
+    const { data: dbUser } = await supabase
+        .from("users")
+        .select("*, organizations(*)")
+        .eq("supabase_user_id", user.id)
+        .maybeSingle();
+
+    if (!dbUser) {
+        const { data: member } = await supabase
+            .from("organization_members")
+            .select("*, organizations(*)")
+            .eq("auth_user_id", user.id)
+            .limit(1)
+            .maybeSingle();
+
+        if (member) {
+            return {
+                userId: user.id,
+                dbUserId: member.id,
+                organizationId: member.organization_id,
+                role: member.role as UserRole,
+                email: member.email,
+                fullName: member.full_name,
+            };
+        }
+
+        throw new AuthError("UNAUTHORIZED", "User not found in database. Complete sign up first.");
+    }
+
+    return {
+        userId: user.id,
+        dbUserId: dbUser.id,
+        organizationId: dbUser.organization_id,
+        role: dbUser.role as UserRole,
+        email: dbUser.email,
+        fullName: [dbUser.first_name, dbUser.last_name].filter(Boolean).join(" ") || dbUser.email,
+    };
+}
+
+/**
+ * Requires a linked organisation. Use for dashboard and org-scoped APIs.
+ */
+export async function getAuthContext(): Promise<AuthContext> {
+    const session = await resolveSessionAuth();
+    if (!session.organizationId) {
+        throw new AuthError(
+            "FORBIDDEN",
+            "Complete organisation onboarding before accessing this resource.",
+        );
+    }
+    return {
+        userId: session.userId,
+        dbUserId: session.dbUserId,
+        organizationId: session.organizationId,
+        role: session.role,
+        email: session.email,
+        fullName: session.fullName,
+    };
 }
 
 export function requireMinRole(auth: AuthContext, minRole: UserRole): void {
-  if (ROLE_HIERARCHY[auth.role] < ROLE_HIERARCHY[minRole]) {
-    throw new AuthError('FORBIDDEN', `Requires at least ${minRole} role`);
-  }
+    if (ROLE_HIERARCHY[auth.role] < ROLE_HIERARCHY[minRole]) {
+        throw new AuthError("FORBIDDEN", `Requires at least ${minRole} role`);
+    }
 }
 
 export function requireRole(auth: AuthContext, allowedRoles: UserRole[]): void {
-  if (!allowedRoles.includes(auth.role)) {
-    throw new AuthError('FORBIDDEN', `Requires one of: ${allowedRoles.join(', ')}`);
-  }
+    if (!allowedRoles.includes(auth.role)) {
+        throw new AuthError("FORBIDDEN", `Requires one of: ${allowedRoles.join(", ")}`);
+    }
 }
 
 export function hasMinRole(auth: AuthContext, minRole: UserRole): boolean {
-  return ROLE_HIERARCHY[auth.role] >= ROLE_HIERARCHY[minRole];
+    return ROLE_HIERARCHY[auth.role] >= ROLE_HIERARCHY[minRole];
 }

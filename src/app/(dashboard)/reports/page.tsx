@@ -61,21 +61,14 @@ export default function ReportsPage() {
             {/* Recent Reports */}
             <div>
                 <h2 className="mb-4 text-lg font-semibold text-primary">Recent Reports</h2>
-                <div className="rounded-xl border border-secondary bg-primary">
-                    {[
-                        { title: "Compliance Report", date: "01/02/2026", type: "PDF" },
-                        { title: "Inspection Prep", date: "28/01/2026", type: "PDF" },
-                        { title: "Monthly Summary — January 2026", date: "31/01/2026", type: "PDF" },
-                    ].map((r, i) => (
-                        <div key={r.title} className={`flex items-center gap-4 px-5 py-4 ${i < 2 ? "border-b border-secondary" : ""}`}>
-                            <File06 className="size-5 shrink-0 text-fg-quaternary" />
-                            <div className="flex-1">
-                                <p className="text-sm font-medium text-primary">{r.title}</p>
-                                <p className="text-xs text-tertiary">{r.date}</p>
-                            </div>
-                            <Button color="secondary" size="sm" iconLeading={Download01}>Download {r.type}</Button>
-                        </div>
-                    ))}
+                <div className="flex flex-col items-center justify-center rounded-xl border border-secondary bg-primary py-12">
+                    <div className="flex size-10 items-center justify-center rounded-full bg-secondary">
+                        <FileCheck02 className="size-5 text-fg-quaternary" />
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-primary">No reports generated yet</p>
+                    <p className="mt-1 max-w-xs text-center text-xs text-tertiary">
+                        Generated reports will appear here for easy access and re-download.
+                    </p>
                 </div>
             </div>
         </div>

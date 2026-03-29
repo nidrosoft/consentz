@@ -3,10 +3,9 @@
 // =============================================================================
 
 import type { ComplianceGap, DomainSlug, GapSeverity, GapStatus } from '@/types';
-import type { Prisma } from '@prisma/client';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { buildPagination } from '@/lib/pagination';
 
 interface GapListParams {
@@ -32,17 +31,7 @@ interface GapUpdateParams {
   dueDate?: string;
 }
 
-function mapPrismaGapToComplianceGap(row: {
-  id: string;
-  title: string;
-  description: string;
-  severity: GapSeverity;
-  status: GapStatus;
-  domain: string;
-  kloeCode: string | null;
-  regulationCode: string | null;
-  createdAt: Date;
-}): ComplianceGap {
+function mapRowToComplianceGap(row: any): ComplianceGap {
   return {
     id: row.id,
     title: row.title,
@@ -50,9 +39,9 @@ function mapPrismaGapToComplianceGap(row: {
     severity: row.severity,
     status: row.status,
     domain: row.domain as DomainSlug,
-    kloe: row.kloeCode ?? '',
-    regulation: row.regulationCode ?? '',
-    createdAt: row.createdAt.toISOString(),
+    kloe: row.kloe_code ?? '',
+    regulation: row.regulation_code ?? '',
+    createdAt: row.created_at,
   };
 }
 
@@ -61,51 +50,46 @@ export class GapService {
    * List gaps with optional filters and pagination.
    */
   static async list(params: GapListParams): Promise<GapListResult> {
-    const where: Prisma.ComplianceGapWhereInput = {
-      organizationId: params.organizationId,
-    };
+    const client = await getDb();
+    const skip = (params.pagination.page - 1) * params.pagination.pageSize;
 
-    if (params.filters) {
-      const { status, severity, domain } = params.filters;
+    function applyFilters(query: any) {
+      let q = query.eq('organization_id', params.organizationId);
 
-      if (status) {
-        const statuses = Array.isArray(status) ? status : [status];
-        where.status = { in: statuses };
+      if (params.filters) {
+        const { status, severity, domain } = params.filters;
+        if (status) {
+          const statuses = Array.isArray(status) ? status : [status];
+          q = q.in('status', statuses);
+        }
+        if (severity) {
+          const severities = Array.isArray(severity) ? severity : [severity];
+          q = q.in('severity', severities);
+        }
+        if (domain) {
+          const domains = Array.isArray(domain) ? domain : [domain];
+          q = q.in('domain', domains);
+        }
       }
 
-      if (severity) {
-        const severities = Array.isArray(severity) ? severity : [severity];
-        where.severity = { in: severities };
+      if (params.pagination.search) {
+        const s = params.pagination.search.toLowerCase().replace(/%/g, '\\%');
+        q = q.or(`title.ilike.%${s}%,description.ilike.%${s}%`);
       }
-
-      if (domain) {
-        const domains = Array.isArray(domain) ? domain : [domain];
-        where.domain = { in: domains };
-      }
+      return q;
     }
 
-    if (params.pagination.search) {
-      const query = params.pagination.search.toLowerCase();
-      where.OR = [
-        { title: { contains: query, mode: 'insensitive' } },
-        { description: { contains: query, mode: 'insensitive' } },
-      ];
-    }
-
-    const [items, total] = await Promise.all([
-      db.complianceGap.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (params.pagination.page - 1) * params.pagination.pageSize,
-        take: params.pagination.pageSize,
-      }),
-      db.complianceGap.count({ where }),
+    const [{ data: items }, { count: total }] = await Promise.all([
+      applyFilters(client.from('compliance_gaps').select('*'))
+        .order('created_at', { ascending: false })
+        .range(skip, skip + params.pagination.pageSize - 1),
+      applyFilters(client.from('compliance_gaps').select('*', { count: 'exact', head: true })),
     ]);
 
-    const { meta } = buildPagination(params.pagination, total);
+    const { meta } = buildPagination(params.pagination, total ?? 0);
 
     return {
-      data: items.map((row) => mapPrismaGapToComplianceGap(row)),
+      data: (items ?? []).map((row: any) => mapRowToComplianceGap(row)),
       meta,
     };
   }
@@ -114,35 +98,40 @@ export class GapService {
    * Get a single gap by ID.
    */
   static async getById(id: string, organizationId: string): Promise<ComplianceGap | null> {
-    const gap = await db.complianceGap.findFirst({
-      where: { id, organizationId },
-    });
+    const client = await getDb();
+    const { data: gap } = await client.from('compliance_gaps')
+      .select('*')
+      .eq('id', id)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
 
-    return gap ? mapPrismaGapToComplianceGap(gap) : null;
+    return gap ? mapRowToComplianceGap(gap) : null;
   }
 
   /**
    * Update a gap's status and optional fields.
    */
   static async update(params: GapUpdateParams): Promise<ComplianceGap | null> {
-    const data: Parameters<typeof db.complianceGap.update>[0]['data'] = {};
+    const client = await getDb();
+    const updateData: Record<string, unknown> = {};
 
     if (params.status !== undefined) {
-      data.status = params.status;
+      updateData.status = params.status;
     }
     if (params.resolutionNotes !== undefined) {
-      data.resolutionNotes = params.resolutionNotes;
+      updateData.resolution_notes = params.resolutionNotes;
     }
     if (params.dueDate !== undefined) {
-      data.dueDate = params.dueDate ? new Date(params.dueDate) : null;
+      updateData.due_date = params.dueDate ? new Date(params.dueDate).toISOString() : null;
     }
 
-    const updated = await db.complianceGap.updateMany({
-      where: { id: params.gapId, organizationId: params.organizationId },
-      data,
-    });
+    const { data: updated } = await client.from('compliance_gaps')
+      .update(updateData)
+      .eq('id', params.gapId)
+      .eq('organization_id', params.organizationId)
+      .select();
 
-    if (updated.count === 0) {
+    if (!updated || updated.length === 0) {
       return null;
     }
 

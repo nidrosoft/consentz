@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { AuthenticateWithRedirectCallback } from "@clerk/nextjs";
-
-export default function SSOCallbackPage() {
-    return <AuthenticateWithRedirectCallback />;
+/** Legacy Clerk OAuth callback — authentication is Supabase-only now. */
+export default function SsoCallbackPage() {
+    redirect("/sign-in");
 }

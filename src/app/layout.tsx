@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
 import { RouteProvider } from "@/providers/router-provider";
 import { QueryProvider } from "@/providers/query-provider";
+import { SignOutConfirmProvider } from "@/providers/sign-out-confirm-provider";
 import { Theme } from "@/providers/theme";
 import "@/styles/globals.css";
 import { cx } from "@/utils/cx";
@@ -31,17 +31,13 @@ export default function RootLayout({
     return (
         <html lang="en" suppressHydrationWarning>
             <body className={cx(inter.variable, "bg-primary antialiased")}>
-                <ClerkProvider
-                    signInUrl="/sign-in"
-                    signUpUrl="/sign-up"
-                    afterSignOutUrl="/sign-in"
-                >
-                    <QueryProvider>
-                        <RouteProvider>
-                            <Theme>{children}</Theme>
-                        </RouteProvider>
-                    </QueryProvider>
-                </ClerkProvider>
+                <QueryProvider>
+                    <RouteProvider>
+                        <Theme>
+                            <SignOutConfirmProvider>{children}</SignOutConfirmProvider>
+                        </Theme>
+                    </RouteProvider>
+                </QueryProvider>
             </body>
         </html>
     );

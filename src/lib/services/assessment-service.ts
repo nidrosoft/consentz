@@ -3,10 +3,9 @@
 // =============================================================================
 
 import type { DomainSlug, GapSeverity } from '@/types';
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { CQC_DOMAINS, KLOES, getRatingFromScore } from '@/lib/constants/cqc-framework';
 import { recalculateComplianceScores } from '@/lib/services/score-engine';
-import type { ServiceType } from '@prisma/client';
 
 interface AssessmentAnswer {
   questionId: string;
@@ -63,17 +62,13 @@ export class AssessmentService {
    * Get the latest assessment for an organization.
    */
   static async getLatest(organizationId: string) {
-    const assessment = await db.assessment.findFirst({
-      where: { organizationId },
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        responses: {
-          include: {
-            question: { include: { kloe: true } },
-          },
-        },
-      },
-    });
+    const client = await getDb();
+    const { data: assessment } = await client.from('assessments')
+      .select('*, assessment_responses(*, assessment_questions(*, kloes(*)))')
+      .eq('organization_id', organizationId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (!assessment) return null;
 
@@ -84,16 +79,11 @@ export class AssessmentService {
    * Get a single assessment by ID with responses.
    */
   static async getById(id: string) {
-    const assessment = await db.assessment.findUnique({
-      where: { id },
-      include: {
-        responses: {
-          include: {
-            question: { include: { kloe: true } },
-          },
-        },
-      },
-    });
+    const client = await getDb();
+    const { data: assessment } = await client.from('assessments')
+      .select('*, assessment_responses(*, assessment_questions(*, kloes(*)))')
+      .eq('id', id)
+      .maybeSingle();
 
     if (!assessment) return null;
 
@@ -105,35 +95,29 @@ export class AssessmentService {
    * Merges answers by questionId.
    */
   static async saveAnswers(params: SaveAnswersParams) {
-    const serviceType = params.serviceType as ServiceType;
-
+    const client = await getDb();
     if (params.assessmentId) {
-      const existing = await db.assessment.findUnique({
-        where: { id: params.assessmentId, organizationId: params.organizationId },
-        include: {
-          responses: {
-            include: {
-              question: { include: { kloe: true } },
-            },
-          },
-        },
-      });
+      const { data: existing } = await client.from('assessments')
+        .select('*, assessment_responses(*, assessment_questions(*, kloes(*)))')
+        .eq('id', params.assessmentId)
+        .eq('organization_id', params.organizationId)
+        .maybeSingle();
 
       if (existing) {
         const answerMap = new Map<string, AssessmentAnswer>();
-        for (const r of existing.responses) {
-          const q = r.question;
-          const code = q.kloe?.code ?? 'S1';
+        for (const r of (existing.assessment_responses ?? [])) {
+          const q = r.assessment_questions;
+          const code = q?.kloes?.code ?? 'S1';
           const domainCode = code[0] ?? 'S';
           const domain = CQC_DOMAINS.find((d) => d.code === domainCode)?.slug ?? 'safe';
-          answerMap.set(r.questionId, {
-            questionId: r.questionId,
-            questionText: q.question,
+          answerMap.set(r.question_id, {
+            questionId: r.question_id,
+            questionText: q?.question ?? '',
             step: 1,
             domain,
-            kloeCode: q.kloe?.code,
+            kloeCode: q?.kloes?.code,
             answerValue: r.answer as string | boolean | number,
-            answerType: q.questionType,
+            answerType: q?.question_type ?? 'YES_NO',
           });
         }
         for (const a of params.answers) {
@@ -142,26 +126,23 @@ export class AssessmentService {
 
         const mergedAnswers = Array.from(answerMap.values());
 
-        await db.assessmentResponse.deleteMany({
-          where: { assessmentId: params.assessmentId },
-        });
+        await client.from('assessment_responses')
+          .delete()
+          .eq('assessment_id', params.assessmentId);
 
-        await db.assessment.update({
-          where: { id: params.assessmentId },
-          data: {
-            currentStep: params.currentStep,
-            updatedAt: new Date(),
-          },
-        });
+        await client.from('assessments')
+          .update({
+            current_step: params.currentStep,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', params.assessmentId);
 
         for (const a of mergedAnswers) {
-          await db.assessmentResponse.create({
-            data: {
-              assessmentId: params.assessmentId,
-              questionId: a.questionId,
-              answer: serializeAnswerValue(a.answerValue),
-              evidenceIds: [],
-            },
+          await client.from('assessment_responses').insert({
+            assessment_id: params.assessmentId,
+            question_id: a.questionId,
+            answer: serializeAnswerValue(a.answerValue),
+            evidence_ids: [],
           });
         }
 
@@ -169,24 +150,20 @@ export class AssessmentService {
       }
     }
 
-    const assessment = await db.assessment.create({
-      data: {
-        organizationId: params.organizationId,
-        serviceType,
-        status: 'IN_PROGRESS',
-        startedBy: params.userId,
-        currentStep: params.currentStep,
-      },
-    });
+    const { data: assessment } = await client.from('assessments').insert({
+      organization_id: params.organizationId,
+      service_type: params.serviceType,
+      status: 'IN_PROGRESS',
+      started_by: params.userId,
+      current_step: params.currentStep,
+    }).select().single();
 
     for (const a of params.answers) {
-      await db.assessmentResponse.create({
-        data: {
-          assessmentId: assessment.id,
-          questionId: a.questionId,
-          answer: serializeAnswerValue(a.answerValue),
-          evidenceIds: [],
-        },
+      await client.from('assessment_responses').insert({
+        assessment_id: assessment.id,
+        question_id: a.questionId,
+        answer: serializeAnswerValue(a.answerValue),
+        evidence_ids: [],
       });
     }
 
@@ -197,37 +174,31 @@ export class AssessmentService {
    * Calculate assessment results, generate gaps and tasks, update compliance score.
    */
   static async calculate(params: CalculateParams): Promise<AssessmentResult> {
-    const assessment = await db.assessment.findUnique({
-      where: { id: params.assessmentId, organizationId: params.organizationId },
-      include: {
-        responses: {
-          include: {
-            question: {
-              include: { kloe: true },
-            },
-          },
-        },
-      },
-    });
+    const client = await getDb();
+    const { data: assessment } = await client.from('assessments')
+      .select('*, assessment_responses(*, assessment_questions(*, kloes(*)))')
+      .eq('id', params.assessmentId)
+      .eq('organization_id', params.organizationId)
+      .single();
 
     if (!assessment) {
       throw new Error(`Assessment ${params.assessmentId} not found`);
     }
 
-    const answers = assessment.responses.map((r) => {
-      const q = r.question;
-      const code = q.kloe?.code ?? 'S1';
+    const answers = (assessment.assessment_responses ?? []).map((r: any) => {
+      const q = r.assessment_questions;
+      const code = q?.kloes?.code ?? 'S1';
       const domainCode = code[0] ?? 'S';
       const domain = CQC_DOMAINS.find((d) => d.code === domainCode)?.slug ?? 'safe';
       return {
-        questionId: r.questionId,
-        questionText: q.question,
+        questionId: r.question_id,
+        questionText: q?.question ?? '',
         step: 1,
         domain,
-        kloeCode: q.kloe?.code,
+        kloeCode: q?.kloes?.code,
         answerValue: r.answer,
-        answerType: q.questionType,
-        weight: q.weight,
+        answerType: q?.question_type ?? 'YES_NO',
+        weight: q?.weight ?? 1.0,
       };
     });
 
@@ -297,18 +268,16 @@ export class AssessmentService {
         const severity = AssessmentService.getSeverityFromScore(domainResult.score);
         const kloeCode = KLOES.find((k) => k.domain === domainResult.slug)?.code ?? '';
 
-        await db.complianceGap.create({
-          data: {
-            organizationId: params.organizationId,
-            domain: domainResult.slug,
-            kloeCode,
-            title: `${domainResult.domainName} domain needs improvement`,
-            description: `Assessment scored ${domainResult.score}% in the ${domainResult.domainName} domain, below the "Good" threshold of 63%.`,
-            severity,
-            status: 'OPEN',
-            source: 'assessment',
-            assessmentId: params.assessmentId,
-          },
+        await client.from('compliance_gaps').insert({
+          organization_id: params.organizationId,
+          domain: domainResult.slug,
+          kloe_code: kloeCode,
+          title: `${domainResult.domainName} domain needs improvement`,
+          description: `Assessment scored ${domainResult.score}% in the ${domainResult.domainName} domain, below the "Good" threshold of 63%.`,
+          severity,
+          status: 'OPEN',
+          source: 'assessment',
+          assessment_id: params.assessmentId,
         });
         gapsCreated++;
 
@@ -316,31 +285,29 @@ export class AssessmentService {
           const dueDate = new Date();
           dueDate.setDate(dueDate.getDate() + (severity === 'CRITICAL' ? 7 : 14));
 
-          const gap = await db.complianceGap.findFirst({
-            where: {
-              organizationId: params.organizationId,
-              assessmentId: params.assessmentId,
-              domain: domainResult.slug,
-            },
-            orderBy: { createdAt: 'desc' },
-          });
+          const { data: gap } = await client.from('compliance_gaps')
+            .select('*')
+            .eq('organization_id', params.organizationId)
+            .eq('assessment_id', params.assessmentId)
+            .eq('domain', domainResult.slug)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-          await db.task.create({
-            data: {
-              organizationId: params.organizationId,
-              title: `Address ${domainResult.domainName} compliance gap`,
-              description: `Review and improve ${domainResult.domainName} domain compliance. Current score: ${domainResult.score}%.`,
-              status: 'TODO',
-              priority: severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
-              assignedTo: params.userId,
-              assignedToName: params.userId,
-              dueDate,
-              source: 'ASSESSMENT',
-              sourceId: params.assessmentId,
-              gapId: gap?.id,
-              domains: [domainResult.slug],
-              kloeCode,
-            },
+          await client.from('tasks').insert({
+            organization_id: params.organizationId,
+            title: `Address ${domainResult.domainName} compliance gap`,
+            description: `Review and improve ${domainResult.domainName} domain compliance. Current score: ${domainResult.score}%.`,
+            status: 'TODO',
+            priority: severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+            assigned_to: params.userId,
+            assigned_to_name: params.userId,
+            due_date: dueDate.toISOString(),
+            source: 'ASSESSMENT',
+            source_id: params.assessmentId,
+            gap_id: gap?.id,
+            domains: [domainResult.slug],
+            kloe_code: kloeCode,
           });
           tasksCreated++;
         }
@@ -351,21 +318,20 @@ export class AssessmentService {
       domainResults.map((d) => [d.slug, { score: d.score, rating: d.rating }]),
     );
 
-    await db.assessment.update({
-      where: { id: params.assessmentId },
-      data: {
+    await client.from('assessments')
+      .update({
         status: 'COMPLETED',
-        completedAt: new Date(),
-        overallScore,
-        predictedRating: overallRating as 'OUTSTANDING' | 'GOOD' | 'REQUIRES_IMPROVEMENT' | 'INADEQUATE',
-        totalGaps: gapsCreated,
-        criticalGaps: domainResults.filter((d) => d.rating === 'INADEQUATE').length,
-        highGaps: domainResults.filter((d) => d.rating === 'REQUIRES_IMPROVEMENT').length,
-        mediumGaps: 0,
-        lowGaps: 0,
-        domainResults: domainResultsJson,
-      },
-    });
+        completed_at: new Date().toISOString(),
+        overall_score: overallScore,
+        predicted_rating: overallRating as 'OUTSTANDING' | 'GOOD' | 'REQUIRES_IMPROVEMENT' | 'INADEQUATE',
+        total_gaps: gapsCreated,
+        critical_gaps: domainResults.filter((d) => d.rating === 'INADEQUATE').length,
+        high_gaps: domainResults.filter((d) => d.rating === 'REQUIRES_IMPROVEMENT').length,
+        medium_gaps: 0,
+        low_gaps: 0,
+        domain_results: domainResultsJson,
+      })
+      .eq('id', params.assessmentId);
 
     await recalculateComplianceScores(params.organizationId);
 
@@ -417,24 +383,12 @@ export class AssessmentService {
     return 'LOW';
   }
 
-  private static toApiFormat(
-    assessment: Awaited<ReturnType<typeof db.assessment.findUnique>> & {
-      responses: Array<{
-        id: string;
-        questionId: string;
-        answer: string;
-        score: number | null;
-        notes: string | null;
-        evidenceIds: string[];
-        question: { id: string; question: string; questionType: string; kloe?: { code: string } | null };
-      }>;
-    },
-  ) {
+  private static toApiFormat(assessment: any) {
     if (!assessment) return null;
 
-    const answers = assessment.responses.map((r) => {
-      const q = r.question;
-      const code = q.kloe?.code ?? 'S1';
+    const answers = (assessment.assessment_responses ?? []).map((r: any) => {
+      const q = r.assessment_questions;
+      const code = q?.kloes?.code ?? 'S1';
       const domainCode = code[0] ?? 'S';
       const domain = CQC_DOMAINS.find((d) => d.code === domainCode)?.slug ?? 'safe';
       let answerValue: boolean | string | number | string[] = r.answer;
@@ -451,27 +405,27 @@ export class AssessmentService {
         }
       }
       return {
-        questionId: r.questionId,
-        questionText: q.question,
+        questionId: r.question_id,
+        questionText: q?.question ?? '',
         step: 1,
         domain,
-        kloeCode: q.kloe?.code,
+        kloeCode: q?.kloes?.code,
         answerValue,
-        answerType: q.questionType,
+        answerType: q?.question_type ?? 'YES_NO',
       };
     });
 
     return {
       id: assessment.id,
-      organizationId: assessment.organizationId,
-      userId: assessment.startedBy,
-      serviceType: assessment.serviceType,
+      organizationId: assessment.organization_id,
+      userId: assessment.started_by,
+      serviceType: assessment.service_type,
       status: assessment.status,
-      currentStep: assessment.currentStep,
+      currentStep: assessment.current_step,
       answers,
-      createdAt: assessment.createdAt.toISOString(),
-      updatedAt: assessment.updatedAt.toISOString(),
-      completedAt: assessment.completedAt?.toISOString() ?? null,
+      createdAt: assessment.created_at,
+      updatedAt: assessment.updated_at,
+      completedAt: assessment.completed_at ?? null,
     };
   }
 }

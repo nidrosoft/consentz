@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, ChevronRight, AlertTriangle } from "@untitledui/icons";
+import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, ChevronRight, AlertTriangle, CheckCircle } from "@untitledui/icons";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
@@ -88,7 +89,32 @@ export default function DomainDetailPage() {
             </div>
         );
     }
-    if (!domainScore) return <p className="text-tertiary">Domain not found.</p>;
+    if (!domainScore) {
+        // Build a placeholder so the page still renders with domain info
+        const domainNames: Record<string, string> = { safe: 'Safe', effective: 'Effective', caring: 'Caring', responsive: 'Responsive', 'well-led': 'Well-Led' };
+        const placeholderName = domainNames[slug] ?? slug.charAt(0).toUpperCase() + slug.slice(1);
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="flex items-center gap-3">
+                    {Icon && <Icon className={cx("size-6", color)} />}
+                    <div>
+                        <h1 className="text-display-xs font-semibold text-primary">{placeholderName} Domain</h1>
+                        <p className="text-sm text-tertiary">{DOMAIN_DESCRIPTIONS[slug]}</p>
+                    </div>
+                </div>
+                <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-secondary bg-primary py-16">
+                    <div className="flex size-12 items-center justify-center rounded-full bg-brand-secondary">
+                        {Icon && <Icon className="size-6 text-brand-secondary" />}
+                    </div>
+                    <h2 className="text-lg font-semibold text-primary">No score calculated yet</h2>
+                    <p className="max-w-md text-center text-sm text-tertiary">
+                        Complete your compliance assessment to see your {placeholderName.toLowerCase()} domain score, KLOE breakdown, and identified gaps.
+                    </p>
+                    <Button color="primary" size="md" href="/reassessment">Take Assessment</Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
@@ -177,9 +203,9 @@ export default function DomainDetailPage() {
             </div>
 
             {/* Gaps in this domain */}
-            {domainGaps.length > 0 && (
-                <div>
-                    <h2 className="mb-4 text-lg font-semibold text-primary">Gaps in This Domain</h2>
+            <div>
+                <h2 className="mb-4 text-lg font-semibold text-primary">Gaps in This Domain</h2>
+                {domainGaps.length > 0 ? (
                     <div className="flex flex-col gap-3">
                         {domainGaps.map((gap) => (
                             <div key={gap.id} className="rounded-xl border border-secondary bg-primary p-4">
@@ -200,6 +226,31 @@ export default function DomainDetailPage() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                ) : (
+                    <EmptyState size="sm">
+                        <EmptyState.Header pattern="none">
+                            <EmptyState.FeaturedIcon icon={CheckCircle} color="success" theme="light" size="sm" />
+                        </EmptyState.Header>
+                        <EmptyState.Content>
+                            <EmptyState.Title>No gaps in this domain</EmptyState.Title>
+                            <EmptyState.Description>Great progress! Continue maintaining your compliance standards.</EmptyState.Description>
+                        </EmptyState.Content>
+                    </EmptyState>
+                )}
+            </div>
+
+            {slug === "safe" && (
+                <div className="rounded-xl border border-secondary bg-primary p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-primary">Treatment Risk Heatmap</h3>
+                            <p className="mt-1 text-sm text-tertiary">Visual analysis of treatment risks across procedures.</p>
+                        </div>
+                        <Badge color="gray" size="md">Coming Soon</Badge>
+                    </div>
+                    <div className="mt-6 flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-secondary bg-secondary">
+                        <p className="text-sm text-tertiary">Heatmap visualization will appear here when the Treatment Risk API is available.</p>
                     </div>
                 </div>
             )}

@@ -1,6 +1,8 @@
 // Assessment Question Bank — All questions defined in code for type safety and versioning.
 // Based on 07-ASSESSMENT-ENGINE.md specification.
 
+export const QUESTION_SCHEMA_VERSION = 1;
+
 export type CqcDomainType = 'SAFE' | 'EFFECTIVE' | 'CARING' | 'RESPONSIVE' | 'WELL_LED';
 export type ServiceType = 'AESTHETIC_CLINIC' | 'CARE_HOME';
 export type AnswerType = 'yes_no' | 'yes_no_partial' | 'multi_select' | 'scale' | 'date' | 'text' | 'number';
@@ -359,6 +361,35 @@ const SAFE_QUESTIONS: AssessmentQuestion[] = [
     scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
     gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'Failure to submit required notifications', gapDescription: 'Legal requirement.', remediationHint: 'Review notification requirements and implement a checklist.', linkedRegulations: ['REG17', 'REG20'] },
   },
+  {
+    id: 'SAFE_S6_Q05', domain: 'SAFE', kloeCode: 'S6', regulationCodes: ['REG15'], step: 3,
+    text: 'Do you have a system for monitoring and managing pressure ulcers, including risk assessments and repositioning schedules?',
+    helpText: 'Pressure ulcer prevention is a key patient safety indicator for CQC.',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'CRITICAL', gapTitle: 'No pressure ulcer prevention system', gapDescription: 'Pressure ulcer prevention and monitoring is a fundamental safety requirement.', remediationHint: 'Implement pressure ulcer risk assessments and repositioning schedules.', linkedRegulations: ['REG15'] },
+  },
+  {
+    id: 'SAFE_S6_Q06', domain: 'SAFE', kloeCode: 'S6', regulationCodes: ['REG12'], step: 3,
+    text: 'Do you have protocols for managing residents who are at risk of choking, including modified diets and mealtime supervision?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'CRITICAL', gapTitle: 'No choking risk management protocol', gapDescription: 'Choking prevention is essential for resident safety.', remediationHint: 'Develop choking risk protocols with SALT team guidance.', linkedRegulations: ['REG12'] },
+  },
+  {
+    id: 'SAFE_S6_Q07', domain: 'SAFE', kloeCode: 'S6', regulationCodes: ['REG12'], step: 3,
+    text: 'Do you have a falls prevention strategy, including environmental risk assessments and post-fall protocols?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'No falls prevention strategy', gapDescription: 'Falls prevention is a major safety concern in care homes.', remediationHint: 'Create falls prevention strategy including environmental assessments.', linkedRegulations: ['REG12'] },
+  },
+  {
+    id: 'SAFE_S6_Q08', domain: 'SAFE', kloeCode: 'S6', regulationCodes: ['REG12'], step: 3,
+    text: 'Do you have procedures for managing residents who display behaviours that challenge, including de-escalation techniques?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'No behaviour management procedures', gapDescription: 'De-escalation and positive behaviour support are required.', remediationHint: 'Develop positive behaviour support plans and train staff in de-escalation.', linkedRegulations: ['REG12'] },
+  },
 ];
 
 // ─── EFFECTIVE Domain ───────────────────────────────────────────────────────
@@ -455,9 +486,13 @@ const EFFECTIVE_QUESTIONS: AssessmentQuestion[] = [
       { value: 'ipc', label: 'Infection prevention & control', points: 2 },
       { value: 'manual_handling', label: 'Manual handling / moving & handling', points: 2 },
       { value: 'data_protection', label: 'Data protection / GDPR', points: 1 },
+      { value: 'mca_dols', label: 'Mental Capacity Act / DoLS', points: 2 },
       { value: 'equality_diversity', label: 'Equality & diversity', points: 1 },
+      { value: 'food_hygiene', label: 'Food hygiene', points: 1 },
+      { value: 'anaphylaxis', label: 'Anaphylaxis management', points: 2 },
+      { value: 'medication_admin', label: 'Medication administration', points: 2 },
     ],
-    scoring: { maxPoints: 12, scoringMap: {} }, weight: 1.2,
+    scoring: { maxPoints: 16, scoringMap: {} }, weight: 1.2,
     gapTrigger: { triggerValues: [], severity: 'HIGH', gapTitle: 'Significant gaps in mandatory training', gapDescription: 'Mandatory training coverage is insufficient.', remediationHint: 'Review and address mandatory training gaps.', linkedRegulations: ['REG18'] },
   },
   {
@@ -619,6 +654,40 @@ const EFFECTIVE_QUESTIONS: AssessmentQuestion[] = [
     scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
     gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'Inadequate pre-treatment information provision', gapDescription: 'Patients must receive clear information before consent.', remediationHint: 'Create patient information sheets for all treatments.', linkedRegulations: ['REG11'] },
   },
+  {
+    id: 'EFF_E7_Q07', domain: 'EFFECTIVE', kloeCode: 'E7', regulationCodes: ['REG14'], step: 3,
+    text: 'Do you have a structured nutrition and hydration monitoring system, including food and fluid charts?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'No nutrition monitoring system', gapDescription: 'Nutrition and hydration monitoring is essential for care homes.', remediationHint: 'Implement food and fluid charts and nutritional screening (e.g., MUST tool).', linkedRegulations: ['REG14'] },
+  },
+  {
+    id: 'EFF_E7_Q08', domain: 'EFFECTIVE', kloeCode: 'E7', regulationCodes: ['REG9'], step: 3,
+    text: 'Are care plans reviewed and updated at least monthly, or more frequently when needs change?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'Care plans not regularly reviewed', gapDescription: 'Care plans must be kept up to date and reviewed regularly.', remediationHint: 'Schedule monthly care plan reviews with named keyworker.', linkedRegulations: ['REG9'] },
+  },
+  {
+    id: 'EFF_E7_Q09', domain: 'EFFECTIVE', kloeCode: 'E7', regulationCodes: ['REG11'], step: 3,
+    text: 'Do you have a formal process for obtaining and recording consent to care for residents who may lack capacity, including best interest decisions?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 10, scoringMap: yesNoPartialMap(10) }, weight: 1.5,
+    gapTrigger: { triggerValues: ['no'], severity: 'CRITICAL', gapTitle: 'No Mental Capacity Act compliance process', gapDescription: 'MCA compliance is a legal requirement for care homes.', remediationHint: 'Implement MCA/DoLS procedures and train all staff.', linkedRegulations: ['REG11'] },
+  },
+  {
+    id: 'EFF_E7_Q10', domain: 'EFFECTIVE', kloeCode: 'E7', regulationCodes: ['REG12'], step: 3,
+    text: 'Do you have a system for monitoring and managing residents\' oral health?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'No oral health monitoring', gapDescription: 'Oral health monitoring is a growing CQC focus area.', remediationHint: 'Implement oral health assessments and dental referral pathways.', linkedRegulations: ['REG12'] },
+  },
+  {
+    id: 'EFF_E7_Q11', domain: 'EFFECTIVE', kloeCode: 'E7', regulationCodes: ['REG17'], step: 3,
+    text: 'Do you participate in external quality improvement programmes or benchmarking against similar services?',
+    answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 0.8,
+  },
 ];
 
 // ─── CARING Domain ──────────────────────────────────────────────────────────
@@ -724,6 +793,33 @@ const CARING_QUESTIONS: AssessmentQuestion[] = [
     answerType: 'yes_no', serviceTypes: ['CARE_HOME'],
     scoring: { maxPoints: 6, scoringMap: yesNoMap(6) }, weight: 1.0,
     gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'Residents cannot personalise their living space', gapDescription: 'Personalisation of living space is important.', remediationHint: 'Enable residents to personalise their rooms.', linkedRegulations: ['REG10'] },
+  },
+  {
+    id: 'CAR_C3_Q06', domain: 'CARING', kloeCode: 'C3', regulationCodes: ['REG10'], step: 3,
+    text: 'Do residents have access to independent advocacy services when needed?',
+    answerType: 'yes_no', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoMap(6) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'No advocacy service access', gapDescription: 'Residents should have access to independent advocacy.', remediationHint: 'Establish links with local advocacy services.', linkedRegulations: ['REG10'] },
+  },
+  {
+    id: 'CAR_C3_Q07', domain: 'CARING', kloeCode: 'C3', regulationCodes: ['REG10'], step: 3,
+    text: 'Are end-of-life care wishes documented and respected, including advance care plans?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'No advance care planning', gapDescription: 'End-of-life wishes should be documented and followed.', remediationHint: 'Implement advance care planning conversations and documentation.', linkedRegulations: ['REG10'] },
+  },
+  {
+    id: 'CAR_C3_Q08', domain: 'CARING', kloeCode: 'C3', regulationCodes: ['REG10'], step: 3,
+    text: 'Do you have systems to ensure that residents\' cultural, religious, and spiritual needs are met?',
+    answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
+  },
+  {
+    id: 'CAR_C3_Q09', domain: 'CARING', kloeCode: 'C3', regulationCodes: ['REG10'], step: 3,
+    text: 'Are care staff given sufficient time to interact meaningfully with residents beyond task-based care?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'Insufficient meaningful interaction time', gapDescription: 'Care should go beyond task-based activities.', remediationHint: 'Review staffing levels and care delivery models.', linkedRegulations: ['REG10'] },
   },
 ];
 
@@ -837,6 +933,32 @@ const RESPONSIVE_QUESTIONS: AssessmentQuestion[] = [
     answerType: 'yes_no', serviceTypes: ['CARE_HOME'],
     scoring: { maxPoints: 6, scoringMap: yesNoMap(6) }, weight: 1.0,
     gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'Families not supported during end-of-life', gapDescription: 'Family involvement in end-of-life care is important.', remediationHint: 'Ensure families have open access during end-of-life care.', linkedRegulations: ['REG9'] },
+  },
+  {
+    id: 'RES_R3_Q05', domain: 'RESPONSIVE', kloeCode: 'R3', regulationCodes: ['REG9'], step: 3,
+    text: 'Do you provide a varied programme of activities tailored to individual interests and abilities?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'No structured activities programme', gapDescription: 'Activities should be personalised and meaningful.', remediationHint: 'Develop an activities programme based on resident preferences.', linkedRegulations: ['REG9'] },
+  },
+  {
+    id: 'RES_R3_Q06', domain: 'RESPONSIVE', kloeCode: 'R3', regulationCodes: ['REG9'], step: 3,
+    text: 'Is there access to community facilities, outings, and social engagement for residents?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 0.8,
+  },
+  {
+    id: 'RES_R3_Q07', domain: 'RESPONSIVE', kloeCode: 'R3', regulationCodes: ['REG16'], step: 3,
+    text: 'Do you analyse complaint themes and trends to identify service improvements?',
+    answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoPartialMap(6) }, weight: 1.0,
+  },
+  {
+    id: 'RES_R3_Q08', domain: 'RESPONSIVE', kloeCode: 'R3', regulationCodes: ['REG9'], step: 3,
+    text: 'Do you have a process for managing transitions of care (e.g., hospital discharge, transfer to another service)?',
+    answerType: 'yes_no_partial', serviceTypes: ['CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'No care transitions process', gapDescription: 'Safe care transitions are critical for resident safety.', remediationHint: 'Develop admission and discharge protocols with handover procedures.', linkedRegulations: ['REG9'] },
   },
 ];
 
@@ -995,6 +1117,33 @@ const WELL_LED_QUESTIONS: AssessmentQuestion[] = [
     answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
     scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
     gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'Clinical records not maintained to required standard', gapDescription: 'Clinical records must be complete and secure.', remediationHint: 'Audit clinical records for completeness and security.', linkedRegulations: ['REG17'] },
+  },
+  {
+    id: 'WEL_W6_Q05', domain: 'WELL_LED', kloeCode: 'W6', regulationCodes: ['REG17'], step: 3,
+    text: 'Do you have a business continuity plan covering pandemic, flood, fire, or power failure scenarios?',
+    answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'HIGH', gapTitle: 'No business continuity plan', gapDescription: 'A tested BCP is essential for service resilience.', remediationHint: 'Develop and test a business continuity plan.', linkedRegulations: ['REG17'] },
+  },
+  {
+    id: 'WEL_W6_Q06', domain: 'WELL_LED', kloeCode: 'W6', regulationCodes: ['REG17'], step: 3,
+    text: 'Do you submit statutory notifications to CQC as required (deaths, injuries, deprivation of liberty)?',
+    answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.2,
+    gapTrigger: { triggerValues: ['no'], severity: 'CRITICAL', gapTitle: 'Statutory notifications not submitted', gapDescription: 'Failure to notify CQC is a regulatory breach.', remediationHint: 'Review CQC notification requirements and establish a process.', linkedRegulations: ['REG17'] },
+  },
+  {
+    id: 'WEL_W6_Q07', domain: 'WELL_LED', kloeCode: 'W6', regulationCodes: ['REG17'], step: 3,
+    text: 'Is there a clear succession plan for key leadership roles?',
+    answerType: 'yes_no', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 6, scoringMap: yesNoMap(6) }, weight: 0.8,
+  },
+  {
+    id: 'WEL_W6_Q08', domain: 'WELL_LED', kloeCode: 'W6', regulationCodes: ['REG17'], step: 3,
+    text: 'Do you have systems to ensure regulatory compliance is maintained between CQC inspections?',
+    answerType: 'yes_no_partial', serviceTypes: ['AESTHETIC_CLINIC', 'CARE_HOME'],
+    scoring: { maxPoints: 8, scoringMap: yesNoPartialMap(8) }, weight: 1.0,
+    gapTrigger: { triggerValues: ['no'], severity: 'MEDIUM', gapTitle: 'No inter-inspection compliance monitoring', gapDescription: 'Continuous compliance monitoring prevents inspection surprises.', remediationHint: 'Implement regular internal compliance audits between inspections.', linkedRegulations: ['REG17'] },
   },
 ];
 

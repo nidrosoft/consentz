@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { File06, CheckSquare, PieChart01, AlertCircle, AlertTriangle, Users01, Award02, SearchLg, ChevronDown, ChevronUp, FilterLines, XClose } from "@untitledui/icons";
+import { File06, CheckSquare, PieChart01, AlertCircle, AlertTriangle, Users01, Award02, SearchLg, ChevronDown, ChevronUp, FilterLines, XClose, FileSearch01 } from "@untitledui/icons";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
@@ -216,7 +217,17 @@ export default function AuditLogPage() {
                     );
                 })}
                 {paged.length === 0 && (
-                    <div className="px-5 py-8 text-center text-sm text-tertiary">No audit log entries match your filters.</div>
+                    <div className="px-5 py-12">
+                        <EmptyState size="md">
+                            <EmptyState.Header>
+                                <EmptyState.FeaturedIcon icon={FileSearch01} color="gray" theme="light" />
+                            </EmptyState.Header>
+                            <EmptyState.Content>
+                                <EmptyState.Title>No audit entries found</EmptyState.Title>
+                                <EmptyState.Description>Audit log entries will appear as your team interacts with the platform. Try adjusting your filters.</EmptyState.Description>
+                            </EmptyState.Content>
+                        </EmptyState>
+                    </div>
                 )}
             </div>
 

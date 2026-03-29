@@ -11,6 +11,7 @@ import { AvatarLabelGroup } from "@/components/base/avatar/avatar-label-group";
 import { Button } from "@/components/base/buttons/button";
 import { RadioButtonBase } from "@/components/base/radio-buttons/radio-buttons";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
+import { useSignOutConfirm } from "@/providers/sign-out-confirm-provider";
 import { cx } from "@/utils/cx";
 
 type NavAccountType = {
@@ -46,8 +47,11 @@ const placeholderAccounts: NavAccountType[] = [
 export const NavAccountMenu = ({
     className,
     selectedAccountId = "jane",
+    accounts,
     ...dialogProps
 }: AriaDialogProps & { className?: string; accounts?: NavAccountType[]; selectedAccountId?: string }) => {
+    const displayAccounts = accounts ?? placeholderAccounts;
+    const { requestSignOutConfirm } = useSignOutConfirm();
     const focusManager = useFocusManager();
     const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -94,7 +98,7 @@ export const NavAccountMenu = ({
                     <div className="px-3 pt-1.5 pb-1 text-xs font-semibold text-tertiary">Switch account</div>
 
                     <div className="flex flex-col gap-0.5 px-1.5">
-                        {placeholderAccounts.map((account) => (
+                        {displayAccounts.map((account) => (
                             <button
                                 key={account.id}
                                 className={cx(
@@ -117,7 +121,13 @@ export const NavAccountMenu = ({
             </div>
 
             <div className="pt-1 pb-1.5">
-                <NavAccountCardMenuItem label="Sign out" icon={LogOut01} shortcut="⌥⇧Q" />
+                <NavAccountCardMenuItem
+                    label="Sign out"
+                    icon={LogOut01}
+                    shortcut="⌥⇧Q"
+                    data-testid="nav-account-sign-out"
+                    onClick={() => requestSignOutConfirm()}
+                />
             </div>
         </AriaDialog>
     );
@@ -166,7 +176,8 @@ export const NavAccountCard = ({
     const triggerRef = useRef<HTMLDivElement>(null);
     const isDesktop = useBreakpoint("lg");
 
-    const selectedAccount = placeholderAccounts.find((account) => account.id === selectedAccountId);
+    const displayItems = items ?? placeholderAccounts;
+    const selectedAccount = displayItems.find((account) => account.id === selectedAccountId);
 
     if (!selectedAccount) {
         console.warn(`Account with ID ${selectedAccountId} not found in <NavAccountCard />`);
@@ -185,7 +196,10 @@ export const NavAccountCard = ({
 
             <div className="absolute top-1.5 right-1.5">
                 <AriaDialogTrigger>
-                    <AriaButton className="flex cursor-pointer items-center justify-center rounded-md p-1.5 text-fg-quaternary outline-focus-ring transition duration-100 ease-linear hover:bg-primary_hover hover:text-fg-quaternary_hover focus-visible:outline-2 focus-visible:outline-offset-2 pressed:bg-primary_hover pressed:text-fg-quaternary_hover">
+                    <AriaButton
+                        data-testid="nav-account-menu-trigger"
+                        className="flex cursor-pointer items-center justify-center rounded-md p-1.5 text-fg-quaternary outline-focus-ring transition duration-100 ease-linear hover:bg-primary_hover hover:text-fg-quaternary_hover focus-visible:outline-2 focus-visible:outline-offset-2 pressed:bg-primary_hover pressed:text-fg-quaternary_hover"
+                    >
                         <ChevronSelectorVertical className="size-4 shrink-0" />
                     </AriaButton>
                     <AriaPopover

@@ -2,8 +2,7 @@
 // Incident Service — CRUD and filtered listing for incidents
 // =============================================================================
 
-import { db } from '@/lib/db';
-import type { Prisma, Severity, IncidentType, IncidentStatus } from '@prisma/client';
+import { getDb } from '@/lib/db';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
 
@@ -22,7 +21,7 @@ interface IncidentListParams {
 }
 
 interface IncidentListResult {
-  data: Awaited<ReturnType<typeof db.incident.findMany>>;
+  data: any[];
   meta: PaginationMeta;
 }
 
@@ -55,85 +54,64 @@ interface IncidentUpdateParams {
 
 export class IncidentService {
   static async list(params: IncidentListParams): Promise<IncidentListResult> {
-    const where: Prisma.IncidentWhereInput = {
-      organizationId: params.organizationId,
-    };
-
-    const incidentTypes = [
-      ...(params.filters?.incidentType
-        ? Array.isArray(params.filters.incidentType)
-          ? params.filters.incidentType
-          : [params.filters.incidentType]
-        : []),
-      ...(params.filters?.category
-        ? Array.isArray(params.filters.category)
-          ? params.filters.category
-          : [params.filters.category]
-        : []),
-    ];
-    if (incidentTypes.length > 0) {
-      where.incidentType = { in: incidentTypes as IncidentType[] };
-    }
-    if (params.filters?.severity) {
-      const sevs = Array.isArray(params.filters.severity)
-        ? params.filters.severity
-        : [params.filters.severity];
-      where.severity = { in: sevs as Severity[] };
-    }
-    if (params.filters?.status) {
-      const stats = Array.isArray(params.filters.status)
-        ? params.filters.status
-        : [params.filters.status];
-      where.status = { in: stats as IncidentStatus[] };
-    }
-    if (params.filters?.domain) {
-      const doms = Array.isArray(params.filters.domain)
-        ? params.filters.domain
-        : [params.filters.domain];
-      where.domains = { hasSome: doms };
-    }
-    if (params.filters?.dateFrom || params.filters?.dateTo) {
-      where.reportedAt = {};
-      if (params.filters.dateFrom) {
-        where.reportedAt.gte = new Date(params.filters.dateFrom);
-      }
-      if (params.filters.dateTo) {
-        where.reportedAt.lte = new Date(params.filters.dateTo);
-      }
-    }
-    if (params.pagination.search) {
-      where.OR = [
-        { title: { contains: params.pagination.search, mode: 'insensitive' } },
-        {
-          description: {
-            contains: params.pagination.search,
-            mode: 'insensitive',
-          },
-        },
-      ];
-    }
-
+    const client = await getDb();
     const skip = (params.pagination.page - 1) * params.pagination.pageSize;
-    const take = params.pagination.pageSize;
 
-    const [data, total] = await Promise.all([
-      db.incident.findMany({
-        where,
-        orderBy: { reportedAt: 'desc' },
-        skip,
-        take,
-      }),
-      db.incident.count({ where }),
+    function applyFilters(query: any) {
+      let q = query.eq('organization_id', params.organizationId);
+
+      const incidentTypes = [
+        ...(params.filters?.incidentType
+          ? Array.isArray(params.filters.incidentType) ? params.filters.incidentType : [params.filters.incidentType]
+          : []),
+        ...(params.filters?.category
+          ? Array.isArray(params.filters.category) ? params.filters.category : [params.filters.category]
+          : []),
+      ];
+      if (incidentTypes.length > 0) {
+        q = q.in('incident_type', incidentTypes);
+      }
+      if (params.filters?.severity) {
+        const sevs = Array.isArray(params.filters.severity) ? params.filters.severity : [params.filters.severity];
+        q = q.in('severity', sevs);
+      }
+      if (params.filters?.status) {
+        const stats = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
+        q = q.in('status', stats);
+      }
+      if (params.filters?.domain) {
+        const doms = Array.isArray(params.filters.domain) ? params.filters.domain : [params.filters.domain];
+        q = q.overlaps('domains', doms);
+      }
+      if (params.filters?.dateFrom) {
+        q = q.gte('reported_at', new Date(params.filters.dateFrom).toISOString());
+      }
+      if (params.filters?.dateTo) {
+        q = q.lte('reported_at', new Date(params.filters.dateTo).toISOString());
+      }
+      if (params.pagination.search) {
+        const s = params.pagination.search.replace(/%/g, '\\%');
+        q = q.or(`title.ilike.%${s}%,description.ilike.%${s}%`);
+      }
+      return q;
+    }
+
+    const [{ data }, { count: total }] = await Promise.all([
+      applyFilters(client.from('incidents').select('*'))
+        .order('reported_at', { ascending: false })
+        .range(skip, skip + params.pagination.pageSize - 1),
+      applyFilters(client.from('incidents').select('*', { count: 'exact', head: true })),
     ]);
 
-    const totalPages = Math.ceil(total / params.pagination.pageSize);
+    const safeTotal = total ?? 0;
+    const totalPages = Math.ceil(safeTotal / params.pagination.pageSize);
 
     return {
-      data,
+      data: data ?? [],
       meta: {
         page: params.pagination.page,
         pageSize: params.pagination.pageSize,
-        total,
+        total: safeTotal,
         totalPages,
         hasMore: params.pagination.page < totalPages,
       },
@@ -141,48 +119,54 @@ export class IncidentService {
   }
 
   static async getById(id: string) {
-    return db.incident.findUnique({ where: { id } });
+    const client = await getDb();
+    const { data } = await client.from('incidents')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    return data;
   }
 
   static async create(params: IncidentCreateParams) {
-    return db.incident.create({
-      data: {
-        organizationId: params.organizationId,
-        title: params.title,
-        description: params.description,
-        severity: params.severity as Severity,
-        incidentType: params.incidentType as IncidentType,
-        reportedBy: params.reportedBy,
-        status: 'OPEN',
-        patientName: params.patientName,
-        domains: params.domains ?? [],
-      },
-    });
+    const client = await getDb();
+    const { data } = await client.from('incidents').insert({
+      organization_id: params.organizationId,
+      title: params.title,
+      description: params.description,
+      severity: params.severity,
+      incident_type: params.incidentType,
+      reported_by: params.reportedBy,
+      status: 'OPEN',
+      patient_name: params.patientName,
+      domains: params.domains ?? [],
+    }).select().single();
+    return data;
   }
 
   static async update(params: IncidentUpdateParams) {
     const { id, ...updates } = params;
-    const data: Prisma.IncidentUpdateInput = {};
+    const updateData: Record<string, unknown> = {};
 
-    if (updates.title !== undefined) data.title = updates.title;
-    if (updates.description !== undefined) data.description = updates.description;
-    if (updates.severity !== undefined)
-      data.severity = updates.severity as Severity;
-    if (updates.status !== undefined)
-      data.status = updates.status as IncidentStatus;
-    if (updates.incidentType !== undefined)
-      data.incidentType = updates.incidentType as IncidentType;
-    if (updates.domains !== undefined) data.domains = updates.domains;
-    if (updates.patientName !== undefined) data.patientName = updates.patientName;
-    if (updates.rootCause !== undefined) data.rootCause = updates.rootCause;
-    if (updates.actionsTaken !== undefined)
-      data.actionsTaken = updates.actionsTaken;
-    if (updates.lessonsLearned !== undefined)
-      data.lessonsLearned = updates.lessonsLearned;
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.description !== undefined) updateData.description = updates.description;
+    if (updates.severity !== undefined) updateData.severity = updates.severity;
+    if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.incidentType !== undefined) updateData.incident_type = updates.incidentType;
+    if (updates.domains !== undefined) updateData.domains = updates.domains;
+    if (updates.patientName !== undefined) updateData.patient_name = updates.patientName;
+    if (updates.rootCause !== undefined) updateData.root_cause = updates.rootCause;
+    if (updates.actionsTaken !== undefined) updateData.actions_taken = updates.actionsTaken;
+    if (updates.lessonsLearned !== undefined) updateData.lessons_learned = updates.lessonsLearned;
     if (updates.resolvedAt !== undefined)
-      data.resolvedAt = updates.resolvedAt ? new Date(updates.resolvedAt) : null;
-    if (updates.resolvedBy !== undefined) data.resolvedBy = updates.resolvedBy;
+      updateData.resolved_at = updates.resolvedAt ? new Date(updates.resolvedAt).toISOString() : null;
+    if (updates.resolvedBy !== undefined) updateData.resolved_by = updates.resolvedBy;
 
-    return db.incident.update({ where: { id }, data });
+    const client = await getDb();
+    const { data } = await client.from('incidents')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    return data;
   }
 }

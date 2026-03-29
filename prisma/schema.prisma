@@ -416,7 +416,7 @@ model Notification {
 
 model OrganizationMember {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  clerkUserId    String   @map("clerk_user_id")
+  authUserId     String   @map("auth_user_id")
   organizationId String   @map("organization_id") @db.Uuid
   role           UserRole
   fullName       String   @map("full_name")
@@ -427,7 +427,7 @@ model OrganizationMember {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([clerkUserId], map: "idx_org_members_clerk")
+  @@index([authUserId], map: "idx_org_members_auth")
   @@index([organizationId], map: "idx_org_members_org")
   @@map("organization_members")
 }
@@ -668,7 +668,7 @@ model TrainingRecord {
 
 model User {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  clerkId            String    @unique @map("clerk_id")
+  supabaseUserId     String    @unique @map("supabase_user_id")
   email              String
   firstName          String?   @map("first_name")
   lastName           String?   @map("last_name")
@@ -685,7 +685,7 @@ model User {
   notifications Notification[]
   organization  Organization?  @relation(fields: [organizationId], references: [id], onUpdate: NoAction)
 
-  @@index([clerkId], map: "idx_users_clerk")
+  @@index([supabaseUserId], map: "idx_users_supabase")
   @@index([email], map: "idx_users_email")
   @@index([organizationId], map: "idx_users_org")
   @@map("users")

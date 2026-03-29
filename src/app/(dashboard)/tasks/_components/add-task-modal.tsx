@@ -6,6 +6,7 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { TextArea } from "@/components/base/textarea/textarea";
 import { Select } from "@/components/base/select/select";
+import { DatePickerField } from "@/components/application/date-picker/date-picker-field";
 import { DialogTrigger, ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
 import { CloseButton } from "@/components/base/buttons/close-button";
 import type { Task, TaskPriority, DomainSlug } from "@/types";
@@ -108,15 +109,12 @@ export function AddTaskModal({ onAdd }: AddTaskModalProps) {
                                         >
                                             {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
                                         </Select>
-                                        <div className="flex flex-col gap-1.5">
-                                            <label className="text-sm font-medium text-secondary">Due date</label>
-                                            <input
-                                                type="date"
-                                                value={dueDate}
-                                                onChange={(e) => setDueDate(e.target.value)}
-                                                className="rounded-lg bg-primary px-3.5 py-2 text-sm text-primary shadow-xs ring-1 ring-primary ring-inset focus:ring-2 focus:ring-brand focus:outline-hidden"
-                                            />
-                                        </div>
+                                        <DatePickerField
+                                            label="Due date"
+                                            value={dueDate}
+                                            onChange={(v) => setDueDate(v)}
+                                            size="sm"
+                                        />
                                     </div>
                                 </div>
 

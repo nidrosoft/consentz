@@ -2,10 +2,9 @@
 // Training Service — CRUD and training matrix generation
 // =============================================================================
 
-import { db } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
-import type { Prisma } from '@prisma/client';
 
 function deriveTrainingStatus(expiryDate: Date | null, isExpired: boolean): string {
   if (isExpired) return 'EXPIRED';
@@ -46,43 +45,49 @@ interface TrainingUpdateParams {
 
 export class TrainingService {
   static async listAll(params: TrainingListParams) {
-    const where: Prisma.TrainingRecordWhereInput = {
-      staffMember: { organizationId: params.organizationId },
-    };
-
-    if (params.filters?.staffId) {
-      where.staffMemberId = params.filters.staffId;
-    }
-    if (params.filters?.courseName) {
-      where.courseName = { contains: params.filters.courseName, mode: 'insensitive' };
-    }
-    if (params.pagination.search) {
-      where.courseName = { contains: params.pagination.search, mode: 'insensitive' };
-    }
-
+    const client = await getDb();
     const skip = (params.pagination.page - 1) * params.pagination.pageSize;
-    const take = params.pagination.pageSize;
 
-    const [rawData, total] = await Promise.all([
-      db.trainingRecord.findMany({
-        where,
-        orderBy: { completedDate: 'desc' },
-        skip,
-        take,
-        include: { staffMember: { select: { firstName: true, lastName: true } } },
-      }),
-      db.trainingRecord.count({ where }),
+    function applyFilters(query: any) {
+      let q = query.eq('staff_members.organization_id', params.organizationId);
+
+      if (params.filters?.staffId) {
+        q = q.eq('staff_member_id', params.filters.staffId);
+      }
+      if (params.filters?.courseName) {
+        q = q.ilike('course_name', `%${params.filters.courseName}%`);
+      }
+      if (params.pagination.search) {
+        q = q.ilike('course_name', `%${params.pagination.search}%`);
+      }
+      return q;
+    }
+
+    const [{ data: rawData }, { count: total }] = await Promise.all([
+      applyFilters(
+        client.from('training_records')
+          .select('*, staff_members!inner(first_name, last_name)'),
+      )
+        .order('completed_date', { ascending: false })
+        .range(skip, skip + params.pagination.pageSize - 1),
+      applyFilters(
+        client.from('training_records')
+          .select('*, staff_members!inner()', { count: 'exact', head: true }),
+      ),
     ]);
 
-    const data = rawData.map((r) => ({
+    const data = (rawData ?? []).map((r: any) => ({
       ...r,
-      status: deriveTrainingStatus(r.expiryDate, r.isExpired),
-      staffName: `${r.staffMember.firstName} ${r.staffMember.lastName}`,
+      status: deriveTrainingStatus(
+        r.expiry_date ? new Date(r.expiry_date) : null,
+        r.is_expired,
+      ),
+      staffName: `${r.staff_members.first_name} ${r.staff_members.last_name}`,
     }));
 
     if (params.filters?.status) {
       const statuses = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
-      const filtered = data.filter((d) => statuses.includes(d.status));
+      const filtered = data.filter((d: any) => statuses.includes(d.status));
       const totalPages = Math.ceil(filtered.length / params.pagination.pageSize);
       return {
         data: filtered,
@@ -90,68 +95,86 @@ export class TrainingService {
       };
     }
 
-    const totalPages = Math.ceil(total / params.pagination.pageSize);
+    const safeTotal = total ?? 0;
+    const totalPages = Math.ceil(safeTotal / params.pagination.pageSize);
     return {
       data,
-      meta: { page: params.pagination.page, pageSize: params.pagination.pageSize, total, totalPages, hasMore: params.pagination.page < totalPages } as PaginationMeta,
+      meta: { page: params.pagination.page, pageSize: params.pagination.pageSize, total: safeTotal, totalPages, hasMore: params.pagination.page < totalPages } as PaginationMeta,
     };
   }
 
   static async getById(id: string) {
-    const record = await db.trainingRecord.findUnique({ where: { id } });
+    const client = await getDb();
+    const { data: record } = await client.from('training_records')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
     if (!record) return null;
-    return { ...record, status: deriveTrainingStatus(record.expiryDate, record.isExpired) };
+    return {
+      ...record,
+      status: deriveTrainingStatus(
+        record.expiry_date ? new Date(record.expiry_date) : null,
+        record.is_expired,
+      ),
+    };
   }
 
   static async create(params: TrainingCreateParams) {
-    const expiryDate = params.expiryDate ? new Date(params.expiryDate) : null;
-    return db.trainingRecord.create({
-      data: {
-        staffMemberId: params.staffId,
-        courseName: params.courseName,
-        completedDate: new Date(params.completedDate),
-        expiryDate,
-        certificateUrl: params.certificateUrl ?? null,
-        isExpired: params.status === 'EXPIRED',
-      },
-    });
+    const expiryDate = params.expiryDate ? new Date(params.expiryDate).toISOString() : null;
+    const client = await getDb();
+    const { data } = await client.from('training_records').insert({
+      staff_member_id: params.staffId,
+      course_name: params.courseName,
+      completed_date: new Date(params.completedDate).toISOString(),
+      expiry_date: expiryDate,
+      certificate_url: params.certificateUrl ?? null,
+      is_expired: params.status === 'EXPIRED',
+    }).select().single();
+    return data;
   }
 
   static async update(params: TrainingUpdateParams) {
-    const data: Prisma.TrainingRecordUpdateInput = {};
-    if (params.courseName !== undefined) data.courseName = params.courseName;
-    if (params.completedDate !== undefined) data.completedDate = new Date(params.completedDate);
-    if (params.expiryDate !== undefined) data.expiryDate = new Date(params.expiryDate);
-    if (params.certificateUrl !== undefined) data.certificateUrl = params.certificateUrl;
-    if (params.status === 'EXPIRED') data.isExpired = true;
-    if (params.status === 'VALID') data.isExpired = false;
+    const updateData: Record<string, unknown> = {};
+    if (params.courseName !== undefined) updateData.course_name = params.courseName;
+    if (params.completedDate !== undefined) updateData.completed_date = new Date(params.completedDate).toISOString();
+    if (params.expiryDate !== undefined) updateData.expiry_date = new Date(params.expiryDate).toISOString();
+    if (params.certificateUrl !== undefined) updateData.certificate_url = params.certificateUrl;
+    if (params.status === 'EXPIRED') updateData.is_expired = true;
+    if (params.status === 'VALID') updateData.is_expired = false;
 
-    return db.trainingRecord.update({ where: { id: params.id }, data });
+    const client = await getDb();
+    const { data } = await client.from('training_records')
+      .update(updateData)
+      .eq('id', params.id)
+      .select()
+      .single();
+    return data;
   }
 
   static async delete(id: string) {
-    await db.trainingRecord.delete({ where: { id } });
+    const client = await getDb();
+    await client.from('training_records').delete().eq('id', id);
     return true;
   }
 
   static async getMatrix(organizationId: string) {
-    const activeStaff = await db.staffMember.findMany({
-      where: { organizationId, isActive: true },
-      include: {
-        trainingRecords: {
-          select: { courseName: true, expiryDate: true, isExpired: true },
-        },
-      },
-      orderBy: { firstName: 'asc' },
-    });
+    const client = await getDb();
+    const { data: activeStaff } = await client.from('staff_members')
+      .select('id, first_name, last_name, training_records(course_name, expiry_date, is_expired)')
+      .eq('organization_id', organizationId)
+      .eq('is_active', true)
+      .order('first_name', { ascending: true });
 
-    const staffRows = activeStaff.map((member) => ({
+    const staffRows = (activeStaff ?? []).map((member: any) => ({
       id: member.id,
-      name: `${member.firstName} ${member.lastName}`,
-      trainings: member.trainingRecords.map((t) => ({
-        courseName: t.courseName,
-        status: deriveTrainingStatus(t.expiryDate, t.isExpired),
-        expiryDate: t.expiryDate?.toISOString() ?? '',
+      name: `${member.first_name} ${member.last_name}`,
+      trainings: (member.training_records ?? []).map((t: any) => ({
+        courseName: t.course_name,
+        status: deriveTrainingStatus(
+          t.expiry_date ? new Date(t.expiry_date) : null,
+          t.is_expired,
+        ),
+        expiryDate: t.expiry_date ?? '',
       })),
     }));
 

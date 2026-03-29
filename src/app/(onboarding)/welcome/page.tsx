@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building07, HeartHand } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
+import { apiPost } from "@/lib/api-client";
 import { cx } from "@/utils/cx";
 
 type ServiceType = "AESTHETIC_CLINIC" | "CARE_HOME" | null;
@@ -26,6 +27,23 @@ const SERVICE_OPTIONS = [
 export default function WelcomePage() {
     const router = useRouter();
     const [selected, setSelected] = useState<ServiceType>(null);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState("");
+
+    async function onContinue() {
+        if (!selected) return;
+        setSaving(true);
+        setSaveError("");
+        try {
+            await apiPost("/api/onboarding/service-type", { serviceType: selected });
+            sessionStorage.setItem("consentz_service_type", selected);
+            router.push("/assessment");
+        } catch (e) {
+            setSaveError(e instanceof Error ? e.message : "Could not save. Try again.");
+        } finally {
+            setSaving(false);
+        }
+    }
 
     return (
         <div className="flex flex-col gap-8">
@@ -47,7 +65,7 @@ export default function WelcomePage() {
                                 type="button"
                                 onClick={() => setSelected(option.id)}
                                 className={cx(
-                                    "flex flex-col gap-4 rounded-xl border-2 p-6 text-left transition duration-100 ease-linear",
+                                    "flex w-full min-w-0 flex-col gap-4 rounded-xl border-2 p-4 text-left transition duration-100 ease-linear sm:p-6",
                                     isSelected
                                         ? "border-brand-600 bg-brand-primary shadow-md"
                                         : "border-secondary bg-primary hover:border-brand-300 hover:bg-primary_hover",
@@ -75,12 +93,19 @@ export default function WelcomePage() {
                 </div>
             </div>
 
-            <div className="flex justify-end">
+            {saveError && (
+                <p className="text-sm text-error-primary" role="alert">
+                    {saveError}
+                </p>
+            )}
+            <div className="flex justify-stretch sm:justify-end">
                 <Button
                     color="primary"
                     size="lg"
-                    isDisabled={!selected}
-                    onClick={() => router.push("/assessment/2")}
+                    className="w-full sm:w-auto"
+                    isDisabled={!selected || saving}
+                    isLoading={saving}
+                    onClick={() => void onContinue()}
                 >
                     Continue &rarr;
                 </Button>

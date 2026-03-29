@@ -26,7 +26,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
   } = {};
 
   if (rawFilters.category) filters.category = rawFilters.category as EvidenceType;
-  if (rawFilters.status) filters.status = rawFilters.status;
+  if (rawFilters.status) filters.status = rawFilters.status as EvidenceStatus;
   if (rawFilters.domain) filters.domain = rawFilters.domain as DomainSlug;
 
   const result = await EvidenceService.list({

@@ -22,7 +22,17 @@ export type EvidenceStatus = 'VALID' | 'EXPIRING_SOON' | 'EXPIRED' | 'PENDING_RE
 
 export type DomainSlug = 'safe' | 'effective' | 'caring' | 'responsive' | 'well-led';
 export type NotificationType = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
-export type EntityType = 'GAP' | 'TASK' | 'EVIDENCE' | 'POLICY' | 'INCIDENT' | 'STAFF' | 'TRAINING' | 'ORGANIZATION';
+export type EntityType =
+    | 'GAP'
+    | 'TASK'
+    | 'EVIDENCE'
+    | 'POLICY'
+    | 'INCIDENT'
+    | 'STAFF'
+    | 'TRAINING'
+    | 'ORGANIZATION'
+    | 'ASSESSMENT'
+    | 'NOTIFICATION';
 export type TrainingStatus = 'VALID' | 'EXPIRING_SOON' | 'EXPIRED';
 export type DbsStatus = 'CLEAR' | 'PENDING' | 'EXPIRED';
 export type CredentialStatus = 'VALID' | 'EXPIRING_SOON' | 'EXPIRED' | 'NOT_APPLICABLE';

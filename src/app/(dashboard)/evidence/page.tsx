@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SearchLg, Upload01, Grid01, List, File06, ArrowsUp, FilterLines, XClose } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
@@ -210,8 +211,30 @@ export default function EvidencePage() {
                 </div>
             )}
 
+            {/* Empty state */}
+            {filtered.length === 0 && !isLoading && (
+                <div className="flex flex-1 items-center justify-center py-16">
+                    <EmptyState size="lg">
+                        <EmptyState.Header>
+                            <EmptyState.Illustration type="documents" />
+                        </EmptyState.Header>
+                        <EmptyState.Content>
+                            <EmptyState.Title>No evidence uploaded yet</EmptyState.Title>
+                            <EmptyState.Description>
+                                Upload policies, certificates, training records, and other documents to build your compliance evidence library.
+                            </EmptyState.Description>
+                        </EmptyState.Content>
+                        <EmptyState.Footer>
+                            <Button color="primary" size="md" iconLeading={Upload01} onClick={() => router.push("/evidence/upload")}>
+                                Upload Evidence
+                            </Button>
+                        </EmptyState.Footer>
+                    </EmptyState>
+                </div>
+            )}
+
             {/* Grid view */}
-            {view === "grid" ? (
+            {filtered.length > 0 && (view === "grid" ? (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {filtered.map((ev) => (
                         <button
@@ -289,7 +312,7 @@ export default function EvidencePage() {
                         </Table.Body>
                     </Table>
                 </TableCard.Root>
-            )}
+            ))}
         </div>
     );
 }

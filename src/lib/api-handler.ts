@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { ApiErrors } from '@/lib/api-response';
-import { AuthContext, AuthError, getAuthContext } from '@/lib/auth';
+import { AuthContext, AuthError, getAuthContext, resolveSessionAuth, type SessionAuth } from '@/lib/auth';
 
 // =============================================================================
 // API Route Handler Wrappers
@@ -17,6 +17,11 @@ type AuthenticatedHandler = (
   context: { params: Record<string, string>; auth: AuthContext },
 ) => Promise<NextResponse>;
 
+type SessionHandler = (
+  req: NextRequest,
+  context: { params: Record<string, string>; auth: SessionAuth },
+) => Promise<NextResponse>;
+
 type PublicHandler = (
   req: NextRequest,
   context: { params: Record<string, string> },
@@ -29,6 +34,19 @@ export function withAuth(handler: AuthenticatedHandler) {
   return async (req: NextRequest, context: RouteContext) => {
     try {
       const auth = await getAuthContext();
+      const params = await context.params;
+      return await handler(req, { params, auth });
+    } catch (error) {
+      return handleError(error);
+    }
+  };
+}
+
+/** Authenticated user; organisation may be null (e.g. first onboarding step). */
+export function withSession(handler: SessionHandler) {
+  return async (req: NextRequest, context: RouteContext) => {
+    try {
+      const auth = await resolveSessionAuth();
       const params = await context.params;
       return await handler(req, { params, auth });
     } catch (error) {

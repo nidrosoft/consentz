@@ -2,10 +2,30 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Copy01, Eye, EyeOff, RefreshCw01 } from "@untitledui/icons";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, Copy01, Key01, RefreshCw01, Trash01, AlertCircle, Plus } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface SdkKey {
+    id: string;
+    name: string;
+    key_prefix: string;
+    key?: string; // full key, only present right after generation
+    status: "ACTIVE" | "REVOKED";
+    created_at: string;
+    last_used_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Static data (unchanged sections)
+// ---------------------------------------------------------------------------
 
 const INTEGRATIONS = [
     { id: "cqc", name: "CQC API", description: "Automatically sync your CQC profile and inspection data", connected: true },
@@ -15,19 +35,77 @@ const INTEGRATIONS = [
     { id: "slack", name: "Slack", description: "Receive compliance alerts and task notifications", connected: false },
 ];
 
-const MOCK_API_KEY = "cqc_live_sk_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";
 const MOCK_WEBHOOK_URL = "https://api.consentz.com/webhooks/cqc-compliance";
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function IntegrationsSettingsPage() {
     const router = useRouter();
-    const [showKey, setShowKey] = useState(false);
-    const [copied, setCopied] = useState(false);
+    const queryClient = useQueryClient();
 
-    const handleCopy = (text: string) => {
+    // Full key shown after generate / rotate (only visible once)
+    const [revealedKey, setRevealedKey] = useState<string | null>(null);
+    const [revealedKeyId, setRevealedKeyId] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+
+    // -----------------------------------------------------------------------
+    // Queries & Mutations
+    // -----------------------------------------------------------------------
+
+    const { data: keys = [], isLoading } = useQuery({
+        queryKey: ["sdk-keys"],
+        queryFn: () => apiGet<SdkKey[]>("/api/sdk/keys").then((r) => r.data),
+    });
+
+    const generateMutation = useMutation({
+        mutationFn: (name: string) =>
+            apiPost<SdkKey & { key: string }>("/api/sdk/keys", { name }).then((r) => r.data),
+        onSuccess: (data) => {
+            setRevealedKey(data.key);
+            setRevealedKeyId(data.id);
+            queryClient.invalidateQueries({ queryKey: ["sdk-keys"] });
+        },
+    });
+
+    const rotateMutation = useMutation({
+        mutationFn: (id: string) =>
+            apiPatch<SdkKey & { key: string }>(`/api/sdk/keys/${id}`, {}).then((r) => r.data),
+        onSuccess: (data) => {
+            setRevealedKey(data.key);
+            setRevealedKeyId(data.id);
+            queryClient.invalidateQueries({ queryKey: ["sdk-keys"] });
+        },
+    });
+
+    const revokeMutation = useMutation({
+        mutationFn: (id: string) => apiDelete(`/api/sdk/keys/${id}`),
+        onSuccess: () => {
+            setConfirmRevokeId(null);
+            queryClient.invalidateQueries({ queryKey: ["sdk-keys"] });
+        },
+    });
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    const handleCopy = (text: string, id: string) => {
         navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
     };
+
+    const formatDate = (iso: string) => {
+        const d = new Date(iso);
+        return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    };
+
+    // -----------------------------------------------------------------------
+    // Render
+    // -----------------------------------------------------------------------
 
     return (
         <div className="flex flex-col gap-6">
@@ -64,34 +142,194 @@ export default function IntegrationsSettingsPage() {
                         <h2 className="text-lg font-semibold text-primary">API Keys</h2>
                         <p className="mt-1 text-sm text-tertiary">Use API keys to authenticate requests to the Consentz Compliance API.</p>
                     </div>
-                    <Button color="primary" size="sm">Generate New Key</Button>
+                    <Button
+                        color="primary"
+                        size="sm"
+                        iconLeading={Plus}
+                        isLoading={generateMutation.isPending}
+                        onClick={() => generateMutation.mutate("API Key")}
+                    >
+                        Generate New Key
+                    </Button>
                 </div>
 
-                <div className="rounded-lg border border-secondary">
-                    <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
-                        <div>
-                            <p className="text-sm font-medium text-primary">Live API Key</p>
-                            <p className="text-xs text-tertiary">Created 15 Jan 2026</p>
+                {/* Newly generated / rotated key banner */}
+                {revealedKey && (
+                    <div className="mb-4 rounded-lg border border-warning-300 bg-warning-primary p-4">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle className="mt-0.5 size-5 shrink-0 text-fg-warning-primary" />
+                            <div className="flex-1">
+                                <p className="text-sm font-semibold text-primary">Copy your API key now</p>
+                                <p className="mt-0.5 text-xs text-tertiary">This key will only be shown once. Copy it now and store it securely.</p>
+                                <div className="mt-3 flex items-center gap-2">
+                                    <code className="flex-1 rounded-md bg-primary px-3 py-2 font-mono text-xs text-primary break-all border border-secondary">
+                                        {revealedKey}
+                                    </code>
+                                    <Button
+                                        color="secondary"
+                                        size="sm"
+                                        iconLeading={Copy01}
+                                        onClick={() => handleCopy(revealedKey, "revealed")}
+                                    >
+                                        {copiedId === "revealed" ? "Copied!" : "Copy"}
+                                    </Button>
+                                </div>
+                                <div className="mt-2">
+                                    <Button color="link-gray" size="sm" onClick={() => { setRevealedKey(null); setRevealedKeyId(null); }}>
+                                        Dismiss
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
-                        <Badge size="sm" color="success" type="pill-color">Active</Badge>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-3">
-                        <code className="flex-1 rounded-md bg-secondary px-3 py-2 font-mono text-xs text-primary">
-                            {showKey ? MOCK_API_KEY : "cqc_live_sk_••••••••••••••••••••••••••••"}
-                        </code>
-                        <button onClick={() => setShowKey(!showKey)} className="rounded-lg p-2 hover:bg-primary_hover" title={showKey ? "Hide" : "Reveal"}>
-                            {showKey ? <EyeOff className="size-4 text-fg-quaternary" /> : <Eye className="size-4 text-fg-quaternary" />}
-                        </button>
-                        <button onClick={() => handleCopy(MOCK_API_KEY)} className="rounded-lg p-2 hover:bg-primary_hover" title="Copy">
-                            <Copy01 className="size-4 text-fg-quaternary" />
-                        </button>
+                )}
+
+                {/* Loading skeleton */}
+                {isLoading && (
+                    <div className="flex flex-col gap-3">
+                        {[1, 2].map((i) => (
+                            <div key={i} className="animate-pulse rounded-lg border border-secondary p-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-2">
+                                        <div className="h-4 w-32 rounded bg-tertiary" />
+                                        <div className="h-3 w-24 rounded bg-tertiary" />
+                                    </div>
+                                    <div className="h-5 w-16 rounded-full bg-tertiary" />
+                                </div>
+                                <div className="mt-3 h-8 w-full rounded bg-tertiary" />
+                            </div>
+                        ))}
                     </div>
-                    {copied && <p className="px-4 pb-3 text-xs text-success-primary">Copied to clipboard!</p>}
-                    <div className="flex items-center gap-2 border-t border-secondary px-4 py-3">
-                        <Button color="secondary" size="sm" iconLeading={RefreshCw01}>Rotate Key</Button>
-                        <Button color="primary-destructive" size="sm">Revoke</Button>
+                )}
+
+                {/* Empty state */}
+                {!isLoading && keys.length === 0 && (
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-secondary py-10">
+                        <Key01 className="size-8 text-fg-quaternary" />
+                        <p className="mt-3 text-sm font-medium text-primary">No API keys generated yet</p>
+                        <p className="mt-1 text-xs text-tertiary">Generate a key to start using the Consentz Compliance API.</p>
+                        <div className="mt-4">
+                            <Button
+                                color="primary"
+                                size="sm"
+                                isLoading={generateMutation.isPending}
+                                onClick={() => generateMutation.mutate("API Key")}
+                            >
+                                Generate Your First Key
+                            </Button>
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {/* Key list */}
+                {!isLoading && keys.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                        {keys.map((key) => {
+                            const isActive = key.status === "ACTIVE";
+                            const isRevealed = revealedKeyId === key.id && revealedKey;
+                            return (
+                                <div
+                                    key={key.id}
+                                    className={cx(
+                                        "rounded-lg border",
+                                        isRevealed ? "border-brand bg-brand-section_subtle" : "border-secondary",
+                                    )}
+                                >
+                                    {/* Header row */}
+                                    <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
+                                        <div>
+                                            <p className="text-sm font-medium text-primary">{key.name}</p>
+                                            <p className="text-xs text-tertiary">
+                                                Created {formatDate(key.created_at)}
+                                                {key.last_used_at && <> &middot; Last used {formatDate(key.last_used_at)}</>}
+                                            </p>
+                                        </div>
+                                        <Badge
+                                            size="sm"
+                                            color={isActive ? "success" : "gray"}
+                                            type="pill-color"
+                                        >
+                                            {isActive ? "Active" : "Revoked"}
+                                        </Badge>
+                                    </div>
+
+                                    {/* Key display */}
+                                    <div className="flex items-center gap-2 px-4 py-3">
+                                        <code className="flex-1 rounded-md bg-secondary px-3 py-2 font-mono text-xs text-primary">
+                                            {key.key_prefix}{"••••••••••••"}
+                                        </code>
+                                        <button
+                                            onClick={() => handleCopy(key.key_prefix, key.id)}
+                                            className="rounded-lg p-2 transition duration-100 ease-linear hover:bg-primary_hover"
+                                            title="Copy prefix"
+                                        >
+                                            <Copy01 className="size-4 text-fg-quaternary" />
+                                        </button>
+                                    </div>
+                                    {copiedId === key.id && (
+                                        <p className="px-4 pb-3 text-xs text-success-primary">Copied to clipboard!</p>
+                                    )}
+
+                                    {/* Actions (only for active keys) */}
+                                    {isActive && (
+                                        <div className="flex items-center gap-2 border-t border-secondary px-4 py-3">
+                                            <Button
+                                                color="secondary"
+                                                size="sm"
+                                                iconLeading={RefreshCw01}
+                                                isLoading={rotateMutation.isPending}
+                                                onClick={() => rotateMutation.mutate(key.id)}
+                                            >
+                                                Rotate Key
+                                            </Button>
+
+                                            {confirmRevokeId === key.id ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-error-primary">Are you sure?</span>
+                                                    <Button
+                                                        color="primary-destructive"
+                                                        size="sm"
+                                                        isLoading={revokeMutation.isPending}
+                                                        onClick={() => revokeMutation.mutate(key.id)}
+                                                    >
+                                                        Confirm Revoke
+                                                    </Button>
+                                                    <Button
+                                                        color="secondary"
+                                                        size="sm"
+                                                        onClick={() => setConfirmRevokeId(null)}
+                                                    >
+                                                        Cancel
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    color="primary-destructive"
+                                                    size="sm"
+                                                    iconLeading={Trash01}
+                                                    onClick={() => setConfirmRevokeId(key.id)}
+                                                >
+                                                    Revoke
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Error state */}
+                {generateMutation.isError && (
+                    <p className="mt-2 text-xs text-error-primary">Failed to generate key. Please try again.</p>
+                )}
+                {revokeMutation.isError && (
+                    <p className="mt-2 text-xs text-error-primary">Failed to revoke key. Please try again.</p>
+                )}
+                {rotateMutation.isError && (
+                    <p className="mt-2 text-xs text-error-primary">Failed to rotate key. Please try again.</p>
+                )}
             </div>
 
             {/* Webhooks */}

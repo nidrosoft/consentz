@@ -22,15 +22,23 @@ interface SidebarNavigationSectionsSubheadingsProps {
     activeUrl?: string;
     /** List of items to display. */
     items: Array<{ label: string; items: NavItemType[] }>;
+    /** Current user info for the account card. */
+    user?: { name: string; email: string; avatar?: string };
 }
 
 const EXPANDED_WIDTH = 292;
 const COLLAPSED_WIDTH = 68;
 
-export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items }: SidebarNavigationSectionsSubheadingsProps) => {
+export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, user }: SidebarNavigationSectionsSubheadingsProps) => {
     const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
     const toggleSidebar = useUiStore((s) => s.toggleSidebar);
     const sidebarWidth = sidebarCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
+
+    const accountItems = user
+        ? [{ id: "current", name: user.name, email: user.email, avatar: user.avatar ?? "", status: "online" as const }]
+        : undefined;
+    const accountInitials = user ? user.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "JS";
+    const accountAlt = user?.name ?? "Jane Smith";
 
     /* ------------------------------------------------------------------ */
     /*  Mobile content — always expanded (rendered inside drawer)         */
@@ -61,7 +69,7 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items }:
             </ul>
 
             <div className="mt-auto flex flex-col gap-5 px-2 py-4">
-                <NavAccountCard />
+                <NavAccountCard items={accountItems} selectedAccountId={accountItems ? "current" : undefined} />
             </div>
         </aside>
     );
@@ -143,9 +151,9 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items }:
                             >
                                 <Avatar
                                     status="online"
-                                    initials="JS"
+                                    initials={accountInitials}
                                     size="md"
-                                    alt="Jane Smith"
+                                    alt={accountAlt}
                                 />
                             </AriaButton>
                             <AriaPopover
@@ -160,12 +168,12 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items }:
                                     )
                                 }
                             >
-                                <NavAccountMenu />
+                                <NavAccountMenu accounts={accountItems} selectedAccountId={accountItems ? "current" : undefined} />
                             </AriaPopover>
                         </AriaDialogTrigger>
                     </div>
                 ) : (
-                    <NavAccountCard />
+                    <NavAccountCard items={accountItems} selectedAccountId={accountItems ? "current" : undefined} />
                 )}
             </div>
         </aside>

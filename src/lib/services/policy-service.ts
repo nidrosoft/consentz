@@ -2,8 +2,7 @@
 // Policy Service — CRUD, approval workflow, and version history
 // =============================================================================
 
-import { db } from '@/lib/db';
-import type { Prisma, PolicyStatus } from '@prisma/client';
+import { getDb } from '@/lib/db';
 import type { PaginationInput } from '@/lib/pagination';
 import type { PaginationMeta } from '@/lib/api-response';
 
@@ -17,7 +16,7 @@ interface PolicyListParams {
 }
 
 interface PolicyListResult {
-  data: Awaited<ReturnType<typeof db.policy.findMany>>;
+  data: any[];
   meta: PaginationMeta;
 }
 
@@ -38,53 +37,46 @@ interface PolicyUpdateParams {
 
 export class PolicyService {
   static async list(params: PolicyListParams): Promise<PolicyListResult> {
-    const where: Prisma.PolicyWhereInput = {
-      organizationId: params.organizationId,
-    };
-
-    if (params.filters?.status) {
-      const stats = Array.isArray(params.filters.status)
-        ? params.filters.status
-        : [params.filters.status];
-      const mapped = stats.map((s) =>
-        s === 'REVIEW' ? 'UNDER_REVIEW' : s === 'APPROVED' || s === 'PUBLISHED' ? 'ACTIVE' : s,
-      );
-      where.status = { in: mapped as PolicyStatus[] };
-    }
-    if (params.filters?.domain) {
-      const doms = Array.isArray(params.filters.domain)
-        ? params.filters.domain
-        : [params.filters.domain];
-      where.domains = { hasSome: doms };
-    }
-    if (params.pagination.search) {
-      where.OR = [
-        { title: { contains: params.pagination.search, mode: 'insensitive' } },
-        { content: { contains: params.pagination.search, mode: 'insensitive' } },
-      ];
-    }
-
+    const client = await getDb();
     const skip = (params.pagination.page - 1) * params.pagination.pageSize;
-    const take = params.pagination.pageSize;
 
-    const [data, total] = await Promise.all([
-      db.policy.findMany({
-        where,
-        orderBy: { updatedAt: 'desc' },
-        skip,
-        take,
-      }),
-      db.policy.count({ where }),
+    function applyFilters(query: any) {
+      let q = query.eq('organization_id', params.organizationId);
+
+      if (params.filters?.status) {
+        const stats = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
+        const mapped = stats.map((s) =>
+          s === 'REVIEW' ? 'UNDER_REVIEW' : s === 'APPROVED' || s === 'PUBLISHED' ? 'ACTIVE' : s,
+        );
+        q = q.in('status', mapped);
+      }
+      if (params.filters?.domain) {
+        const doms = Array.isArray(params.filters.domain) ? params.filters.domain : [params.filters.domain];
+        q = q.overlaps('domains', doms);
+      }
+      if (params.pagination.search) {
+        const s = params.pagination.search.replace(/%/g, '\\%');
+        q = q.or(`title.ilike.%${s}%,content.ilike.%${s}%`);
+      }
+      return q;
+    }
+
+    const [{ data }, { count: total }] = await Promise.all([
+      applyFilters(client.from('policies').select('*'))
+        .order('updated_at', { ascending: false })
+        .range(skip, skip + params.pagination.pageSize - 1),
+      applyFilters(client.from('policies').select('*', { count: 'exact', head: true })),
     ]);
 
-    const totalPages = Math.ceil(total / params.pagination.pageSize);
+    const safeTotal = total ?? 0;
+    const totalPages = Math.ceil(safeTotal / params.pagination.pageSize);
 
     return {
-      data,
+      data: data ?? [],
       meta: {
         page: params.pagination.page,
         pageSize: params.pagination.pageSize,
-        total,
+        total: safeTotal,
         totalPages,
         hasMore: params.pagination.page < totalPages,
       },
@@ -92,88 +84,108 @@ export class PolicyService {
   }
 
   static async getById(id: string) {
-    return db.policy.findUnique({ where: { id } });
+    const client = await getDb();
+    const { data } = await client.from('policies')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    return data;
   }
 
   static async create(params: PolicyCreateParams) {
-    return db.policy.create({
-      data: {
-        organizationId: params.organizationId,
-        title: params.title,
-        content: params.content ?? '',
-        createdBy: params.createdBy,
-        status: 'DRAFT',
-        version: '1.0',
-      },
-    });
+    const client = await getDb();
+    const { data } = await client.from('policies').insert({
+      organization_id: params.organizationId,
+      title: params.title,
+      content: params.content ?? '',
+      created_by: params.createdBy,
+      status: 'DRAFT',
+      version: '1.0',
+    }).select().single();
+    return data;
   }
 
   static async update(params: PolicyUpdateParams) {
+    const client = await getDb();
     const { id, ...updates } = params;
-    const data: Prisma.PolicyUpdateInput = {};
-    if (updates.title !== undefined) data.title = updates.title;
-    if (updates.content !== undefined) data.content = updates.content;
-    if (updates.status !== undefined)
-      data.status = updates.status as PolicyStatus;
-    data.lastUpdated = new Date();
+    const updateData: Record<string, unknown> = {
+      last_updated: new Date().toISOString(),
+    };
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.content !== undefined) updateData.content = updates.content;
+    if (updates.status !== undefined) updateData.status = updates.status;
 
-    return db.policy.update({ where: { id }, data });
+    const { data } = await client.from('policies')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    return data;
   }
 
   static async softDelete(id: string) {
-    await db.policy.update({
-      where: { id },
-      data: { status: 'ARCHIVED' },
-    });
+    const client = await getDb();
+    await client.from('policies')
+      .update({ status: 'ARCHIVED' })
+      .eq('id', id);
     return true;
   }
 
   static async approve(id: string, approvedBy: string) {
-    return db.policy.update({
-      where: { id },
-      data: {
+    const client = await getDb();
+    const { data } = await client.from('policies')
+      .update({
         status: 'ACTIVE',
-        approvedBy,
-        approvedAt: new Date(),
-        lastUpdated: new Date(),
-      },
-    });
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString(),
+        last_updated: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    return data;
   }
 
   static async publish(id: string, changedBy: string) {
-    const policy = await db.policy.findUnique({ where: { id } });
+    const client = await getDb();
+    const { data: policy } = await client.from('policies')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
     if (!policy) return null;
 
-    const versionCount = await db.policyVersion.count({ where: { policyId: id } });
-    const nextVersionNumber = versionCount + 1;
+    const { count: versionCount } = await client.from('policy_versions')
+      .select('*', { count: 'exact', head: true })
+      .eq('policy_id', id);
+    const nextVersionNumber = (versionCount ?? 0) + 1;
 
-    const [updated] = await db.$transaction([
-      db.policy.update({
-        where: { id },
-        data: {
-          status: 'ACTIVE',
-          lastUpdated: new Date(),
-          version: `${nextVersionNumber}.0`,
-        },
-      }),
-      db.policyVersion.create({
-        data: {
-          policyId: id,
-          versionNumber: nextVersionNumber,
-          content: policy.content ?? '',
-          createdById: changedBy,
-        },
-      }),
-    ]);
+    const { data: updated } = await client.from('policies')
+      .update({
+        status: 'ACTIVE',
+        last_updated: new Date().toISOString(),
+        version: `${nextVersionNumber}.0`,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    await client.from('policy_versions').insert({
+      policy_id: id,
+      version_number: nextVersionNumber,
+      content: policy.content ?? '',
+      created_by_id: changedBy,
+    });
 
     return updated;
   }
 
   static async getVersionHistory(policyId: string) {
-    return db.policyVersion.findMany({
-      where: { policyId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const client = await getDb();
+    const { data } = await client.from('policy_versions')
+      .select('*')
+      .eq('policy_id', policyId)
+      .order('created_at', { ascending: false });
+    return data ?? [];
   }
 
   static async recordAcknowledgement(
@@ -181,19 +193,16 @@ export class PolicyService {
     userId: string,
     userName: string,
   ) {
-    return db.policyAcknowledgement.upsert({
-      where: {
-        policyId_userId: { policyId, userId },
-      },
-      create: {
-        policyId,
-        userId,
-        userName,
-      },
-      update: {
-        userName,
-        signedAt: new Date(),
-      },
-    });
+    const client = await getDb();
+    const { data } = await client.from('policy_acknowledgements')
+      .upsert({
+        policy_id: policyId,
+        user_id: userId,
+        user_name: userName,
+        signed_at: new Date().toISOString(),
+      }, { onConflict: 'policy_id,user_id' })
+      .select()
+      .single();
+    return data;
   }
 }

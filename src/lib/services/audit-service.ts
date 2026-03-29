@@ -2,8 +2,7 @@
 // Audit Service — Activity logging for all platform actions
 // =============================================================================
 
-import { db } from '@/lib/db';
-import type { Prisma } from '@prisma/client';
+import { getDb } from '@/lib/db';
 import type { EntityType } from '@/types';
 
 interface AuditLogParams {
@@ -24,21 +23,19 @@ export class AuditService {
    */
   static async log(params: AuditLogParams): Promise<void> {
     try {
-      await db.activityLog.create({
-        data: {
-          organizationId: params.organizationId,
-          actorId: params.userId,
-          actorName: params.actorName ?? params.userId,
-          action: params.action,
-          description: params.description,
-          entityType: params.entityType,
-          entityId: params.entityId,
-          previousValues: params.previousValues as Prisma.InputJsonValue ?? undefined,
-          newValues: params.newValues as Prisma.InputJsonValue ?? undefined,
-        },
+      const client = await getDb();
+      await client.from('activity_logs').insert({
+        organization_id: params.organizationId,
+        actor_id: params.userId,
+        actor_name: params.actorName ?? params.userId,
+        action: params.action,
+        description: params.description,
+        entity_type: params.entityType,
+        entity_id: params.entityId,
+        previous_values: params.previousValues ?? null,
+        new_values: params.newValues ?? null,
       });
     } catch {
-      // Fire-and-forget — swallow errors so callers are never disrupted
       console.error('[AuditService] Failed to log activity:', params.action);
     }
   }

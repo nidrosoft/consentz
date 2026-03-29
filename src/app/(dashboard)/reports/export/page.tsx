@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Download01 } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
+import { DatePickerField } from "@/components/application/date-picker/date-picker-field";
 import { cx } from "@/utils/cx";
 
 const SECTIONS = [
@@ -78,12 +79,10 @@ export default function ExportPage() {
                 <h3 className="mb-3 text-sm font-semibold text-primary">Date Range</h3>
                 <div className="flex gap-4">
                     <div className="flex-1">
-                        <label className="mb-1 block text-xs font-medium text-tertiary">From</label>
-                        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary" />
+                        <DatePickerField label="From" value={dateFrom} onChange={setDateFrom} size="sm" />
                     </div>
                     <div className="flex-1">
-                        <label className="mb-1 block text-xs font-medium text-tertiary">To</label>
-                        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary" />
+                        <DatePickerField label="To" value={dateTo} onChange={setDateTo} size="sm" />
                     </div>
                 </div>
             </div>

@@ -2,9 +2,10 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, SearchLg, AlertTriangle, ArrowsUp, FilterLines, XClose } from "@untitledui/icons";
+import { Plus, SearchLg, AlertTriangle, AlertCircle, ArrowsUp, FilterLines, XClose } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
@@ -206,8 +207,30 @@ export default function IncidentsPage() {
                 </div>
             )}
 
+            {/* Empty state */}
+            {incidents.length === 0 && !isLoading && (
+                <div className="flex flex-1 items-center justify-center py-16">
+                    <EmptyState size="lg">
+                        <EmptyState.Header>
+                            <EmptyState.FeaturedIcon icon={AlertCircle} color="success" theme="light" />
+                        </EmptyState.Header>
+                        <EmptyState.Content>
+                            <EmptyState.Title>No incidents recorded</EmptyState.Title>
+                            <EmptyState.Description>
+                                When incidents occur, record them here to track investigations, outcomes, and lessons learned for CQC compliance.
+                            </EmptyState.Description>
+                        </EmptyState.Content>
+                        <EmptyState.Footer>
+                            <Button color="primary" size="md" iconLeading={Plus} onClick={() => router.push("/incidents/report")}>
+                                Report Incident
+                            </Button>
+                        </EmptyState.Footer>
+                    </EmptyState>
+                </div>
+            )}
+
             {/* Table */}
-            <TableCard.Root>
+            {incidents.length > 0 && (<TableCard.Root>
                 <TableCard.Header title="Incidents" badge={String(filtered.length)} description="Click any row to view incident details." />
                 <Table aria-label="Incidents" selectionMode="none">
                     <Table.Header>
@@ -255,7 +278,7 @@ export default function IncidentsPage() {
                         )}
                     </Table.Body>
                 </Table>
-            </TableCard.Root>
+            </TableCard.Root>)}
         </div>
     );
 }

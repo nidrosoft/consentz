@@ -1,28 +1,29 @@
 import { withAuth } from '@/lib/api-handler';
 import { apiSuccess } from '@/lib/api-response';
-import { db } from '@/lib/db';
-import type { ServiceType } from '@prisma/client';
+import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { params, auth }) => {
+  const client = await getDb();
   const url = new URL(req.url);
-  const serviceType = (url.searchParams.get('serviceType') ?? 'AESTHETIC_CLINIC') as ServiceType;
+  const serviceType = url.searchParams.get('serviceType') ?? 'AESTHETIC_CLINIC';
 
-  const questions = await db.assessmentQuestion.findMany({
-    where: { serviceType },
-    include: { kloe: true },
-    orderBy: { sortOrder: 'asc' },
-  });
+  const { data: questions } = await client.from('assessment_questions')
+    .select('*, kloe:kloes(*)')
+    .eq('service_type', serviceType)
+    .order('sort_order', { ascending: true });
+
+  const items = questions ?? [];
 
   const grouped = new Map<string, {
     domain: string;
     domainName: string;
     kloeCode: string;
     kloeTitle: string;
-    questions: typeof questions;
+    questions: typeof items;
   }>();
 
-  for (const q of questions) {
-    const code = q.kloe?.code ?? 'S1';
+  for (const q of items) {
+    const code = (q.kloe as any)?.code ?? 'S1';
     const domainCode = code[0] ?? 'S';
     const domainMap: Record<string, string> = {
       S: 'safe', E: 'effective', C: 'caring', R: 'responsive', W: 'well-led',
@@ -37,7 +38,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
         domain,
         domainName: domainNameMap[domainCode] ?? 'Safe',
         kloeCode: code,
-        kloeTitle: q.kloe?.question ?? code,
+        kloeTitle: (q.kloe as any)?.question ?? code,
         questions: [],
       });
     }
@@ -45,7 +46,7 @@ export const GET = withAuth(async (req, { params, auth }) => {
   }
 
   return apiSuccess({
-    total: questions.length,
+    total: items.length,
     serviceType,
     sections: Array.from(grouped.values()),
   });

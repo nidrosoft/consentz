@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ChevronLeft, DotsVertical, X } from "@untitledui/icons";
 import { Avatar } from "@/components/base/avatar/avatar";
@@ -9,31 +9,83 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { cx } from "@/utils/cx";
 
-const USERS = [
-    { id: "1", name: "Jane Smith", email: "jane@brightwood.co.uk", role: "Owner", status: "Active" },
-    { id: "2", name: "Mark Jones", email: "mark@brightwood.co.uk", role: "Admin", status: "Active" },
-    { id: "3", name: "Sarah Brown", email: "sarah@brightwood.co.uk", role: "Staff", status: "Active" },
-    { id: "4", name: "Pending invite", email: "tom@brightwood.co.uk", role: "Viewer", status: "Invited", invitedAgo: "2d ago" },
-];
+type TeamUser = {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status: "Active" | "Invited";
+};
+
+const ROLE_DISPLAY: Record<string, string> = {
+    SUPER_ADMIN: "Super Admin",
+    COMPLIANCE_MANAGER: "Compliance Manager",
+    DEPARTMENT_LEAD: "Department Lead",
+    STAFF_MEMBER: "Staff",
+    AUDITOR: "Auditor",
+    OWNER: "Owner",
+    ADMIN: "Admin",
+    MANAGER: "Manager",
+    STAFF: "Staff",
+    VIEWER: "Viewer",
+};
 
 const ROLE_BADGE: Record<string, "brand" | "success" | "warning" | "gray"> = {
-    Owner: "brand", Admin: "brand", Staff: "gray", Viewer: "gray",
+    SUPER_ADMIN: "brand",
+    COMPLIANCE_MANAGER: "brand",
+    OWNER: "brand",
+    ADMIN: "brand",
+    DEPARTMENT_LEAD: "brand",
+    MANAGER: "brand",
+    STAFF_MEMBER: "gray",
+    STAFF: "gray",
+    AUDITOR: "gray",
+    VIEWER: "gray",
 };
 
 const ROLES = [
-    { value: "Admin", label: "Admin", description: "Full access" },
-    { value: "Manager", label: "Manager", description: "Manage content" },
-    { value: "Staff", label: "Staff", description: "View + limited edit" },
-    { value: "Viewer", label: "Viewer", description: "Read only" },
-];
+    { value: "ADMIN", label: "Admin", description: "Full access" },
+    { value: "MANAGER", label: "Manager", description: "Manage content" },
+    { value: "STAFF", label: "Staff", description: "View + limited edit" },
+    { value: "VIEWER", label: "Viewer", description: "Read only" },
+] as const;
 
 export default function UsersSettingsPage() {
     const router = useRouter();
+    const [users, setUsers] = useState<TeamUser[]>([]);
+    const [listLoading, setListLoading] = useState(true);
+    const [listError, setListError] = useState<string | null>(null);
     const [showInvite, setShowInvite] = useState(false);
     const [inviteEmail, setInviteEmail] = useState("");
-    const [inviteRole, setInviteRole] = useState("Staff");
+    const [inviteRole, setInviteRole] = useState<(typeof ROLES)[number]["value"]>("STAFF");
+    const [inviteSubmitting, setInviteSubmitting] = useState(false);
+    const [inviteError, setInviteError] = useState<string | null>(null);
     const [menuOpen, setMenuOpen] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    const loadUsers = useCallback(async () => {
+        setListLoading(true);
+        setListError(null);
+        try {
+            const res = await fetch("/api/organization/users");
+            const json = await res.json();
+            if (!json.success) {
+                setListError(json.error?.message ?? "Failed to load team members");
+                setUsers([]);
+                return;
+            }
+            setUsers(json.data as TeamUser[]);
+        } catch {
+            setListError("Failed to load team members");
+            setUsers([]);
+        } finally {
+            setListLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        void loadUsers();
+    }, [loadUsers]);
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -50,10 +102,18 @@ export default function UsersSettingsPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Team Members</h1>
-                    <p className="mt-1 text-sm text-tertiary">{USERS.length} members</p>
+                    <p className="mt-1 text-sm text-tertiary">
+                        {listLoading ? "Loading…" : `${users.length} members`}
+                    </p>
                 </div>
                 <Button color="primary" size="lg" iconLeading={Plus} onClick={() => setShowInvite(true)}>Invite User</Button>
             </div>
+
+            {listError && (
+                <p className="text-sm text-error-primary" role="alert">
+                    {listError}
+                </p>
+            )}
 
             <div className="overflow-hidden rounded-xl border border-secondary">
                 <table className="w-full">
@@ -66,20 +126,21 @@ export default function UsersSettingsPage() {
                         </tr>
                     </thead>
                     <tbody>
-                        {USERS.map((user, i) => (
-                            <tr key={user.id} className={i < USERS.length - 1 ? "border-b border-secondary" : ""}>
+                        {users.map((user, i) => (
+                            <tr key={user.id} className={i < users.length - 1 ? "border-b border-secondary" : ""}>
                                 <td className="px-4 py-3">
                                     <div className="flex items-center gap-3">
                                         <Avatar size="sm" initials={user.name.split(" ").map((n) => n[0]).join("")} />
                                         <div>
                                             <p className="text-sm font-medium text-primary">{user.name}</p>
                                             <p className="text-xs text-tertiary">{user.email}</p>
-                                            {user.invitedAgo && <p className="text-xs text-quaternary">Invited {user.invitedAgo}</p>}
                                         </div>
                                     </div>
                                 </td>
                                 <td className="px-4 py-3">
-                                    <Badge size="sm" color={ROLE_BADGE[user.role] ?? "gray"} type="pill-color">{user.role}</Badge>
+                                    <Badge size="sm" color={ROLE_BADGE[user.role] ?? "gray"} type="pill-color">
+                                        {ROLE_DISPLAY[user.role] ?? user.role}
+                                    </Badge>
                                 </td>
                                 <td className="px-4 py-3">
                                     <Badge size="sm" color={user.status === "Active" ? "success" : "warning"} type="pill-color">{user.status}</Badge>
@@ -100,6 +161,9 @@ export default function UsersSettingsPage() {
                         ))}
                     </tbody>
                 </table>
+                {!listLoading && users.length === 0 && !listError && (
+                    <p className="px-4 py-8 text-center text-sm text-tertiary">No team members yet.</p>
+                )}
             </div>
 
             {/* Invite Dialog */}
@@ -108,10 +172,24 @@ export default function UsersSettingsPage() {
                     <div className="w-full max-w-md rounded-xl border border-secondary bg-primary p-6 shadow-xl">
                         <div className="mb-5 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-primary">Invite Team Member</h2>
-                            <button onClick={() => setShowInvite(false)} className="rounded-lg p-1 hover:bg-primary_hover"><X className="size-5 text-fg-quaternary" /></button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowInvite(false);
+                                    setInviteError(null);
+                                }}
+                                className="rounded-lg p-1 hover:bg-primary_hover"
+                            >
+                                <X className="size-5 text-fg-quaternary" />
+                            </button>
                         </div>
 
                         <div className="flex flex-col gap-4">
+                            {inviteError && (
+                                <p className="text-sm text-error-primary" role="alert">
+                                    {inviteError}
+                                </p>
+                            )}
                             <Input label="Email *" placeholder="tom@brightwood.co.uk" value={inviteEmail} onChange={(v) => setInviteEmail(v)} isRequired />
 
                             <div>
@@ -134,8 +212,51 @@ export default function UsersSettingsPage() {
                         </div>
 
                         <div className="mt-6 flex justify-end gap-3">
-                            <Button color="secondary" size="lg" onClick={() => setShowInvite(false)}>Cancel</Button>
-                            <Button color="primary" size="lg" disabled={!inviteEmail}>Send Invite</Button>
+                            <Button
+                                color="secondary"
+                                size="lg"
+                                onClick={() => {
+                                    setShowInvite(false);
+                                    setInviteError(null);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                color="primary"
+                                size="lg"
+                                isLoading={inviteSubmitting}
+                                isDisabled={!inviteEmail.trim() || inviteSubmitting}
+                                onClick={async () => {
+                                    setInviteError(null);
+                                    setInviteSubmitting(true);
+                                    try {
+                                        const res = await fetch("/api/organization/users", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                                email: inviteEmail.trim(),
+                                                role: inviteRole,
+                                            }),
+                                        });
+                                        const json = await res.json();
+                                        if (!json.success) {
+                                            setInviteError(json.error?.message ?? "Invitation failed");
+                                            return;
+                                        }
+                                        setShowInvite(false);
+                                        setInviteEmail("");
+                                        setInviteRole("STAFF");
+                                        await loadUsers();
+                                    } catch {
+                                        setInviteError("Invitation failed");
+                                    } finally {
+                                        setInviteSubmitting(false);
+                                    }
+                                }}
+                            >
+                                Send Invite
+                            </Button>
                         </div>
                     </div>
                 </div>

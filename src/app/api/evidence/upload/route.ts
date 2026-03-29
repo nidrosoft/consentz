@@ -2,7 +2,7 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rate-limiter';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 const ALLOWED_TYPES = new Set([
   'application/pdf',
@@ -47,6 +47,7 @@ export const POST = withAuth(async (req, { params, auth }) => {
   const storagePath = `${auth.organizationId}/${bucket}/${year}/${Date.now()}-${sanitizedName}`;
 
   const arrayBuffer = await file.arrayBuffer();
+  const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin.storage
     .from(bucket)
     .upload(storagePath, arrayBuffer, {

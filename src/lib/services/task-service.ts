@@ -2,8 +2,11 @@
 // Task Service — CRUD, filtering, and gap resolution checks
 // =============================================================================
 
-import { db } from '@/lib/db';
-import type { Prisma, TaskStatus, Priority, TaskSource } from '@prisma/client';
+import { getDb } from '@/lib/db';
+
+function camelToSnake(str: string): string {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
 
 interface TaskListParams {
   organizationId: string;
@@ -20,61 +23,66 @@ interface TaskListParams {
 
 export class TaskService {
   static async list(params: TaskListParams) {
-    const where: Prisma.TaskWhereInput = {
-      organizationId: params.organizationId,
-    };
+    const client = await getDb();
+    const skip = (params.pagination.page - 1) * params.pagination.limit;
 
-    if (params.userRole === 'STAFF' && params.userId) {
-      where.assignedTo = params.userId;
+    function applyFilters(query: any) {
+      let q = query.eq('organization_id', params.organizationId);
+
+      if (params.userRole === 'STAFF' && params.userId) {
+        q = q.eq('assigned_to', params.userId);
+      }
+      if (params.filters?.status) {
+        const statuses = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
+        const mapped = statuses.map((s) => (s === 'DONE' ? 'COMPLETED' : s)).filter((s) => s !== 'OVERDUE');
+        if (mapped.length > 0) q = q.in('status', mapped);
+      }
+      if (params.filters?.priority) {
+        const priorities = Array.isArray(params.filters.priority) ? params.filters.priority : [params.filters.priority];
+        const mapped = priorities.map((p) => (p === 'URGENT' ? 'CRITICAL' : p));
+        if (mapped.length > 0) q = q.in('priority', mapped);
+      }
+      if (params.filters?.assignee) {
+        q = q.ilike('assigned_to_name', `%${params.filters.assignee}%`);
+      }
+      if (params.filters?.domain) {
+        const doms = Array.isArray(params.filters.domain) ? params.filters.domain : [params.filters.domain];
+        q = q.overlaps('domains', doms);
+      }
+      if (params.pagination.search) {
+        const s = params.pagination.search.replace(/%/g, '\\%');
+        q = q.or(`title.ilike.%${s}%,description.ilike.%${s}%`);
+      }
+      return q;
     }
 
-    if (params.filters?.status) {
-      const statuses = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
-      const mapped = statuses.map((s) => (s === 'DONE' ? 'COMPLETED' : s)).filter((s) => s !== 'OVERDUE');
-      if (mapped.length > 0) where.status = { in: mapped as TaskStatus[] };
-    }
-    if (params.filters?.priority) {
-      const priorities = Array.isArray(params.filters.priority) ? params.filters.priority : [params.filters.priority];
-      const mapped = priorities.map((p) => (p === 'URGENT' ? 'CRITICAL' : p));
-      if (mapped.length > 0) where.priority = { in: mapped as Priority[] };
-    }
-    if (params.filters?.assignee) {
-      where.assignedToName = { contains: params.filters.assignee, mode: 'insensitive' };
-    }
-    if (params.filters?.domain) {
-      const doms = Array.isArray(params.filters.domain) ? params.filters.domain : [params.filters.domain];
-      where.domains = { hasSome: doms };
-    }
-    if (params.pagination.search) {
-      where.OR = [
-        { title: { contains: params.pagination.search, mode: 'insensitive' } },
-        { description: { contains: params.pagination.search, mode: 'insensitive' } },
-      ];
-    }
-
-    const [data, total] = await Promise.all([
-      db.task.findMany({
-        where,
-        orderBy: { dueDate: 'asc' },
-        skip: (params.pagination.page - 1) * params.pagination.limit,
-        take: params.pagination.limit,
-      }),
-      db.task.count({ where }),
+    const [{ data }, { count: total }] = await Promise.all([
+      applyFilters(client.from('tasks').select('*'))
+        .order('due_date', { ascending: true })
+        .range(skip, skip + params.pagination.limit - 1),
+      applyFilters(client.from('tasks').select('*', { count: 'exact', head: true })),
     ]);
 
+    const safeTotal = total ?? 0;
+
     return {
-      data,
+      data: data ?? [],
       meta: {
         page: params.pagination.page,
         limit: params.pagination.limit,
-        total,
-        totalPages: Math.ceil(total / params.pagination.limit),
+        total: safeTotal,
+        totalPages: Math.ceil(safeTotal / params.pagination.limit),
       },
     };
   }
 
   static async getById(id: string) {
-    return db.task.findUnique({ where: { id }, include: { complianceGap: true } });
+    const client = await getDb();
+    const { data } = await client.from('tasks')
+      .select('*, compliance_gaps(*)')
+      .eq('id', id)
+      .maybeSingle();
+    return data;
   }
 
   static async create(params: {
@@ -92,45 +100,60 @@ export class TaskService {
     source?: string;
     sourceId?: string;
   }) {
-    return db.task.create({
-      data: {
-        organizationId: params.organizationId,
-        title: params.title,
-        description: params.description,
-        status: (params.status as TaskStatus) || 'TODO',
-        priority: params.priority as Priority,
-        assignedTo: params.assignedTo,
-        assignedToName: params.assignedToName,
-        dueDate: params.dueDate ? new Date(params.dueDate) : null,
-        domains: params.domains || [],
-        kloeCode: params.kloeCode,
-        gapId: params.gapId,
-        source: (params.source as TaskSource) || 'MANUAL',
-        sourceId: params.sourceId,
-      },
-    });
+    const client = await getDb();
+    const { data } = await client.from('tasks').insert({
+      organization_id: params.organizationId,
+      title: params.title,
+      description: params.description,
+      status: params.status || 'TODO',
+      priority: params.priority,
+      assigned_to: params.assignedTo,
+      assigned_to_name: params.assignedToName,
+      due_date: params.dueDate ? new Date(params.dueDate).toISOString() : null,
+      domains: params.domains || [],
+      kloe_code: params.kloeCode,
+      gap_id: params.gapId,
+      source: params.source || 'MANUAL',
+      source_id: params.sourceId,
+    }).select().single();
+    return data;
   }
 
   static async update(id: string, data: Record<string, unknown>) {
-    const updateData = { ...data };
-    if (updateData.dueDate) updateData.dueDate = new Date(updateData.dueDate as string);
-    if (updateData.status === 'COMPLETED' && !updateData.completedAt) {
-      updateData.completedAt = new Date();
+    const snakeData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      snakeData[camelToSnake(key)] = value;
     }
-    return db.task.update({ where: { id }, data: updateData as Prisma.TaskUpdateInput });
+    if (snakeData.due_date) snakeData.due_date = new Date(snakeData.due_date as string).toISOString();
+    if (snakeData.status === 'COMPLETED' && !snakeData.completed_at) {
+      snakeData.completed_at = new Date().toISOString();
+    }
+    const client = await getDb();
+    const { data: updated } = await client.from('tasks')
+      .update(snakeData)
+      .eq('id', id)
+      .select()
+      .single();
+    return updated;
   }
 
   static async delete(id: string) {
-    await db.task.delete({ where: { id } });
+    const client = await getDb();
+    await client.from('tasks').delete().eq('id', id);
     return true;
   }
 
   static async checkAndResolveGap(gapId: string) {
-    const relatedTasks = await db.task.findMany({ where: { gapId } });
-    if (relatedTasks.length === 0) return false;
-    const allDone = relatedTasks.every((t) => t.status === 'COMPLETED');
+    const client = await getDb();
+    const { data: relatedTasks } = await client.from('tasks')
+      .select('*')
+      .eq('gap_id', gapId);
+    if (!relatedTasks || relatedTasks.length === 0) return false;
+    const allDone = relatedTasks.every((t: any) => t.status === 'COMPLETED');
     if (allDone) {
-      await db.complianceGap.update({ where: { id: gapId }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
+      await client.from('compliance_gaps')
+        .update({ status: 'RESOLVED', resolved_at: new Date().toISOString() })
+        .eq('id', gapId);
       return true;
     }
     return false;

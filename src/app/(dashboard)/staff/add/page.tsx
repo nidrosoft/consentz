@@ -5,6 +5,7 @@ import { ChevronLeft } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
+import { DatePickerField } from "@/components/application/date-picker/date-picker-field";
 
 const DEPARTMENTS = ["Management", "Care", "Clinical", "Administration", "Housekeeping", "Kitchen"];
 const ROLES = ["Registered Manager", "Deputy Manager", "Senior Carer", "Care Assistant", "Nurse", "Admin Officer", "Kitchen Staff", "Housekeeper"];
@@ -34,12 +35,12 @@ export default function AddStaffPage() {
                         {ROLES.map((r) => <Select.Item key={r} id={r}>{r}</Select.Item>)}
                     </Select>
                 </div>
-                <Input label="Start date" type="date" isRequired />
+                <DatePickerField label="Start date" isRequired />
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <Select label="DBS Status" placeholder="Select...">
                         {["Clear", "Pending", "Not Started"].map((s) => <Select.Item key={s} id={s}>{s}</Select.Item>)}
                     </Select>
-                    <Input label="DBS expiry date" type="date" />
+                    <DatePickerField label="DBS expiry date" />
                 </div>
             </div>
 
