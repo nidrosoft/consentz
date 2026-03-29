@@ -248,7 +248,7 @@ export class DashboardService {
       .map((g) => ({
         id: g.id,
         title: g.title,
-        domain: g.domain,
+        domain: dbDomainToSlug(g.domain),
         kloeCode: g.kloe_code,
         severity: g.severity,
         dueDate: g.due_date ?? null,

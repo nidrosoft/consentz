@@ -15,7 +15,7 @@ import { Table, TableCard } from "@/components/application/table/table";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { useDashboard } from "@/hooks/use-dashboard";
+import { useDashboard, type PriorityGap } from "@/hooks/use-dashboard";
 import { RATING_LABELS, RATING_THRESHOLDS, KLOES } from "@/lib/constants/cqc-framework";
 import type { FC } from "react";
 import type { ComplianceGap, ActivityLogEntry, UpcomingDeadline } from "@/types";
@@ -119,6 +119,7 @@ export default function DashboardPage() {
 
     const score = overview.compliance;
     const gaps = overview.gaps;
+    const priorityGaps = overview.priorityGaps ?? [];
     const activity = overview.activity ?? [];
     const deadlines = overview.deadlines ?? [];
 
@@ -279,19 +280,69 @@ export default function DashboardPage() {
                         <h2 className="text-lg font-semibold text-primary">Priority Gaps</h2>
                         <Button color="link-color" size="sm" onClick={() => router.push("/domains")}>View all gaps &rarr;</Button>
                     </div>
-                    <div className="flex flex-col gap-3 p-4">
+                    <div className="flex flex-col gap-0 divide-y divide-secondary">
                         {totalOpenGaps === 0 ? (
-                            <EmptyState size="sm">
-                                <EmptyState.Header pattern="none">
-                                    <EmptyState.FeaturedIcon icon={CheckCircle} color="success" theme="light" size="sm" />
-                                </EmptyState.Header>
-                                <EmptyState.Content>
-                                    <EmptyState.Title>No open gaps — great job!</EmptyState.Title>
-                                    <EmptyState.Description>Your compliance gaps are all resolved. Keep monitoring for new ones.</EmptyState.Description>
-                                </EmptyState.Content>
-                            </EmptyState>
+                            <div className="p-4">
+                                <EmptyState size="sm">
+                                    <EmptyState.Header pattern="none">
+                                        <EmptyState.FeaturedIcon icon={CheckCircle} color="success" theme="light" size="sm" />
+                                    </EmptyState.Header>
+                                    <EmptyState.Content>
+                                        <EmptyState.Title>No open gaps — great job!</EmptyState.Title>
+                                        <EmptyState.Description>Your compliance gaps are all resolved. Keep monitoring for new ones.</EmptyState.Description>
+                                    </EmptyState.Content>
+                                </EmptyState>
+                            </div>
+                        ) : priorityGaps.length === 0 ? (
+                            <div className="p-4">
+                                <p className="text-sm text-tertiary">{criticalGaps} critical, {highGaps} high priority gaps require attention.</p>
+                            </div>
                         ) : (
-                            <p className="text-sm text-tertiary">{criticalGaps} critical, {highGaps} high priority gaps require attention.</p>
+                            <>
+                                <div className="px-5 py-2.5">
+                                    <p className="text-sm text-tertiary">{criticalGaps} critical, {highGaps} high priority gaps require attention.</p>
+                                </div>
+                                {priorityGaps.map((gap: PriorityGap) => {
+                                    const DomainIcon = DOMAIN_ICONS[gap.domain];
+                                    const domainColor = DOMAIN_COLORS[gap.domain] ?? { text: "text-tertiary", bg: "bg-secondary" };
+                                    return (
+                                        <button
+                                            key={gap.id}
+                                            type="button"
+                                            className="flex items-center gap-3 px-5 py-3 text-left transition duration-100 hover:bg-secondary"
+                                            onClick={() => router.push(`/domains/${gap.domain}`)}
+                                        >
+                                            <span className={cx("flex size-8 shrink-0 items-center justify-center rounded-full", domainColor.bg)}>
+                                                {DomainIcon ? <DomainIcon className={cx("size-4", domainColor.text)} /> : <AlertTriangle className="size-4 text-tertiary" />}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="truncate text-sm font-medium text-primary">{gap.title}</p>
+                                                <div className="mt-0.5 flex items-center gap-2 text-xs text-tertiary">
+                                                    <span className="capitalize">{gap.domain.replace("-", "-")}</span>
+                                                    {gap.kloeCode && (
+                                                        <>
+                                                            <span className="text-quaternary">&middot;</span>
+                                                            <span className={cx("rounded px-1 py-px text-[10px] font-semibold leading-tight", domainColor.text, domainColor.bg)}>{gap.kloeCode}</span>
+                                                        </>
+                                                    )}
+                                                    {gap.dueDate && (
+                                                        <>
+                                                            <span className="text-quaternary">&middot;</span>
+                                                            <span className={cx(daysUntil(gap.dueDate) <= 7 ? "text-error-primary" : "text-tertiary")}>
+                                                                Due {new Date(gap.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <BadgeWithDot size="sm" color={SEVERITY_BADGE_COLOR[gap.severity] ?? "gray"}>
+                                                {gap.severity.charAt(0) + gap.severity.slice(1).toLowerCase()}
+                                            </BadgeWithDot>
+                                            <ChevronRight className="size-4 shrink-0 text-quaternary" />
+                                        </button>
+                                    );
+                                })}
+                            </>
                         )}
                     </div>
                 </div>

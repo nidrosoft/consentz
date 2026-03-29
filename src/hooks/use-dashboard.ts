@@ -10,8 +10,18 @@ import type {
 // Dashboard Overview
 // =============================================================================
 
+export interface PriorityGap {
+  id: string;
+  title: string;
+  domain: string;
+  kloeCode: string;
+  severity: string;
+  dueDate: string | null;
+}
+
 interface DashboardOverview {
   compliance: ComplianceScore;
+  priorityGaps: PriorityGap[];
   gaps: {
     CRITICAL: number;
     HIGH: number;
