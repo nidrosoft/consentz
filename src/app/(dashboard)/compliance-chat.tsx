@@ -2,10 +2,11 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, memo } from "react";
 import { MessageChatCircle, Send01, X, RefreshCcw01 } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
+import ReactMarkdown, { type Components } from "react-markdown";
 
 const SUGGESTIONS = [
     "What are my most critical compliance gaps?",
@@ -16,30 +17,52 @@ const SUGGESTIONS = [
 
 const transport = new DefaultChatTransport({ api: "/api/chat" });
 
-function MarkdownContent({ content }: { content: string }) {
-    const parts = content.split(/(\*\*[^*]+\*\*|\*[^*]+\*|\n- |\n\d+\. |\n)/g);
+const markdownComponents: Components = {
+    h1: ({ children }) => (
+        <h3 className="mt-3 mb-1.5 text-sm font-bold text-primary first:mt-0">{children}</h3>
+    ),
+    h2: ({ children }) => (
+        <h4 className="mt-3 mb-1.5 text-[13px] font-bold text-primary first:mt-0">{children}</h4>
+    ),
+    h3: ({ children }) => (
+        <h5 className="mt-2.5 mb-1 text-[13px] font-semibold text-primary first:mt-0">{children}</h5>
+    ),
+    p: ({ children }) => (
+        <p className="mb-2 last:mb-0">{children}</p>
+    ),
+    strong: ({ children }) => (
+        <strong className="font-semibold text-primary">{children}</strong>
+    ),
+    em: ({ children }) => (
+        <em className="italic text-secondary">{children}</em>
+    ),
+    ul: ({ children }) => (
+        <ul className="mb-2 ml-0.5 space-y-1 last:mb-0">{children}</ul>
+    ),
+    ol: ({ children }) => (
+        <ol className="mb-2 ml-0.5 list-decimal space-y-1 pl-4 last:mb-0">{children}</ol>
+    ),
+    li: ({ children }) => (
+        <li className="flex gap-1.5 text-[13px] leading-relaxed">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-fg-quaternary" />
+            <span className="flex-1">{children}</span>
+        </li>
+    ),
+    code: ({ children }) => (
+        <code className="rounded bg-tertiary px-1 py-0.5 text-xs font-medium text-brand-secondary">{children}</code>
+    ),
+    hr: () => (
+        <hr className="my-2 border-tertiary" />
+    ),
+};
 
+const ChatMarkdown = memo(function ChatMarkdown({ content }: { content: string }) {
     return (
-        <>
-            {parts.map((part, i) => {
-                if (part.startsWith("**") && part.endsWith("**")) {
-                    return (
-                        <strong key={i} className="font-semibold">
-                            {part.slice(2, -2)}
-                        </strong>
-                    );
-                }
-                if (part.startsWith("*") && part.endsWith("*") && !part.startsWith("**")) {
-                    return <em key={i}>{part.slice(1, -1)}</em>;
-                }
-                if (part === "\n") {
-                    return <br key={i} />;
-                }
-                return <span key={i}>{part}</span>;
-            })}
-        </>
+        <ReactMarkdown components={markdownComponents}>
+            {content}
+        </ReactMarkdown>
     );
-}
+});
 
 function getMessageText(
     parts: Array<{ type: string; text?: string }>,
@@ -133,7 +156,7 @@ export function ComplianceChat() {
             </div>
 
             {/* Messages */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto scroll-smooth p-4">
                 {messages.length === 0 && (
                     <div className="flex h-full flex-col items-center justify-center px-2">
                         <div className="flex size-12 items-center justify-center rounded-xl bg-brand-secondary">
@@ -176,14 +199,14 @@ export function ComplianceChat() {
                             )}
                             <div
                                 className={cx(
-                                    "max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed",
+                                    "max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed",
                                     m.role === "user"
                                         ? "bg-brand-solid text-white"
                                         : "bg-secondary text-primary",
                                 )}
                             >
                                 {m.role === "assistant" ? (
-                                    <MarkdownContent content={text} />
+                                    <ChatMarkdown content={text} />
                                 ) : (
                                     text
                                 )}

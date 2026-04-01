@@ -1,5 +1,5 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { streamText, convertToModelMessages, type UIMessage } from 'ai';
+import { streamText, smoothStream, convertToModelMessages, type UIMessage } from 'ai';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSessionAuth } from '@/lib/auth';
 import { SYSTEM_PROMPT } from '@/lib/ai/chat-system-prompt';
@@ -110,6 +110,7 @@ LIVE USER CONTEXT (use this to personalize responses):
     system: SYSTEM_PROMPT + orgContext,
     messages: await convertToModelMessages(messages),
     maxOutputTokens: 2000,
+    experimental_transform: smoothStream({ chunking: 'word' }),
   });
 
   return result.toUIMessageStreamResponse();
