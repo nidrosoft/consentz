@@ -3,6 +3,9 @@
     { "path": "/api/cron/consentz-sync", "schedule": "0 3 * * *" },
     { "path": "/api/cron/compliance-recalc", "schedule": "0 4 * * *" },
     { "path": "/api/cron/expiry-check", "schedule": "0 8 * * *" },
-    { "path": "/api/cron/notification-digest", "schedule": "0 9 * * *" }
+    { "path": "/api/cron/notification-digest", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/weekly-digest", "schedule": "0 8 * * 1" },
+    { "path": "/api/cron/monthly-report", "schedule": "0 9 1 * *" },
+    { "path": "/api/cron/incident-reminders", "schedule": "0 10 * * *" }
   ]
 }

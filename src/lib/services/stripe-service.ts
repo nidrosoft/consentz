@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { getDb } from '@/lib/db';
+import { handleSubscriptionActivated, handleSubscriptionCancelled } from '@/lib/email/triggers/billing-triggers';
 
 let _stripe: Stripe | null = null;
 
@@ -121,6 +122,33 @@ export class StripeService {
           updated_at: new Date().toISOString(),
         }, { onConflict: 'organization_id' });
 
+        // Send subscription activated email
+        if (subscriptionId) {
+          const stripe = getStripe();
+          if (stripe) {
+            try {
+              const stripeSub = await stripe.subscriptions.retrieve(subscriptionId);
+              const priceId = stripeSub.items.data[0]?.price?.id;
+              const { data: plan } = await dbClient.from('subscription_plans')
+                .select('name, price_monthly')
+                .eq('stripe_price_id', priceId ?? '')
+                .maybeSingle();
+              const periodEnd = stripeSub.items.data[0]?.current_period_end;
+              const nextBilling = periodEnd
+                ? new Date(periodEnd * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+                : 'N/A';
+              handleSubscriptionActivated(
+                orgId,
+                plan?.name ?? 'Professional',
+                plan?.price_monthly ? `£${(plan.price_monthly / 100).toFixed(0)}` : '£0',
+                nextBilling,
+              ).catch(e => console.error('[STRIPE] Email trigger error:', e));
+            } catch {
+              // Don't block webhook on email failure
+            }
+          }
+        }
+
         break;
       }
 
@@ -170,9 +198,22 @@ export class StripeService {
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
+        const { data: cancelledSub } = await dbClient.from('subscriptions')
+          .select('organization_id, current_period_end')
+          .eq('stripe_subscription_id', subscription.id)
+          .maybeSingle();
+
         await dbClient.from('subscriptions')
           .update({ status: 'cancelled', updated_at: new Date().toISOString() })
           .eq('stripe_subscription_id', subscription.id);
+
+        if (cancelledSub?.organization_id) {
+          const accessUntil = cancelledSub.current_period_end
+            ? new Date(cancelledSub.current_period_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+            : 'Immediately';
+          handleSubscriptionCancelled(cancelledSub.organization_id, accessUntil)
+            .catch(e => console.error('[STRIPE] Cancellation email error:', e));
+        }
         break;
       }
     }
