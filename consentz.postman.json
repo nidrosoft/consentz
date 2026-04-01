@@ -1,0 +1,601 @@
+{
+    "info": {
+        "name": "consentz",
+        "description": "",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "CQC Report staff compitancy",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "Login",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "POST",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"username\": \"demo\",\n    \"password\": \"password\",\n    \"confirmLogin\": true\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "header": [
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/login",
+                    "path": [
+                        "login"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [],
+                    "variable": []
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report completion",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/consent-completion",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "consent-completion"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "startDate",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report decay",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/consent-decay",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "consent-decay"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "startDate",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report infection",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/infection-incidents",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "infection-incidents"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "startDate",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report policy ack",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/policy-acknowledgement",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "policy-acknowledgement"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "startDate",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report policy safety checklist",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/safety-checklist",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "safety-checklist"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "startDate",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report treatment risk heatmap",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/treatment-risk-heatmap",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "treatment-risk-heatmap"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "from",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        },
+        {
+            "name": "CQC Report treatment risk heatmap Copy",
+            "description": "",
+            "event": [],
+            "auth": {},
+            "request": {
+                "auth": {},
+                "method": "GET",
+                "body": {},
+                "header": [
+                    {
+                        "key": "Accept",
+                        "value": "application/json",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-SESSION-TOKEN",
+                        "value": "r:b1620015184fefc06ad34d1ca78b32d4",
+                        "description": "",
+                        "type": "string"
+                    },
+                    {
+                        "key": "X-APPLICATION-ID",
+                        "value": "admin",
+                        "description": "",
+                        "type": "string"
+                    }
+                ],
+                "url": {
+                    "raw": "{{baseUrl}}/clinic/:clinicId/cqc-reports/patient-feedback",
+                    "path": [
+                        "clinic",
+                        ":clinicId",
+                        "cqc-reports",
+                        "patient-feedback"
+                    ],
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "query": [
+                        {
+                            "key": "from",
+                            "value": "2022-01-01",
+                            "description": "",
+                            "type": "string"
+                        },
+                        {
+                            "key": "period",
+                            "value": "month",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ],
+                    "variable": [
+                        {
+                            "key": "clinicId",
+                            "value": "3",
+                            "description": "",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "response": [],
+            "protocolProfileBehavior": {
+                "strictSSL": false,
+                "followRedirects": true
+            }
+        }
+    ],
+    "variable": [],
+    "event": [],
+    "auth": {}
+}

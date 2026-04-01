@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Copy01, Key01, RefreshCw01, Trash01, AlertCircle, Plus } from "@untitledui/icons";
+import { ChevronLeft, Copy01, Key01, RefreshCw01, Trash01, AlertCircle, Plus, CheckCircle, Link01, LinkBroken01 } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { Input } from "@/components/base/input/input";
 import { cx } from "@/utils/cx";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
 
@@ -45,11 +46,15 @@ export default function IntegrationsSettingsPage() {
     const router = useRouter();
     const queryClient = useQueryClient();
 
-    // Full key shown after generate / rotate (only visible once)
     const [revealedKey, setRevealedKey] = useState<string | null>(null);
     const [revealedKeyId, setRevealedKeyId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+
+    // Consentz connection state
+    const [consentzUser, setConsentzUser] = useState("");
+    const [consentzPass, setConsentzPass] = useState("");
+    const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
     // -----------------------------------------------------------------------
     // Queries & Mutations
@@ -89,6 +94,40 @@ export default function IntegrationsSettingsPage() {
     });
 
     // -----------------------------------------------------------------------
+    // Consentz Connection
+    // -----------------------------------------------------------------------
+
+    const { data: consentzStatus, isLoading: consentzLoading } = useQuery({
+        queryKey: ["consentz-status"],
+        queryFn: () => apiGet<{ connected: boolean; clinicId: number | null; username: string | null }>("/api/consentz/connect").then((r) => r.data),
+    });
+
+    const connectMutation = useMutation({
+        mutationFn: () =>
+            apiPost<{ connected: boolean; clinicId: number; clinicName: string }>("/api/consentz/connect", {
+                username: consentzUser,
+                password: consentzPass,
+            }).then((r) => r.data),
+        onSuccess: () => {
+            setConsentzUser("");
+            setConsentzPass("");
+            queryClient.invalidateQueries({ queryKey: ["consentz-status"] });
+        },
+    });
+
+    const disconnectMutation = useMutation({
+        mutationFn: () => apiDelete("/api/consentz/connect"),
+        onSuccess: () => {
+            setShowDisconnectConfirm(false);
+            queryClient.invalidateQueries({ queryKey: ["consentz-status"] });
+        },
+    });
+
+    const syncMutation = useMutation({
+        mutationFn: () => apiPost<{ synced: boolean }>("/api/consentz/sync", {}),
+    });
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 
@@ -116,23 +155,127 @@ export default function IntegrationsSettingsPage() {
                 <p className="mt-1 text-sm text-tertiary">Connect services, manage API keys, and configure the Consentz SDK.</p>
             </div>
 
-            {/* Consentz SDK */}
-            <div className="rounded-xl border border-brand-300 bg-primary p-6">
+            {/* Consentz Platform Connection */}
+            <div className={cx(
+                "rounded-xl border bg-primary p-6",
+                consentzStatus?.connected ? "border-success" : "border-brand-300",
+            )}>
                 <div className="flex items-center gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary font-mono text-xs font-bold text-brand-secondary">SDK</div>
+                    <div className={cx(
+                        "flex size-10 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold",
+                        consentzStatus?.connected ? "bg-success-secondary text-fg-success-primary" : "bg-brand-primary text-brand-secondary",
+                    )}>
+                        {consentzStatus?.connected ? <CheckCircle className="size-5" /> : <Link01 className="size-5" />}
+                    </div>
                     <div className="flex-1">
                         <div className="flex items-center gap-2">
-                            <h2 className="text-lg font-semibold text-primary">Consentz SDK</h2>
-                            <Badge size="sm" color="warning" type="pill-color">Coming Soon</Badge>
+                            <h2 className="text-lg font-semibold text-primary">Consentz Platform</h2>
+                            {consentzLoading ? (
+                                <Badge size="sm" color="gray" type="pill-color">Checking...</Badge>
+                            ) : consentzStatus?.connected ? (
+                                <Badge size="sm" color="success" type="pill-color">Connected</Badge>
+                            ) : (
+                                <Badge size="sm" color="warning" type="pill-color">Not Connected</Badge>
+                            )}
                         </div>
                         <p className="mt-1 text-sm text-tertiary">
-                            Connect your Consentz clinic management system to automatically import consent forms, appointment data, staff rotas, and stock usage as compliance evidence.
+                            Connect your Consentz clinic management system to automatically import consent forms, appointment data, staff credentials, and patient feedback as compliance evidence.
                         </p>
                     </div>
                 </div>
-                <div className="mt-4 rounded-lg border border-secondary bg-secondary px-4 py-3">
-                    <p className="text-xs text-tertiary">The Consentz SDK integration will transform ~70% of your existing Consentz data into CQC compliance evidence automatically. This feature is currently in development.</p>
-                </div>
+
+                {consentzStatus?.connected ? (
+                    <div className="mt-4 space-y-3">
+                        <div className="rounded-lg border border-secondary bg-secondary px-4 py-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-medium text-primary">Clinic ID: {consentzStatus.clinicId}</p>
+                                    <p className="text-xs text-tertiary">Connected as {consentzStatus.username}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        color="secondary"
+                                        size="sm"
+                                        iconLeading={RefreshCw01}
+                                        isLoading={syncMutation.isPending}
+                                        onClick={() => syncMutation.mutate()}
+                                    >
+                                        {syncMutation.isSuccess ? "Synced!" : "Sync Now"}
+                                    </Button>
+                                    {showDisconnectConfirm ? (
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                color="primary-destructive"
+                                                size="sm"
+                                                isLoading={disconnectMutation.isPending}
+                                                onClick={() => disconnectMutation.mutate()}
+                                            >
+                                                Confirm
+                                            </Button>
+                                            <Button color="secondary" size="sm" onClick={() => setShowDisconnectConfirm(false)}>
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <Button
+                                            color="tertiary-destructive"
+                                            size="sm"
+                                            iconLeading={LinkBroken01}
+                                            onClick={() => setShowDisconnectConfirm(true)}
+                                        >
+                                            Disconnect
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        {syncMutation.isError && (
+                            <p className="text-xs text-error-primary">Sync failed. Please try again.</p>
+                        )}
+                    </div>
+                ) : (
+                    <div className="mt-4 space-y-3">
+                        <div className="rounded-lg border border-secondary bg-secondary p-4">
+                            <p className="mb-3 text-xs text-tertiary">
+                                Enter your Consentz platform credentials to connect. Data will sync automatically every 6 hours.
+                            </p>
+                            <div className="flex flex-col gap-3 sm:flex-row">
+                                <Input
+                                    label="Username"
+                                    placeholder="your-username"
+                                    size="sm"
+                                    value={consentzUser}
+                                    onChange={setConsentzUser}
+                                />
+                                <Input
+                                    label="Password"
+                                    placeholder="••••••••"
+                                    size="sm"
+                                    type="password"
+                                    value={consentzPass}
+                                    onChange={setConsentzPass}
+                                />
+                            </div>
+                            <div className="mt-3">
+                                <Button
+                                    color="primary"
+                                    size="sm"
+                                    iconLeading={Link01}
+                                    isLoading={connectMutation.isPending}
+                                    isDisabled={!consentzUser || !consentzPass}
+                                    onClick={() => connectMutation.mutate()}
+                                >
+                                    Connect to Consentz
+                                </Button>
+                            </div>
+                            {connectMutation.isError && (
+                                <p className="mt-2 text-xs text-error-primary">
+                                    Connection failed. Please check your credentials and try again.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* API Keys */}

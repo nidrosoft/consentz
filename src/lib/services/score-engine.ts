@@ -249,7 +249,7 @@ async function getConsentzMetrics(organizationId: string) {
           break;
         case 'patient-feedback':
           metrics.patientFeedbackAvg = d.averageRating
-            ? (d.averageRating / 5) * 100
+            ? (d.averageRating / 10) * 100
             : 50;
           break;
         case 'policy-acknowledgement':

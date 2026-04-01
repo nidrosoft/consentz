@@ -1,63 +1,97 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { MessageChatCircle, Send01, X } from "@untitledui/icons";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { MessageChatCircle, Send01, X, RefreshCcw01 } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
 
-interface ChatMessage {
-    role: "user" | "assistant";
-    content: string;
+const SUGGESTIONS = [
+    "What are my most critical compliance gaps?",
+    "How do I prepare for a CQC inspection?",
+    "What evidence do I need for the Safe domain?",
+    "How does the compliance score work?",
+];
+
+const transport = new DefaultChatTransport({ api: "/api/chat" });
+
+function MarkdownContent({ content }: { content: string }) {
+    const parts = content.split(/(\*\*[^*]+\*\*|\*[^*]+\*|\n- |\n\d+\. |\n)/g);
+
+    return (
+        <>
+            {parts.map((part, i) => {
+                if (part.startsWith("**") && part.endsWith("**")) {
+                    return (
+                        <strong key={i} className="font-semibold">
+                            {part.slice(2, -2)}
+                        </strong>
+                    );
+                }
+                if (part.startsWith("*") && part.endsWith("*") && !part.startsWith("**")) {
+                    return <em key={i}>{part.slice(1, -1)}</em>;
+                }
+                if (part === "\n") {
+                    return <br key={i} />;
+                }
+                return <span key={i}>{part}</span>;
+            })}
+        </>
+    );
+}
+
+function getMessageText(
+    parts: Array<{ type: string; text?: string }>,
+): string {
+    return parts
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text)
+        .join("");
 }
 
 export function ComplianceChat() {
     const [open, setOpen] = useState(false);
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
-    const [loading, setLoading] = useState(false);
-    const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    const { messages, sendMessage, status, setMessages } = useChat({
+        transport,
+    });
+
+    const isActive = status === "submitted" || status === "streaming";
+
+    const scrollToBottom = useCallback(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, []);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+        scrollToBottom();
+    }, [messages, status, scrollToBottom]);
 
-    async function sendMessage() {
-        if (!input.trim() || loading) return;
-        const userMsg: ChatMessage = { role: "user", content: input.trim() };
-        setMessages((prev) => [...prev, userMsg]);
+    function handleSuggestion(text: string) {
+        sendMessage({ text });
+    }
+
+    function handleFormSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (!input.trim() || isActive) return;
+        sendMessage({ text: input });
         setInput("");
-        setLoading(true);
+    }
 
-        try {
-            const res = await fetch("/api/ai/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: input.trim(), history: messages }),
-            });
-            const data = await res.json();
-            if (data.success && data.data?.response) {
-                setMessages((prev) => [...prev, { role: "assistant", content: data.data.response }]);
-            } else {
-                setMessages((prev) => [
-                    ...prev,
-                    { role: "assistant", content: "Sorry, I couldn't process that request." },
-                ]);
-            }
-        } catch {
-            setMessages((prev) => [
-                ...prev,
-                { role: "assistant", content: "Connection error. Please try again." },
-            ]);
-        } finally {
-            setLoading(false);
-        }
+    function clearChat() {
+        setMessages([]);
     }
 
     if (!open) {
         return (
             <button
                 onClick={() => setOpen(true)}
-                className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-brand-solid text-white shadow-lg transition duration-100 hover:bg-brand-solid_hover"
+                className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-brand-solid text-white shadow-lg transition duration-100 hover:bg-brand-solid_hover hover:shadow-xl"
+                aria-label="Open CQC Compliance Assistant"
             >
                 <MessageChatCircle className="size-6" />
             </button>
@@ -65,62 +99,135 @@ export function ComplianceChat() {
     }
 
     return (
-        <div className="fixed right-6 bottom-6 z-50 flex h-[500px] w-[380px] flex-col rounded-2xl border border-secondary bg-primary shadow-2xl">
+        <div className="fixed right-6 bottom-6 z-50 flex h-[600px] w-[420px] flex-col rounded-2xl border border-secondary bg-primary shadow-2xl">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
-                <h3 className="text-sm font-semibold text-primary">CQC Compliance Assistant</h3>
-                <button
-                    onClick={() => setOpen(false)}
-                    className="rounded-md p-1 text-fg-quaternary hover:bg-primary_hover"
-                >
-                    <X className="size-4" />
-                </button>
-            </div>
-
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
-                {messages.length === 0 && (
-                    <p className="pt-8 text-center text-sm text-tertiary">
-                        Ask me anything about CQC compliance, regulations, or your assessment results.
-                    </p>
-                )}
-                {messages.map((msg, i) => (
-                    <div
-                        key={i}
-                        className={cx(
-                            "max-w-[85%] rounded-xl px-3 py-2 text-sm",
-                            msg.role === "user"
-                                ? "ml-auto bg-brand-solid text-white"
-                                : "bg-secondary text-primary",
-                        )}
+                <div className="flex items-center gap-2.5">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-brand-secondary">
+                        <MessageChatCircle className="size-4 text-fg-brand-primary" />
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-semibold text-primary">CQC Compliance Assistant</h3>
+                        <p className="text-xs text-tertiary">Ask anything about CQC compliance</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    {messages.length > 0 && (
+                        <button
+                            onClick={clearChat}
+                            className="rounded-md p-1.5 text-fg-quaternary transition duration-100 hover:bg-primary_hover hover:text-fg-secondary"
+                            aria-label="Clear chat"
+                            title="Clear chat"
+                        >
+                            <RefreshCcw01 className="size-4" />
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setOpen(false)}
+                        className="rounded-md p-1.5 text-fg-quaternary transition duration-100 hover:bg-primary_hover hover:text-fg-secondary"
+                        aria-label="Close chat"
                     >
-                        {msg.content}
-                    </div>
-                ))}
-                {loading && (
-                    <div className="max-w-[85%] animate-pulse rounded-xl bg-secondary px-3 py-2 text-sm text-tertiary">
-                        Thinking...
-                    </div>
-                )}
-                <div ref={bottomRef} />
+                        <X className="size-4" />
+                    </button>
+                </div>
             </div>
 
-            <div className="border-t border-secondary p-3">
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+                {messages.length === 0 && (
+                    <div className="flex h-full flex-col items-center justify-center px-2">
+                        <div className="flex size-12 items-center justify-center rounded-xl bg-brand-secondary">
+                            <MessageChatCircle className="size-6 text-fg-brand-primary" />
+                        </div>
+                        <p className="mt-3 text-sm font-medium text-primary">How can I help you today?</p>
+                        <p className="mt-1 text-center text-xs text-tertiary">
+                            Ask me about CQC compliance, your gaps, policies, or how to use this tool.
+                        </p>
+                        <div className="mt-5 w-full space-y-2">
+                            {SUGGESTIONS.map((text) => (
+                                <button
+                                    key={text}
+                                    onClick={() => handleSuggestion(text)}
+                                    className="block w-full rounded-lg border border-secondary px-3 py-2.5 text-left text-xs text-secondary transition duration-100 hover:border-brand hover:bg-primary_hover hover:text-primary"
+                                >
+                                    {text}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {messages.map((m) => {
+                    const text = getMessageText(m.parts);
+                    if (!text) return null;
+
+                    return (
+                        <div
+                            key={m.id}
+                            className={cx(
+                                "flex gap-2",
+                                m.role === "user" ? "justify-end" : "justify-start",
+                            )}
+                        >
+                            {m.role === "assistant" && (
+                                <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-brand-secondary">
+                                    <MessageChatCircle className="size-3 text-fg-brand-primary" />
+                                </div>
+                            )}
+                            <div
+                                className={cx(
+                                    "max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed",
+                                    m.role === "user"
+                                        ? "bg-brand-solid text-white"
+                                        : "bg-secondary text-primary",
+                                )}
+                            >
+                                {m.role === "assistant" ? (
+                                    <MarkdownContent content={text} />
+                                ) : (
+                                    text
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {status === "submitted" && (
+                    <div className="flex gap-2">
+                        <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-brand-secondary">
+                            <MessageChatCircle className="size-3 text-fg-brand-primary" />
+                        </div>
+                        <div className="flex items-center gap-1 rounded-xl bg-secondary px-3 py-2">
+                            <span className="size-1.5 animate-bounce rounded-full bg-fg-quaternary [animation-delay:0ms]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-fg-quaternary [animation-delay:150ms]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-fg-quaternary [animation-delay:300ms]" />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Input */}
+            <form onSubmit={handleFormSubmit} className="border-t border-secondary p-3">
                 <div className="flex gap-2">
                     <input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                         placeholder="Ask about CQC compliance..."
-                        className="flex-1 rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary outline-none placeholder:text-placeholder focus:border-brand"
+                        className="flex-1 rounded-lg border border-secondary bg-primary px-3 py-2 text-sm text-primary outline-none placeholder:text-placeholder transition duration-100 focus:border-brand focus:ring-1 focus:ring-brand"
+                        disabled={isActive}
                     />
                     <Button
+                        type="submit"
                         color="primary"
                         size="sm"
-                        onClick={sendMessage}
-                        isDisabled={!input.trim() || loading}
+                        isDisabled={!input.trim() || isActive}
                         iconLeading={Send01}
                     />
                 </div>
-            </div>
+                <p className="mt-2 text-center text-[10px] text-quaternary">
+                    AI-powered assistant. Not a substitute for professional legal or compliance advice.
+                </p>
+            </form>
         </div>
     );
 }

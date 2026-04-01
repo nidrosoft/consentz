@@ -3,16 +3,23 @@ import type {
   ConsentzPatient,
   ConsentzPractitioner,
   ConsentzAppointment,
+  ConsentzLoginResponse,
   ConsentCompletionReport,
   ConsentDecayReport,
   StaffCompetencyReport,
   IncidentFeedReport,
   SafetyChecklistReport,
+  TreatmentRiskHeatmapReport,
   PatientFeedbackReport,
   PolicyAcknowledgementReport,
 } from './types';
 
 const CONSENTZ_BASE_URL = process.env.CONSENTZ_API_URL || 'https://staging.consentz.com';
+const APP_ID = process.env.CONSENTZ_APPLICATION_ID || 'admin';
+
+// ---------------------------------------------------------------------------
+// Static-token client (legacy — used by proxy routes)
+// ---------------------------------------------------------------------------
 
 export interface ConsentzClientConfig {
   sessionToken: string;
@@ -35,7 +42,7 @@ export class ConsentzClient {
       ...options,
       headers: {
         'X-SESSION-TOKEN': this.sessionToken,
-        'X-APPLICATION-ID': 'laptop',
+        'X-APPLICATION-ID': APP_ID,
         'Content-Type': 'application/json',
         ...options?.headers,
       },
@@ -51,7 +58,6 @@ export class ConsentzClient {
     return response.json();
   }
 
-  // V1 API methods
   async getPatients(): Promise<ConsentzPatient[]> {
     return this.request('/api/v1/patients');
   }
@@ -75,10 +81,10 @@ export class ConsentzClient {
   async getAppointments(
     practitionerId: number,
     startDate: string,
-    endDate: string
+    endDate: string,
   ): Promise<ConsentzAppointment[]> {
     return this.request(
-      `/api/v1/appointments?practitionerId=${practitionerId}&startDate=${startDate}&endDate=${endDate}`
+      `/api/v1/appointments?practitionerId=${practitionerId}&startDate=${startDate}&endDate=${endDate}`,
     );
   }
 
@@ -86,7 +92,7 @@ export class ConsentzClient {
   async getConsentCompletion(startDate?: string, endDate?: string): Promise<ConsentCompletionReport> {
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
-    if (endDate) params.set('endDate', endDate);
+    if (endDate) params.set('period', 'month');
     const qs = params.toString();
     return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/consent-completion${qs ? `?${qs}` : ''}`);
   }
@@ -95,10 +101,10 @@ export class ConsentzClient {
     startDate: string,
     endDate: string,
     expiringWithinDays = 30,
-    showOnlyExpired = 0
+    showOnlyExpired = 0,
   ): Promise<ConsentDecayReport> {
     return this.request(
-      `/api/v1/clinic/${this.clinicId}/cqc-reports/consent-decay?startDate=${startDate}&endDate=${endDate}&expiringWithinDays=${expiringWithinDays}&showOnlyExpired=${showOnlyExpired}`
+      `/api/v1/clinic/${this.clinicId}/cqc-reports/consent-decay?startDate=${startDate}&endDate=${endDate}&expiringWithinDays=${expiringWithinDays}&showOnlyExpired=${showOnlyExpired}`,
     );
   }
 
@@ -110,19 +116,92 @@ export class ConsentzClient {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (severity) params.set('severity', severity);
+    params.set('startDate', '2022-01-01');
+    params.set('period', 'month');
     const qs = params.toString();
     return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/infection-incidents${qs ? `?${qs}` : ''}`);
   }
 
   async getSafetyChecklist(): Promise<SafetyChecklistReport> {
-    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/safety-checklist`);
+    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/safety-checklist?startDate=2022-01-01&period=month`);
+  }
+
+  async getTreatmentRiskHeatmap(from?: string): Promise<TreatmentRiskHeatmapReport> {
+    const params = new URLSearchParams();
+    params.set('from', from || '2022-01-01');
+    params.set('period', 'month');
+    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/treatment-risk-heatmap?${params.toString()}`);
   }
 
   async getPatientFeedback(from: string, to: string): Promise<PatientFeedbackReport> {
-    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/patient-feedback?from=${from}&to=${to}`);
+    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/patient-feedback?from=${from}&period=month`);
   }
 
   async getPolicyAcknowledgement(): Promise<PolicyAcknowledgementReport> {
-    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/policy-acknowledgement`);
+    return this.request(`/api/v1/clinic/${this.clinicId}/cqc-reports/policy-acknowledgement?startDate=2022-01-01&period=month`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-authenticating client (for sync + cron — logs in with credentials)
+// ---------------------------------------------------------------------------
+
+export interface ConsentzAuthConfig {
+  username: string;
+  password: string;
+}
+
+export class ConsentzAuthClient {
+  private baseUrl: string;
+  private sessionToken: string | null = null;
+  private tokenExpiresAt: Date | null = null;
+  private clinicId: number | null = null;
+
+  constructor(private config: ConsentzAuthConfig) {
+    this.baseUrl = CONSENTZ_BASE_URL;
+  }
+
+  async authenticate(): Promise<{ sessionToken: string; clinicId: number }> {
+    if (this.sessionToken && this.clinicId && this.tokenExpiresAt && this.tokenExpiresAt > new Date()) {
+      return { sessionToken: this.sessionToken, clinicId: this.clinicId };
+    }
+
+    const res = await fetch(`${this.baseUrl}/api/v1/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-APPLICATION-ID': APP_ID },
+      body: JSON.stringify({
+        username: this.config.username,
+        password: this.config.password,
+        confirmLogin: true,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Consentz login failed: ${res.status} ${await res.text()}`);
+    }
+
+    const data: ConsentzLoginResponse = await res.json();
+    this.sessionToken = data.user.sessionToken;
+    this.clinicId = data.user.clinic.id;
+    this.tokenExpiresAt = new Date(Date.now() + 23 * 60 * 60 * 1000);
+
+    return { sessionToken: this.sessionToken, clinicId: this.clinicId };
+  }
+
+  async getClient(): Promise<ConsentzClient> {
+    const { sessionToken, clinicId } = await this.authenticate();
+    return new ConsentzClient({ sessionToken, clinicId });
+  }
+}
+
+let _authClient: ConsentzAuthClient | null = null;
+
+export function getConsentzAuthClient(): ConsentzAuthClient {
+  if (!_authClient) {
+    _authClient = new ConsentzAuthClient({
+      username: process.env.CONSENTZ_USERNAME || 'demo',
+      password: process.env.CONSENTZ_PASSWORD || 'password',
+    });
+  }
+  return _authClient;
 }

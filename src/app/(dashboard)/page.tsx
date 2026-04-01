@@ -8,6 +8,7 @@ import {
     File06, CheckSquare as CheckSquareIcon, PieChart01, AlertCircle, ChevronRight, Users01,
 } from "@untitledui/icons";
 import { EmptyState } from "@/components/application/empty-state/empty-state";
+import { OnboardingChecklist } from "./onboarding-checklist";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { MetricsChart04 } from "@/components/application/metrics/metrics";
@@ -141,6 +142,8 @@ export default function DashboardPage() {
                     Last updated {score?.lastUpdated ? timeAgo(score.lastUpdated) : "recently"}
                 </p>
             </div>
+
+            <OnboardingChecklist />
 
             {/* Metric Cards */}
             <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 xl:grid-cols-4">

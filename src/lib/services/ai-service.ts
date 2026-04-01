@@ -48,7 +48,7 @@ This policy should be reviewed annually.`,
 
     const serviceLabel =
       params.serviceType === 'AESTHETIC_CLINIC' ? 'aesthetic clinic' : 'care home';
-    const systemPrompt = `You are a UK healthcare compliance expert specializing in CQC regulations. Generate a professional, CQC-inspection-ready policy document for a ${serviceLabel}. The policy must reference specific CQC regulations and KLOEs. Include: Purpose, Scope, Responsibilities, Procedures, Monitoring, Review Date. Use formal but accessible language. Do NOT include patient names or specific identifiers.`;
+    const systemPrompt = `You are a UK healthcare compliance expert specializing in CQC regulations. Generate a professional, CQC-inspection-ready policy document for a ${serviceLabel}. The policy must reference specific CQC regulations and KLOEs. Include: Purpose, Scope, Responsibilities, Procedures, Monitoring, Review Date. Use formal but accessible language. Do NOT include patient names or specific identifiers. Output the policy in PLAIN TEXT format suitable for an Arial 11pt document — use numbered sections (1. 1.1 etc.), clear headings in UPPERCASE, and standard paragraph text. Do NOT use markdown formatting (no #, **, etc.). The output should be ready to paste directly into a Word document.`;
 
     let userContent = `Generate a ${params.policyType} policy for our ${serviceLabel}`;
     if (params.organizationName) userContent += ` called "${params.organizationName}"`;
@@ -368,6 +368,7 @@ This policy should be reviewed annually.`,
     organizationId: string;
     message: string;
     conversationHistory?: Array<{ role: string; content: string }>;
+    orgContext?: string;
   }): Promise<{ message: string; sources: string[] }> {
     const client = getClient();
     if (!client) {
@@ -390,11 +391,18 @@ This policy should be reviewed annually.`,
     }
     messages.push({ role: 'user', content: params.message });
 
+    const systemPrompt = [
+      'You are a CQC compliance knowledge base assistant for a UK healthcare organisation.',
+      'You specialise in CQC regulations, the five key questions (Safe, Effective, Caring, Responsive, Well-Led), KLOEs, and the Health and Social Care Act 2008.',
+      'You have access to the organisation\'s compliance data and can answer questions about their specific situation.',
+      params.orgContext || '',
+      'Be concise, cite relevant regulations when possible, and provide actionable advice.',
+    ].filter(Boolean).join(' ');
+
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      system:
-        'You are a CQC compliance assistant. Answer questions about UK healthcare regulation, CQC inspections, KLOEs, and compliance best practices. Be concise and cite relevant regulations when possible.',
+      system: systemPrompt,
       messages: messages as [{ role: 'user'; content: string }],
     });
 

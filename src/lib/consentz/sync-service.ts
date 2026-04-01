@@ -1,13 +1,7 @@
 import { getDb } from '@/lib/db';
-import { ConsentzClient } from './client';
+import { ConsentzClient, getConsentzAuthClient } from './client';
 
-async function getStoredSessionToken(organizationId: string): Promise<string> {
-  // TODO: Retrieve stored session token from encrypted storage
-  void organizationId;
-  return process.env.CONSENTZ_SESSION_TOKEN || '';
-}
-
-export async function syncConsentzData(organizationId: string) {
+async function getClientForOrg(organizationId: string): Promise<ConsentzClient | null> {
   const dbClient = await getDb();
   const { data: org } = await dbClient.from('organizations')
     .select('*')
@@ -16,21 +10,30 @@ export async function syncConsentzData(organizationId: string) {
 
   if (!org?.consentz_clinic_id) {
     console.log(`[SYNC] Organization ${organizationId} has no Consentz clinic ID, skipping`);
-    return;
+    return null;
   }
 
-  const client = new ConsentzClient({
-    sessionToken: await getStoredSessionToken(organizationId),
-    clinicId: org.consentz_clinic_id,
-  });
+  const envToken = process.env.CONSENTZ_SESSION_TOKEN;
+  if (envToken) {
+    return new ConsentzClient({ sessionToken: envToken, clinicId: org.consentz_clinic_id });
+  }
+
+  const authClient = getConsentzAuthClient();
+  return authClient.getClient();
+}
+
+export async function syncConsentzData(organizationId: string) {
+  const dbClient = await getDb();
+  const client = await getClientForOrg(organizationId);
+  if (!client) return;
 
   const syncTasks = [
-    { name: 'consent-completion', fn: () => syncConsentData(client, organizationId) },
-    { name: 'staff-competency', fn: () => syncStaffCompetency(client, organizationId) },
-    { name: 'incidents', fn: () => syncIncidents(client, organizationId) },
-    { name: 'safety-checklist', fn: () => syncSafetyChecklist(client, organizationId) },
-    { name: 'patient-feedback', fn: () => syncPatientFeedback(client, organizationId) },
-    { name: 'policy-acknowledgement', fn: () => syncPolicyAcknowledgements(client, organizationId) },
+    { name: 'consent-completion', fn: () => syncConsentData(client, organizationId, dbClient) },
+    { name: 'staff-competency', fn: () => syncStaffCompetency(client, organizationId, dbClient) },
+    { name: 'incidents', fn: () => syncIncidents(client, organizationId, dbClient) },
+    { name: 'safety-checklist', fn: () => syncSafetyChecklist(client, organizationId, dbClient) },
+    { name: 'patient-feedback', fn: () => syncPatientFeedback(client, organizationId, dbClient) },
+    { name: 'policy-acknowledgement', fn: () => syncPolicyAcknowledgements(client, organizationId, dbClient) },
   ];
 
   for (const task of syncTasks) {
@@ -40,7 +43,8 @@ export async function syncConsentzData(organizationId: string) {
         organization_id: organizationId,
         endpoint: task.name,
         status: 'success',
-        record_count: typeof result === 'number' ? result : null,
+        record_count: result.recordCount,
+        response_data: result.metrics,
       });
     } catch (error) {
       console.error(`[SYNC] Error syncing ${task.name}:`, error);
@@ -54,109 +58,120 @@ export async function syncConsentzData(organizationId: string) {
   }
 }
 
-async function syncConsentData(client: ConsentzClient, organizationId: string): Promise<number> {
-  const dbClient = await getDb();
+// ---------------------------------------------------------------------------
+// Sync result type — every sync function returns metrics for response_data
+// ---------------------------------------------------------------------------
+
+interface SyncResult {
+  recordCount: number;
+  metrics: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Consent Completion
+// ---------------------------------------------------------------------------
+
+async function syncConsentData(
+  client: ConsentzClient, organizationId: string, dbClient: Awaited<ReturnType<typeof getDb>>,
+): Promise<SyncResult> {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const report = await client.getConsentCompletion(
     thirtyDaysAgo.toISOString().split('T')[0],
-    now.toISOString().split('T')[0]
+    now.toISOString().split('T')[0],
   );
 
-  if (report.completionRate < 90) {
-    const { data: existingTask } = await dbClient.from('tasks')
+  const latestPeriod = report.data?.[0];
+  const completionRate = latestPeriod?.statistics?.completionRate ?? 0;
+  const total = latestPeriod?.statistics?.total ?? 0;
+
+  if (completionRate < 90) {
+    await upsertSyncTask(dbClient, organizationId, {
+      sourceId: 'consent-completion',
+      title: `Consent completion rate below target (${completionRate}%)`,
+      description: `Current consent completion rate is ${completionRate}%, below the 90% target. Review appointment consent workflow.`,
+      priority: completionRate < 70 ? 'HIGH' : 'MEDIUM',
+      domains: ['safe', 'effective'],
+      kloeCode: 'E7',
+    });
+  }
+
+  return {
+    recordCount: total,
+    metrics: { completionRate },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Staff Competency
+// ---------------------------------------------------------------------------
+
+async function syncStaffCompetency(
+  client: ConsentzClient, organizationId: string, dbClient: Awaited<ReturnType<typeof getDb>>,
+): Promise<SyncResult> {
+  const report = await client.getStaffCompetency();
+
+  for (const cert of report.all) {
+    const { data: existing } = await dbClient.from('staff_credentials')
       .select('*')
       .eq('organization_id', organizationId)
-      .eq('source', 'CONSENTZ_SYNC')
-      .eq('source_id', 'consent-completion')
-      .neq('status', 'COMPLETED')
+      .eq('consentz_user_id', cert.staffId)
+      .eq('credential_name', cert.certName)
       .limit(1)
       .maybeSingle();
 
-    if (!existingTask) {
-      await dbClient.from('tasks').insert({
+    const status = cert.statusLabel === 'Overdue' ? 'EXPIRED'
+      : (cert.daysToExpiry <= 90 && cert.daysToExpiry > 0) ? 'EXPIRING_SOON'
+      : cert.daysToExpiry <= 0 ? 'EXPIRED'
+      : 'VALID';
+
+    if (existing) {
+      await dbClient.from('staff_credentials')
+        .update({ expiry_date: cert.expiryDate, status })
+        .eq('id', existing.id);
+    } else {
+      await dbClient.from('staff_credentials').insert({
         organization_id: organizationId,
-        title: `Consent completion rate below target (${report.completionRate}%)`,
-        description: `Current consent completion rate is ${report.completionRate}%, below the 90% target. Review appointment consent workflow.`,
-        priority: report.completionRate < 70 ? 'HIGH' : 'MEDIUM',
+        staff_name: cert.staffName,
+        consentz_user_id: cert.staffId,
+        credential_type: 'CPD',
+        credential_name: cert.certName,
+        expiry_date: cert.expiryDate,
+        status,
+      });
+    }
+
+    if (status !== 'VALID') {
+      await upsertSyncTask(dbClient, organizationId, {
+        sourceId: `cert-${cert.staffId}-${cert.certName}`,
+        title: `${cert.certName} ${status === 'EXPIRED' ? 'expired' : 'expiring'} for ${cert.staffName}`,
+        description: `Certificate "${cert.certName}" for ${cert.staffName} ${status === 'EXPIRED' ? 'has expired' : `expires in ${cert.daysToExpiry} days`}.`,
+        priority: status === 'EXPIRED' ? 'HIGH' : 'MEDIUM',
         domains: ['safe', 'effective'],
-        kloe_code: 'E7',
-        source: 'CONSENTZ_SYNC',
-        source_id: 'consent-completion',
+        kloeCode: 'E2',
       });
     }
   }
 
-  return report.totalAppointments;
+  const { summary } = report;
+  const validCount = summary.totalCerts - summary.overdueCount;
+  const overallCompetencyRate = summary.totalCerts > 0
+    ? Math.round((validCount / summary.totalCerts) * 100)
+    : 100;
+
+  return {
+    recordCount: report.all.length,
+    metrics: { overallCompetencyRate },
+  };
 }
 
-async function syncStaffCompetency(client: ConsentzClient, organizationId: string): Promise<number> {
-  const dbClient = await getDb();
-  const report = await client.getStaffCompetency();
+// ---------------------------------------------------------------------------
+// Incidents
+// ---------------------------------------------------------------------------
 
-  for (const staff of report.staff) {
-    for (const cert of staff.certificates) {
-      const { data: existing } = await dbClient.from('staff_credentials')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .eq('consentz_user_id', staff.practitionerId)
-        .eq('credential_name', cert.name)
-        .limit(1)
-        .maybeSingle();
-
-      const status = cert.status === 'overdue' ? 'EXPIRED' :
-                     cert.status.startsWith('expiring') ? 'EXPIRING_SOON' : 'VALID';
-
-      if (existing) {
-        await dbClient.from('staff_credentials')
-          .update({
-            expiry_date: new Date(cert.expiryDate).toISOString(),
-            status,
-          })
-          .eq('id', existing.id);
-      } else {
-        await dbClient.from('staff_credentials').insert({
-          organization_id: organizationId,
-          staff_name: staff.practitionerName,
-          consentz_user_id: staff.practitionerId,
-          credential_type: 'CPD',
-          credential_name: cert.name,
-          expiry_date: new Date(cert.expiryDate).toISOString(),
-          status,
-        });
-      }
-
-      if (status !== 'VALID') {
-        const { data: existingTask } = await dbClient.from('tasks')
-          .select('*')
-          .eq('organization_id', organizationId)
-          .eq('source', 'CONSENTZ_SYNC')
-          .eq('source_id', `cert-${staff.practitionerId}-${cert.name}`)
-          .neq('status', 'COMPLETED')
-          .limit(1)
-          .maybeSingle();
-
-        if (!existingTask) {
-          await dbClient.from('tasks').insert({
-            organization_id: organizationId,
-            title: `${cert.name} ${status === 'EXPIRED' ? 'expired' : 'expiring'} for ${staff.practitionerName}`,
-            description: `Certificate "${cert.name}" for ${staff.practitionerName} ${status === 'EXPIRED' ? 'has expired' : `expires in ${cert.daysUntilExpiry} days`}.`,
-            priority: status === 'EXPIRED' ? 'HIGH' : 'MEDIUM',
-            domains: ['safe', 'effective'],
-            kloe_code: 'E2',
-            source: 'CONSENTZ_SYNC',
-            source_id: `cert-${staff.practitionerId}-${cert.name}`,
-          });
-        }
-      }
-    }
-  }
-
-  return report.staff.length;
-}
-
-async function syncIncidents(client: ConsentzClient, organizationId: string): Promise<number> {
-  const dbClient = await getDb();
+async function syncIncidents(
+  client: ConsentzClient, organizationId: string, dbClient: Awaited<ReturnType<typeof getDb>>,
+): Promise<SyncResult> {
   const report = await client.getIncidentFeed();
 
   for (const incident of report.incidents) {
@@ -171,182 +186,201 @@ async function syncIncidents(client: ConsentzClient, organizationId: string): Pr
       await dbClient.from('incidents').insert({
         organization_id: organizationId,
         consentz_incident_id: incident.id,
-        incident_type: mapIncidentType(incident.type),
-        title: incident.title,
-        description: incident.description,
+        incident_type: mapIncidentType(incident.incidentType),
+        title: `${incident.incidentType} incident — ${incident.patientName || 'Unknown patient'}`,
+        description: incident.notes || incident.followUpAction || '',
         severity: mapSeverity(incident.severity),
-        status: mapIncidentStatus(incident.status),
+        status: incident.isResolved ? 'CLOSED' : mapIncidentStatus(incident.status),
         patient_name: incident.patientName,
         patient_id: incident.patientId,
-        reported_by: incident.reportedBy,
         reported_at: new Date(incident.reportedAt).toISOString(),
-        resolved_at: incident.resolvedAt ? new Date(incident.resolvedAt).toISOString() : null,
         domains: ['safe'],
       });
     }
   }
 
-  return report.incidents.length;
+  const { summary } = report;
+  const resolutionRate = summary.total > 0
+    ? Math.round((summary.resolved / summary.total) * 100)
+    : 100;
+
+  return {
+    recordCount: summary.total,
+    metrics: { resolutionRate },
+  };
 }
 
-async function syncSafetyChecklist(client: ConsentzClient, organizationId: string): Promise<number> {
-  const dbClient = await getDb();
+// ---------------------------------------------------------------------------
+// Safety Checklist
+// ---------------------------------------------------------------------------
+
+async function syncSafetyChecklist(
+  client: ConsentzClient, organizationId: string, dbClient: Awaited<ReturnType<typeof getDb>>,
+): Promise<SyncResult> {
   const report = await client.getSafetyChecklist();
 
-  for (const item of report.items) {
-    if (item.status !== 'overdue' && item.status !== 'blocked') continue;
+  const pastDrills = report.fireDrills?.filter(d => d.isPast) ?? [];
+  const totalDrills = report.fireDrills?.length ?? 0;
+  const pastKits = report.emergencyKits?.filter(k => k.isPast) ?? [];
+  const totalKits = report.emergencyKits?.length ?? 0;
 
-    const sourceId = `safety-checklist-${item.id}`;
-    const { data: existingTask } = await dbClient.from('tasks')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('source', 'CONSENTZ_SYNC')
-      .eq('source_id', sourceId)
-      .neq('status', 'COMPLETED')
-      .limit(1)
-      .maybeSingle();
-
-    if (!existingTask) {
-      const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      await dbClient.from('tasks').insert({
-        organization_id: organizationId,
-        title: `Safety checklist overdue: ${item.item}`,
-        description: `Category: ${item.category}. ${item.blockers?.length ? 'Blockers: ' + item.blockers.join(', ') : 'Last completed: ' + (item.lastCompleted || 'Never')}`,
-        priority: item.status === 'blocked' ? 'HIGH' : 'MEDIUM',
+  const overdueDrills = report.fireDrills?.filter(d => d.isPast) ?? [];
+  for (const drill of overdueDrills) {
+    const drillDate = new Date(drill.start);
+    if (drillDate < new Date()) {
+      await upsertSyncTask(dbClient, organizationId, {
+        sourceId: `safety-drill-${drill.id}`,
+        title: `Fire drill overdue (scheduled ${drill.start.split(' ')[0]})`,
+        description: `A fire drill was scheduled for ${drill.start} but may not have been completed. Verify and record completion.`,
+        priority: 'MEDIUM',
         domains: ['safe'],
-        kloe_code: 'S4',
-        source: 'CONSENTZ_SYNC',
-        source_id: sourceId,
-        status: 'TODO',
-        due_date: item.nextDue || sevenDaysFromNow,
+        kloeCode: 'S4',
       });
     }
   }
 
-  return report.items.length;
+  const totalItems = totalDrills + totalKits;
+  const completedItems = pastDrills.length + pastKits.length;
+  const overallScore = totalItems > 0
+    ? Math.round((completedItems / totalItems) * 100)
+    : 50;
+
+  return {
+    recordCount: totalItems,
+    metrics: { overallScore },
+  };
 }
 
-async function syncPatientFeedback(client: ConsentzClient, organizationId: string): Promise<number> {
-  const dbClient = await getDb();
+// ---------------------------------------------------------------------------
+// Patient Feedback (rating scale: 1-10)
+// ---------------------------------------------------------------------------
+
+async function syncPatientFeedback(
+  client: ConsentzClient, organizationId: string, dbClient: Awaited<ReturnType<typeof getDb>>,
+): Promise<SyncResult> {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const report = await client.getPatientFeedback(
     thirtyDaysAgo.toISOString().split('T')[0],
-    now.toISOString().split('T')[0]
+    now.toISOString().split('T')[0],
   );
 
-  const { summary } = report;
+  const rollingAvg = report.summary?.rollingAvg30Days ?? report.rollingAvg ?? 0;
 
-  if (summary.averageRating < 4.0) {
-    const sourceId = 'patient-feedback-monthly';
-    const { data: existingTask } = await dbClient.from('tasks')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('source', 'CONSENTZ_SYNC')
-      .eq('source_id', sourceId)
-      .neq('status', 'COMPLETED')
-      .limit(1)
-      .maybeSingle();
-
-    if (!existingTask) {
-      await dbClient.from('tasks').insert({
-        organization_id: organizationId,
-        title: `Patient satisfaction below target (${summary.averageRating.toFixed(1)}/5.0)`,
-        description: `${summary.totalResponses} responses in the last 30 days. ${summary.negativeCount} negative reviews. Top themes: ${summary.topThemes.slice(0, 3).map(t => t.theme).join(', ')}`,
-        priority: summary.averageRating < 3.0 ? 'HIGH' : 'MEDIUM',
-        domains: ['caring'],
-        kloe_code: 'C1',
-        source: 'CONSENTZ_SYNC',
-        source_id: sourceId,
-        status: 'TODO',
-      });
-    }
+  if (rollingAvg < 7.0 && rollingAvg > 0) {
+    await upsertSyncTask(dbClient, organizationId, {
+      sourceId: 'patient-feedback-monthly',
+      title: `Patient satisfaction below target (${rollingAvg.toFixed(1)}/10)`,
+      description: `${report.summary.totalResponses} responses in the last 30 days. ${report.summary.lowRatedCount} low-rated reviews.`,
+      priority: rollingAvg < 5.0 ? 'HIGH' : 'MEDIUM',
+      domains: ['caring'],
+      kloeCode: 'C1',
+    });
   }
 
-  // Log negative feedback to activity
-  for (const item of report.feedback) {
-    if (item.isNegative) {
-      await dbClient.from('activity_log').insert({
-        organization_id: organizationId,
-        type: 'NEGATIVE_FEEDBACK',
-        title: `Negative patient feedback (${item.rating}/5)`,
-        description: item.comment.slice(0, 500),
-        source: 'CONSENTZ_SYNC',
-        source_id: `feedback-${item.id}`,
-        created_at: new Date(item.date).toISOString(),
-      });
-    }
+  for (const item of report.lowRated ?? []) {
+    await dbClient.from('activity_logs').insert({
+      organization_id: organizationId,
+      action: 'NEGATIVE_FEEDBACK',
+      resource_type: 'consentz_sync',
+      resource_id: `feedback-${item.id}`,
+      details: { rating: item.rating, comments: (item.comments ?? '').slice(0, 500) },
+    });
   }
 
-  return summary.totalResponses;
+  return {
+    recordCount: report.summary.totalResponses,
+    metrics: { averageRating: rollingAvg },
+  };
 }
 
-async function syncPolicyAcknowledgements(client: ConsentzClient, organizationId: string): Promise<number> {
-  const dbClient = await getDb();
+// ---------------------------------------------------------------------------
+// Policy Acknowledgements
+// ---------------------------------------------------------------------------
+
+async function syncPolicyAcknowledgements(
+  client: ConsentzClient, organizationId: string, dbClient: Awaited<ReturnType<typeof getDb>>,
+): Promise<SyncResult> {
   const report = await client.getPolicyAcknowledgement();
 
   for (const policy of report.policies) {
-    if (policy.completionRate >= 80) continue;
+    if (policy.completionPercentage >= 80) continue;
 
-    const sourceId = `policy-ack-${policy.policyId}`;
-    const { data: existingTask } = await dbClient.from('tasks')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('source', 'CONSENTZ_SYNC')
-      .eq('source_id', sourceId)
-      .neq('status', 'COMPLETED')
-      .limit(1)
-      .maybeSingle();
-
-    if (!existingTask) {
-      const unsignedNames = policy.unsigned.slice(0, 5).map(u => u.name).join(', ');
-      const suffix = policy.unsigned.length > 5 ? '...' : '';
-      await dbClient.from('tasks').insert({
-        organization_id: organizationId,
-        title: `Policy not fully acknowledged: ${policy.policyName} (${policy.completionRate}%)`,
-        description: `${policy.unsigned.length} staff members have not signed. Names: ${unsignedNames}${suffix}`,
-        priority: policy.completionRate < 50 ? 'HIGH' : 'MEDIUM',
-        domains: ['well_led'],
-        kloe_code: 'W2',
-        source: 'CONSENTZ_SYNC',
-        source_id: sourceId,
-        status: 'TODO',
-      });
-    }
+    const unsignedNames = policy.notSignedUsers.slice(0, 5).map(u => u.staffName).join(', ');
+    const suffix = policy.notSignedUsers.length > 5 ? '...' : '';
+    await upsertSyncTask(dbClient, organizationId, {
+      sourceId: `policy-ack-${policy.policyId}`,
+      title: `Policy not fully acknowledged: ${policy.policyName} (${policy.completionPercentage}%)`,
+      description: `${policy.notSignedUsers.length} staff members have not signed. Names: ${unsignedNames}${suffix}`,
+      priority: policy.completionPercentage < 50 ? 'HIGH' : 'MEDIUM',
+      domains: ['well_led'],
+      kloeCode: 'W2',
+    });
   }
 
-  // Create summary task if overall completion is critically low
-  if (report.overallCompletionRate < 70) {
-    const summarySourceId = 'policy-ack-summary';
-    const { data: existingSummary } = await dbClient.from('tasks')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('source', 'CONSENTZ_SYNC')
-      .eq('source_id', summarySourceId)
-      .neq('status', 'COMPLETED')
-      .limit(1)
-      .maybeSingle();
+  const overallRate = report.summary?.completionPercentage ?? 0;
 
-    if (!existingSummary) {
-      await dbClient.from('tasks').insert({
-        organization_id: organizationId,
-        title: `Overall policy acknowledgement critically low (${report.overallCompletionRate}%)`,
-        description: `Only ${report.overallCompletionRate}% of policies have been acknowledged across the organisation. This is below the 70% threshold and requires urgent attention.`,
-        priority: 'HIGH',
-        domains: ['well_led'],
-        kloe_code: 'W2',
-        source: 'CONSENTZ_SYNC',
-        source_id: summarySourceId,
-        status: 'TODO',
-      });
-    }
+  if (overallRate < 70) {
+    await upsertSyncTask(dbClient, organizationId, {
+      sourceId: 'policy-ack-summary',
+      title: `Overall policy acknowledgement critically low (${overallRate}%)`,
+      description: `Only ${overallRate}% of policies have been acknowledged across the organisation.`,
+      priority: 'HIGH',
+      domains: ['well_led'],
+      kloeCode: 'W2',
+    });
   }
 
-  return report.policies.length;
+  return {
+    recordCount: report.policies.length,
+    metrics: { acknowledgementRate: overallRate },
+  };
 }
 
-function mapIncidentType(type: string): 'INFECTION' | 'COMPLICATION' | 'PREMISES_INCIDENT' | 'SAFEGUARDING' | 'MEDICATION_ERROR' | 'DATA_BREACH' | 'COMPLAINT' | 'NEAR_MISS' | 'OTHER' {
-  const mapping: Record<string, any> = {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+interface TaskInput {
+  sourceId: string;
+  title: string;
+  description: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  domains: string[];
+  kloeCode: string;
+}
+
+async function upsertSyncTask(
+  dbClient: Awaited<ReturnType<typeof getDb>>,
+  organizationId: string,
+  input: TaskInput,
+) {
+  const { data: existing } = await dbClient.from('tasks')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('source', 'CONSENTZ_SYNC')
+    .eq('source_id', input.sourceId)
+    .neq('status', 'COMPLETED')
+    .limit(1)
+    .maybeSingle();
+
+  if (!existing) {
+    await dbClient.from('tasks').insert({
+      organization_id: organizationId,
+      title: input.title,
+      description: input.description,
+      priority: input.priority,
+      domains: input.domains,
+      kloe_code: input.kloeCode,
+      source: 'CONSENTZ_SYNC',
+      source_id: input.sourceId,
+      status: 'TODO',
+    });
+  }
+}
+
+function mapIncidentType(type: string): string {
+  const mapping: Record<string, string> = {
     'infection': 'INFECTION',
     'complication': 'COMPLICATION',
     'premises': 'PREMISES_INCIDENT',
@@ -359,17 +393,17 @@ function mapIncidentType(type: string): 'INFECTION' | 'COMPLICATION' | 'PREMISES
   return mapping[type.toLowerCase()] || 'OTHER';
 }
 
-function mapSeverity(severity: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
-  const mapping: Record<string, any> = {
+function mapSeverity(severity: string): string {
+  const mapping: Record<string, string> = {
     'low': 'LOW', 'moderate': 'MEDIUM', 'medium': 'MEDIUM',
     'high': 'HIGH', 'severe': 'HIGH', 'critical': 'CRITICAL',
   };
   return mapping[severity.toLowerCase()] || 'MEDIUM';
 }
 
-function mapIncidentStatus(status: string): 'OPEN' | 'INVESTIGATING' | 'ACTIONED' | 'CLOSED' {
-  const mapping: Record<string, any> = {
-    'open': 'OPEN', 'reported': 'OPEN',
+function mapIncidentStatus(status: string): string {
+  const mapping: Record<string, string> = {
+    'open': 'OPEN', 'reported': 'OPEN', 'unresolved': 'OPEN',
     'investigating': 'INVESTIGATING', 'under_investigation': 'INVESTIGATING',
     'actioned': 'ACTIONED', 'action_required': 'ACTIONED',
     'closed': 'CLOSED', 'resolved': 'CLOSED',
