@@ -12,6 +12,16 @@ function getStripe(): Stripe | null {
 }
 
 export class StripeService {
+  static async getPlans() {
+    const dbClient = await getDb();
+    const { data } = await dbClient
+      .from('subscription_plans')
+      .select('*')
+      .eq('is_active', true)
+      .order('price_monthly', { ascending: true });
+    return data ?? [];
+  }
+
   static async createCheckoutSession(params: {
     organizationId: string;
     priceId: string;
@@ -84,8 +94,26 @@ export class StripeService {
           ? session.customer
           : (session.customer as Stripe.Customer)?.id;
 
+        // Resolve the plan from the Stripe price
+        let planId: string | null = null;
+        if (subscriptionId) {
+          const stripe = getStripe();
+          if (stripe) {
+            const stripeSub = await stripe.subscriptions.retrieve(subscriptionId);
+            const priceId = stripeSub.items.data[0]?.price?.id;
+            if (priceId) {
+              const { data: plan } = await dbClient.from('subscription_plans')
+                .select('id')
+                .eq('stripe_price_id', priceId)
+                .maybeSingle();
+              planId = plan?.id ?? null;
+            }
+          }
+        }
+
         await dbClient.from('subscriptions').upsert({
           organization_id: orgId,
+          plan_id: planId,
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           status: 'active',
@@ -107,6 +135,7 @@ export class StripeService {
           .maybeSingle();
 
         if (sub) {
+          const priceId = subscription.items?.data?.[0]?.price?.id;
           const updateFields: Record<string, unknown> = {
             status: subscription.status === 'active' ? 'active'
               : subscription.status === 'past_due' ? 'past_due'
@@ -117,6 +146,15 @@ export class StripeService {
               : null,
             updated_at: new Date().toISOString(),
           };
+
+          if (priceId) {
+            const { data: plan } = await dbClient.from('subscription_plans')
+              .select('id')
+              .eq('stripe_price_id', priceId)
+              .maybeSingle();
+            if (plan) updateFields.plan_id = plan.id;
+          }
+
           if (subscription.current_period_start) {
             updateFields.current_period_start = new Date(subscription.current_period_start * 1000).toISOString();
           }
