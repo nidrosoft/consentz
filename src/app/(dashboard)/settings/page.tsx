@@ -143,6 +143,13 @@ const ROLES = [
     { value: "VIEWER", label: "Viewer", description: "Read only" },
 ] as const;
 
+const MEMBER_ROLES = [
+    { value: "COMPLIANCE_MANAGER", label: "Compliance Manager" },
+    { value: "DEPARTMENT_LEAD", label: "Department Lead" },
+    { value: "STAFF_MEMBER", label: "Staff" },
+    { value: "AUDITOR", label: "Auditor" },
+] as const;
+
 function UsersPanel() {
     const [users, setUsers] = useState<TeamUser[]>([]);
     const [listLoading, setListLoading] = useState(true);
@@ -154,6 +161,14 @@ function UsersPanel() {
     const [inviteError, setInviteError] = useState<string | null>(null);
     const [menuOpen, setMenuOpen] = useState<string | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+    const [removeLoading, setRemoveLoading] = useState(false);
+    const [changeRoleUser, setChangeRoleUser] = useState<TeamUser | null>(null);
+    const [newRole, setNewRole] = useState("");
+    const [roleLoading, setRoleLoading] = useState(false);
+    const [resendingId, setResendingId] = useState<string | null>(null);
+    const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
     const loadUsers = useCallback(async () => {
         setListLoading(true);
@@ -185,13 +200,82 @@ function UsersPanel() {
         return () => document.removeEventListener("mousedown", handler);
     }, []);
 
+    const handleRemoveUser = async (userId: string) => {
+        setRemoveLoading(true);
+        try {
+            const res = await fetch(`/api/organization/users/${userId}`, { method: "DELETE" });
+            const json = await res.json();
+            if (!json.success) {
+                setActionFeedback(json.error?.message ?? "Failed to remove user");
+                return;
+            }
+            setActionFeedback("User removed successfully");
+            setConfirmRemoveId(null);
+            await loadUsers();
+        } catch {
+            setActionFeedback("Failed to remove user");
+        } finally {
+            setRemoveLoading(false);
+        }
+    };
+
+    const handleChangeRole = async () => {
+        if (!changeRoleUser || !newRole) return;
+        setRoleLoading(true);
+        try {
+            const res = await fetch(`/api/organization/users/${changeRoleUser.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role: newRole }),
+            });
+            const json = await res.json();
+            if (!json.success) {
+                setActionFeedback(json.error?.message ?? "Failed to change role");
+                return;
+            }
+            setActionFeedback(`Role updated to ${ROLE_DISPLAY[newRole] ?? newRole}`);
+            setChangeRoleUser(null);
+            setNewRole("");
+            await loadUsers();
+        } catch {
+            setActionFeedback("Failed to change role");
+        } finally {
+            setRoleLoading(false);
+        }
+    };
+
+    const handleResendInvite = async (user: TeamUser) => {
+        setResendingId(user.id);
+        setMenuOpen(null);
+        try {
+            const res = await fetch("/api/organization/users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: user.email, role: "STAFF" }),
+            });
+            const json = await res.json();
+            setActionFeedback(json.success ? `Invitation resent to ${user.email}` : (json.error?.message ?? "Failed to resend invitation"));
+        } catch {
+            setActionFeedback("Failed to resend invitation");
+        } finally {
+            setResendingId(null);
+        }
+    };
+
+    useEffect(() => {
+        if (actionFeedback) {
+            const t = setTimeout(() => setActionFeedback(null), 4000);
+            return () => clearTimeout(t);
+        }
+    }, [actionFeedback]);
+
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-lg font-semibold text-primary">Team Members</h2>
                     <p className="mt-1 text-sm text-tertiary">
-                        {listLoading ? "Loading…" : `${users.length} members`}
+                        {listLoading ? "Loading…" : `${users.length} member${users.length !== 1 ? "s" : ""}`}
                     </p>
                 </div>
                 <Button color="primary" size="lg" iconLeading={Plus} onClick={() => setShowInvite(true)}>Invite User</Button>
@@ -199,7 +283,14 @@ function UsersPanel() {
 
             {listError && <p className="text-sm text-error-primary" role="alert">{listError}</p>}
 
-            <div className="overflow-hidden rounded-xl border border-secondary">
+            {actionFeedback && (
+                <div className="flex items-center gap-2 rounded-lg border border-secondary bg-secondary p-3">
+                    <CheckCircle className="size-4 shrink-0 text-fg-success-secondary" />
+                    <p className="text-sm text-primary">{actionFeedback}</p>
+                </div>
+            )}
+
+            <div className="rounded-xl border border-secondary">
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-secondary bg-secondary">
@@ -229,17 +320,37 @@ function UsersPanel() {
                                 <td className="px-4 py-3">
                                     <Badge size="sm" color={user.status === "Active" ? "success" : "warning"} type="pill-color">{user.status}</Badge>
                                 </td>
-                                <td className="relative px-4 py-3 text-right">
-                                    <button onClick={() => setMenuOpen(menuOpen === user.id ? null : user.id)} className="rounded-lg p-1 hover:bg-primary_hover">
-                                        <DotsVertical className="size-4 text-fg-quaternary" />
-                                    </button>
-                                    {menuOpen === user.id && (
-                                        <div ref={menuRef} className="absolute right-4 top-12 z-10 w-48 rounded-lg border border-secondary bg-primary py-1 shadow-lg">
-                                            <button className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-primary_hover">Change role</button>
-                                            {user.status === "Invited" && <button className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-primary_hover">Resend invite</button>}
-                                            <button className="w-full px-3 py-2 text-left text-sm text-error-primary hover:bg-primary_hover">Remove user</button>
-                                        </div>
-                                    )}
+                                <td className="px-4 py-3 text-right">
+                                    <div className="relative inline-block">
+                                        <button onClick={() => setMenuOpen(menuOpen === user.id ? null : user.id)} className="rounded-lg p-1 hover:bg-primary_hover">
+                                            <DotsVertical className="size-4 text-fg-quaternary" />
+                                        </button>
+                                        {menuOpen === user.id && (
+                                            <div ref={menuRef} className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-secondary bg-primary py-1 shadow-lg">
+                                                <button
+                                                    className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-primary_hover"
+                                                    onClick={() => { setMenuOpen(null); setChangeRoleUser(user); setNewRole(user.role); }}
+                                                >
+                                                    Change role
+                                                </button>
+                                                {user.status === "Invited" && (
+                                                    <button
+                                                        className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-primary_hover"
+                                                        onClick={() => handleResendInvite(user)}
+                                                        disabled={resendingId === user.id}
+                                                    >
+                                                        {resendingId === user.id ? "Sending…" : "Resend invite"}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    className="w-full px-3 py-2 text-left text-sm text-error-primary hover:bg-primary_hover"
+                                                    onClick={() => { setMenuOpen(null); setConfirmRemoveId(user.id); }}
+                                                >
+                                                    {user.status === "Invited" ? "Cancel invitation" : "Remove user"}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}
@@ -250,6 +361,66 @@ function UsersPanel() {
                 )}
             </div>
 
+            {/* Confirm Remove Dialog */}
+            {confirmRemoveId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-sm rounded-xl border border-secondary bg-primary p-6 shadow-xl">
+                        <div className="flex items-start gap-3">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-error-secondary">
+                                <AlertTriangle className="size-5 text-error-primary" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-primary">
+                                    {users.find(u => u.id === confirmRemoveId)?.status === "Invited" ? "Cancel invitation?" : "Remove team member?"}
+                                </h3>
+                                <p className="mt-1 text-sm text-tertiary">
+                                    {users.find(u => u.id === confirmRemoveId)?.status === "Invited"
+                                        ? `This will revoke the pending invitation for ${users.find(u => u.id === confirmRemoveId)?.email}.`
+                                        : `This will remove ${users.find(u => u.id === confirmRemoveId)?.name} from your organisation. They will lose access immediately.`}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-5 flex justify-end gap-3">
+                            <Button color="secondary" size="sm" onClick={() => setConfirmRemoveId(null)} isDisabled={removeLoading}>Cancel</Button>
+                            <Button color="primary-destructive" size="sm" isLoading={removeLoading} onClick={() => handleRemoveUser(confirmRemoveId)}>
+                                {users.find(u => u.id === confirmRemoveId)?.status === "Invited" ? "Revoke invitation" : "Remove user"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Change Role Dialog */}
+            {changeRoleUser && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-sm rounded-xl border border-secondary bg-primary p-6 shadow-xl">
+                        <div className="mb-5 flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-primary">Change Role</h3>
+                            <button type="button" onClick={() => { setChangeRoleUser(null); setNewRole(""); }} className="rounded-lg p-1 hover:bg-primary_hover">
+                                <X className="size-5 text-fg-quaternary" />
+                            </button>
+                        </div>
+                        <p className="mb-4 text-sm text-tertiary">Update role for <strong className="text-primary">{changeRoleUser.name}</strong> ({changeRoleUser.email})</p>
+                        <div className="flex flex-col gap-2">
+                            {MEMBER_ROLES.map((r) => (
+                                <label key={r.value} className={cx("flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5", newRole === r.value ? "border-brand-600 bg-brand-primary" : "border-secondary hover:bg-primary_hover")}>
+                                    <input type="radio" name="newRole" value={r.value} checked={newRole === r.value} onChange={() => setNewRole(r.value)} className="sr-only" />
+                                    <div className={cx("flex size-4 items-center justify-center rounded-full border-2", newRole === r.value ? "border-brand-600" : "border-tertiary")}>
+                                        {newRole === r.value && <div className="size-2 rounded-full bg-brand-600" />}
+                                    </div>
+                                    <span className={cx("text-sm font-medium", newRole === r.value ? "text-brand-secondary" : "text-primary")}>{r.label}</span>
+                                </label>
+                            ))}
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button color="secondary" size="sm" onClick={() => { setChangeRoleUser(null); setNewRole(""); }}>Cancel</Button>
+                            <Button color="primary" size="sm" isLoading={roleLoading} isDisabled={newRole === changeRoleUser.role} onClick={handleChangeRole}>Update Role</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Invite Dialog */}
             {showInvite && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="w-full max-w-md rounded-xl border border-secondary bg-primary p-6 shadow-xl">
