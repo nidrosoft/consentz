@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FC } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, CheckCircle, Zap, Building07, CreditCard02, ArrowUpRight } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { PricingCard } from "@/components/application/pricing-card/pricing-card";
 
 interface Plan {
     id: string;
@@ -25,10 +26,16 @@ interface Subscription {
     plan: Plan | null;
 }
 
-const TIER_META: Record<string, { icon: typeof Zap; badge: string; accent: string }> = {
-    free: { icon: Zap, badge: "gray", accent: "border-secondary" },
-    professional: { icon: CreditCard02, badge: "brand", accent: "border-brand" },
-    enterprise: { icon: Building07, badge: "purple", accent: "border-brand" },
+const TIER_DESCRIPTIONS: Record<string, string> = {
+    free: "Perfect for getting started",
+    professional: "Ideal for growing practices",
+    enterprise: "For large-scale organisations",
+};
+
+const TIER_ICONS: Record<string, FC<React.SVGProps<SVGSVGElement>>> = {
+    free: Zap,
+    professional: CreditCard02,
+    enterprise: Building07,
 };
 
 export default function BillingSettingsPage() {
@@ -128,7 +135,7 @@ export default function BillingSettingsPage() {
                 </div>
             ) : (
                 <>
-                    {/* Current subscription status */}
+                    {/* Current subscription status bar */}
                     {subscription && subscription.status !== "cancelled" && (
                         <div className="rounded-xl border border-secondary bg-primary p-6">
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -145,80 +152,78 @@ export default function BillingSettingsPage() {
                                         </p>
                                     )}
                                 </div>
-                                <div className="flex gap-2">
-                                    <Button color="secondary" size="sm" iconTrailing={ArrowUpRight} onClick={handlePortal} isLoading={portalLoading}>
-                                        Manage Subscription
-                                    </Button>
-                                </div>
+                                <Button color="secondary" size="sm" iconTrailing={ArrowUpRight} onClick={handlePortal} isLoading={portalLoading}>
+                                    Manage Subscription
+                                </Button>
                             </div>
                         </div>
                     )}
 
                     {/* Pricing cards */}
-                    <div className="grid gap-5 sm:grid-cols-3">
+                    <div className="grid gap-4 sm:grid-cols-3">
                         {plans.map((plan) => {
-                            const meta = TIER_META[plan.tier] ?? TIER_META.free;
                             const isCurrent = plan.tier === currentTier;
+                            const isPopular = plan.tier === "professional";
                             const isUpgrade = plans.findIndex(p => p.tier === plan.tier) > plans.findIndex(p => p.tier === currentTier);
-                            const Icon = meta.icon;
+                            const Icon = TIER_ICONS[plan.tier] ?? Zap;
 
                             return (
-                                <div
-                                    key={plan.id}
-                                    className={`relative flex flex-col rounded-xl border-2 bg-primary p-6 transition duration-100 ease-linear ${isCurrent ? meta.accent : "border-secondary hover:border-tertiary"}`}
-                                >
-                                    {isCurrent && (
-                                        <div className="absolute -top-3 left-4">
-                                            <Badge size="sm" color="brand" type="pill-color">Current plan</Badge>
-                                        </div>
-                                    )}
+                                <PricingCard.Card key={plan.id} className={isCurrent ? "border-brand ring-1 ring-brand-300" : ""}>
+                                    <PricingCard.Header>
+                                        <PricingCard.Plan>
+                                            <PricingCard.PlanName>
+                                                <Icon className="size-4 text-fg-quaternary" />
+                                                <span>{plan.name}</span>
+                                            </PricingCard.PlanName>
+                                            {isPopular && <PricingCard.PlanBadge>Popular</PricingCard.PlanBadge>}
+                                            {isCurrent && !isPopular && <PricingCard.PlanBadge>Current</PricingCard.PlanBadge>}
+                                        </PricingCard.Plan>
 
-                                    <div className="mb-4 flex items-center gap-2">
-                                        <div className="flex size-9 items-center justify-center rounded-lg bg-secondary">
-                                            <Icon className="size-5 text-fg-quaternary" />
-                                        </div>
-                                        <h3 className="text-lg font-semibold text-primary">{plan.name}</h3>
-                                    </div>
+                                        <PricingCard.Price>
+                                            <PricingCard.MainPrice>{formatPrice(plan.price_monthly)}</PricingCard.MainPrice>
+                                            {plan.price_monthly > 0 && <PricingCard.Period>/month</PricingCard.Period>}
+                                        </PricingCard.Price>
 
-                                    <div className="mb-5">
-                                        <span className="font-mono text-3xl font-bold text-primary">{formatPrice(plan.price_monthly)}</span>
-                                        {plan.price_monthly > 0 && <span className="text-sm text-tertiary">/mo</span>}
-                                    </div>
+                                        {isCurrent ? (
+                                            <Button color="secondary" size="md" isDisabled className="w-full">
+                                                Current plan
+                                            </Button>
+                                        ) : plan.tier === "free" ? (
+                                            <Button color="tertiary" size="md" isDisabled className="w-full">
+                                                Free tier
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                color={isUpgrade ? "primary" : "secondary"}
+                                                size="md"
+                                                className="w-full"
+                                                isLoading={checkoutLoading === plan.stripe_price_id}
+                                                onClick={() => handleCheckout(plan.stripe_price_id)}
+                                            >
+                                                {isUpgrade ? "Upgrade" : "Switch"} to {plan.name}
+                                            </Button>
+                                        )}
+                                    </PricingCard.Header>
 
-                                    <ul className="mb-6 flex flex-1 flex-col gap-2.5">
-                                        {(plan.features as string[]).map((feature) => (
-                                            <li key={feature} className="flex items-start gap-2 text-sm text-secondary">
-                                                <CheckCircle className="mt-0.5 size-4 shrink-0 text-fg-success-secondary" />
-                                                {feature}
-                                            </li>
-                                        ))}
-                                    </ul>
-
-                                    {isCurrent ? (
-                                        <Button color="secondary" size="md" isDisabled className="w-full">
-                                            Current plan
-                                        </Button>
-                                    ) : plan.tier === "free" ? (
-                                        <Button color="tertiary" size="md" isDisabled className="w-full">
-                                            Free tier
-                                        </Button>
-                                    ) : (
-                                        <Button
-                                            color={isUpgrade ? "primary" : "secondary"}
-                                            size="md"
-                                            className="w-full"
-                                            isLoading={checkoutLoading === plan.stripe_price_id}
-                                            onClick={() => handleCheckout(plan.stripe_price_id)}
-                                        >
-                                            {isUpgrade ? "Upgrade" : "Switch"} to {plan.name}
-                                        </Button>
-                                    )}
-                                </div>
+                                    <PricingCard.Body>
+                                        <PricingCard.Description>
+                                            {TIER_DESCRIPTIONS[plan.tier] ?? ""}
+                                        </PricingCard.Description>
+                                        <PricingCard.List>
+                                            {(plan.features as string[]).map((feature) => (
+                                                <PricingCard.ListItem key={feature}>
+                                                    <CheckCircle className="mt-0.5 size-4 shrink-0 text-fg-success-secondary" aria-hidden="true" />
+                                                    <span>{feature}</span>
+                                                </PricingCard.ListItem>
+                                            ))}
+                                        </PricingCard.List>
+                                    </PricingCard.Body>
+                                </PricingCard.Card>
                             );
                         })}
                     </div>
 
-                    {/* Manage billing section */}
+                    {/* Manage billing portal */}
                     {subscription?.stripe_customer_id && (
                         <div className="rounded-xl border border-secondary bg-primary p-6">
                             <h2 className="mb-2 text-lg font-semibold text-primary">Payment &amp; Invoices</h2>
