@@ -21,10 +21,10 @@ function checkRateLimit(userId: string): boolean {
 }
 
 function getDb() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
 }
 
 export async function POST(req: Request) {
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
   let orgContext = '';
 
-  if (session.organizationId) {
+  if (supabase && session.organizationId) {
     const [orgResult, scoresResult, gapsResult, tasksResult, syncResult] =
       await Promise.all([
         supabase
