@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { teamInvitationEmail } from "./email/templates/team-invitation";
 
 let resendClient: Resend | null = null;
 
@@ -10,7 +11,7 @@ function getResend(): Resend | null {
   return resendClient;
 }
 
-const FROM_ADDRESS = process.env.EMAIL_FROM || "Consentz <noreply@consentz.com>";
+const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "CQC Compliance <mail@sendmail.consentz.com>";
 
 export async function sendEmail(params: {
   to: string | string[];
@@ -55,14 +56,13 @@ export async function sendInvitationEmail(params: {
   return sendEmail({
     to: params.to,
     subject: `You've been invited to ${params.organizationName} on Consentz`,
-    html: `
-      <div style="font-family: system-ui, sans-serif; max-width: 560px; margin: 0 auto;">
-        <h2 style="color: #111827;">You're invited to join ${params.organizationName}</h2>
-        <p style="color: #4B5563;">${params.inviterName} has invited you to join as <strong>${params.role}</strong> on Consentz CQC Compliance.</p>
-        <a href="${params.inviteUrl}" style="display: inline-block; background: #7C3AED; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 16px 0;">Accept Invitation</a>
-        <p style="color: #9CA3AF; font-size: 14px;">If you didn't expect this, you can ignore this email.</p>
-      </div>
-    `,
+    html: teamInvitationEmail({
+      invitedName: params.to,
+      inviterName: params.inviterName,
+      organizationName: params.organizationName,
+      role: params.role,
+      inviteLink: params.inviteUrl,
+    }),
     text: `${params.inviterName} invited you to ${params.organizationName} on Consentz. Accept: ${params.inviteUrl}`,
   });
 }
