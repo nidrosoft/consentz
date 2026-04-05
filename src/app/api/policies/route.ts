@@ -1,5 +1,5 @@
 import { withAuth } from '@/lib/api-handler';
-import { apiSuccess } from '@/lib/api-response';
+import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { parsePagination } from '@/lib/pagination';
 import { PolicyService } from '@/lib/services/policy-service';
@@ -42,6 +42,10 @@ export const POST = withAuth(async (req, { params, auth }) => {
     createdBy: auth.fullName,
     category: validated.category,
   });
+
+  if (!policy) {
+    return ApiErrors.internal('Failed to create the policy. Please try again.');
+  }
 
   await AuditService.log({
     organizationId: auth.organizationId,

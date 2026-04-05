@@ -687,14 +687,14 @@ export async function recalculateComplianceScores(organizationId: string) {
     complianceScoreId = cs.id;
   }
 
-  for (const ds of domainScoreData) {
+    for (const ds of domainScoreData) {
     const domainGaps = openGaps.filter((g: any) => g.domain === ds.domain);
     await client.from('domain_scores').insert({
       compliance_score_id: complianceScoreId,
-      domain: ds.domain,
-      score: ds.score,
+          domain: ds.domain,
+          score: ds.score,
       max_score: 100,
-      percentage: ds.score,
+          percentage: ds.score,
       status: ds.rating,
       total_gaps: domainGaps.length,
       critical_gaps: domainGaps.filter((g: any) => g.severity === 'CRITICAL').length,

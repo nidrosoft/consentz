@@ -1,16 +1,22 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, ChevronRight, AlertTriangle, CheckCircle } from "@untitledui/icons";
+import { ShieldTick, Target02, Heart, Zap, Trophy01, ArrowUpRight, ArrowDownRight, ChevronRight, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, Grid01, List } from "@untitledui/icons";
 import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { useComplianceScore, useComplianceGaps } from "@/hooks/use-compliance";
-import { RATING_LABELS, KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
+import { useComplianceScore, useComplianceGaps, useUpdateGap, useTreatmentRiskHeatmap } from "@/hooks/use-compliance";
+import { useEvidence } from "@/hooks/use-evidence";
+import { useConsentzMetricsForDomain, type ConsentzMetricEntry } from "@/hooks/use-dashboard";
+import { RATING_LABELS, KLOES, REGULATIONS, POLICY_TEMPLATES } from "@/lib/constants/cqc-framework";
+import { TreatmentRiskHeatmap, TreatmentRiskHeatmapSkeleton, TreatmentRiskHeatmapEmpty } from "@/components/application/treatment-risk-heatmap";
 import type { DomainSlug } from "@/types";
 import type { FC } from "react";
+
+type ViewMode = "card" | "list";
 
 const DOMAIN_ICONS: Record<string, FC<{ className?: string }>> = {
     safe: ShieldTick, effective: Target02, caring: Heart, responsive: Zap, "well-led": Trophy01,
@@ -26,11 +32,16 @@ const DOMAIN_DESCRIPTIONS: Record<string, string> = {
     "well-led": "Does leadership ensure high-quality care and promote improvement?",
 };
 
-// Build KLOE → Regulations lookup from REGULATIONS + POLICY_TEMPLATES data
+// Build KLOE → Regulations lookup from POLICY_TEMPLATES (accurate per-KLOE mapping)
 const KLOE_REGULATIONS: Record<string, string[]> = {};
 KLOES.forEach((k) => {
-    const domainRegs = REGULATIONS.filter((r) => r.domains.includes(k.domain));
-    KLOE_REGULATIONS[k.code] = domainRegs.map((r) => r.code.replace("REG", "Reg "));
+    const regs = new Set<string>();
+    POLICY_TEMPLATES.forEach((pt) => {
+        if ((pt.linkedKloes as readonly string[]).includes(k.code)) {
+            pt.linkedRegulations.forEach((r) => regs.add(r.replace("REG", "Reg ")));
+        }
+    });
+    KLOE_REGULATIONS[k.code] = [...regs];
 });
 
 const SEVERITY_DOT: Record<string, string> = {
@@ -39,6 +50,81 @@ const SEVERITY_DOT: Record<string, string> = {
 const SEVERITY_BADGE: Record<string, "error" | "warning" | "brand" | "gray"> = {
     CRITICAL: "error", HIGH: "warning", MEDIUM: "brand", LOW: "gray",
 };
+
+function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+    return (
+        <div className="flex rounded-lg border border-secondary bg-secondary p-0.5">
+            <button
+                onClick={() => onChange("card")}
+                className={cx(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition duration-100",
+                    mode === "card" ? "bg-primary text-primary shadow-xs" : "text-tertiary hover:text-secondary",
+                )}
+            >
+                <Grid01 className="size-3.5" />
+                Cards
+            </button>
+            <button
+                onClick={() => onChange("list")}
+                className={cx(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition duration-100",
+                    mode === "list" ? "bg-primary text-primary shadow-xs" : "text-tertiary hover:text-secondary",
+                )}
+            >
+                <List className="size-3.5" />
+                List
+            </button>
+        </div>
+    );
+}
+
+function scoreColor(score: number): string {
+    if (score >= 80) return "text-success-primary";
+    if (score >= 50) return "text-warning-primary";
+    return "text-error-primary";
+}
+
+function scoreRingColor(score: number): string {
+    if (score >= 80) return "stroke-[#16A34A]";
+    if (score >= 50) return "stroke-[#F59E0B]";
+    return "stroke-[#EF4444]";
+}
+
+function scoreTrackColor(score: number): string {
+    if (score >= 80) return "stroke-[#DCFCE7]";
+    if (score >= 50) return "stroke-[#FEF3C7]";
+    return "stroke-[#FEE2E2]";
+}
+
+function MiniScoreRing({ score }: { score: number }) {
+    const r = 18;
+    const sw = 4;
+    const size = 44;
+    const c = size / 2;
+    const circumference = 2 * Math.PI * r;
+    const clamped = Math.max(0, Math.min(100, score));
+    const filled = (clamped / 100) * circumference;
+    const gap = circumference - filled;
+
+    return (
+        <div className="relative size-11 shrink-0">
+            <svg viewBox={`0 0 ${size} ${size}`} className="size-full" style={{ transform: "rotate(-90deg)" }}>
+                <circle cx={c} cy={c} r={r} fill="none" className={scoreTrackColor(score)} strokeWidth={sw} />
+                {clamped > 0 && (
+                    <circle
+                        cx={c} cy={c} r={r} fill="none"
+                        className={scoreRingColor(score)} strokeWidth={sw}
+                        strokeDasharray={clamped >= 100 ? `${circumference} 0` : `${filled} ${gap}`}
+                        strokeLinecap="round"
+                    />
+                )}
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+                <span className={cx("text-[10px] font-bold leading-none", scoreColor(score))}>{score}%</span>
+            </div>
+        </div>
+    );
+}
 
 function DomainDetailSkeleton() {
     return (
@@ -64,13 +150,232 @@ function DomainDetailSkeleton() {
     );
 }
 
+type GapItem = { id: string; title: string; description: string; severity: string; kloe: string; regulation: string; remediationSteps?: string[] };
+
+function GapCard({ gap, onResolve, isResolving }: { gap: GapItem; onResolve: (id: string) => void; isResolving: boolean }) {
+    const [expanded, setExpanded] = useState(false);
+    const hasSteps = gap.remediationSteps && gap.remediationSteps.length > 0;
+
+    return (
+        <div className="flex flex-col rounded-xl border border-secondary bg-primary p-4">
+            <div className="flex items-start gap-2.5">
+                <span className={cx("mt-1 size-2.5 shrink-0 rounded-full", SEVERITY_DOT[gap.severity])} />
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-primary line-clamp-2">{gap.title}</p>
+                    <p className="mt-1 text-xs text-tertiary line-clamp-2">{gap.description}</p>
+                </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <Badge size="sm" color={SEVERITY_BADGE[gap.severity]} type="pill-color">{gap.severity}</Badge>
+                <span className="text-xs text-tertiary">{gap.kloe} &middot; {gap.regulation}</span>
+            </div>
+            <div className="mt-auto pt-3 flex gap-2">
+                <Button color="secondary" size="sm" iconTrailing={expanded ? ChevronUp : ChevronDown} onClick={() => setExpanded(!expanded)}>
+                    {expanded ? "Hide" : "Remediation"}
+                </Button>
+                <Button color="tertiary" size="sm" isLoading={isResolving} onClick={() => onResolve(gap.id)}>Resolve</Button>
+            </div>
+            {expanded && (
+                <div className="mt-3 rounded-lg border border-secondary bg-secondary p-3">
+                    <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Remediation Steps</p>
+                    {hasSteps ? (
+                        <ol className="mt-2 list-decimal space-y-1 pl-4">
+                            {gap.remediationSteps!.map((step, i) => <li key={i} className="text-sm text-primary">{step}</li>)}
+                        </ol>
+                    ) : (
+                        <p className="mt-2 text-sm text-tertiary">No specific remediation steps recorded.</p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function GapListRow({ gap, onResolve, isResolving }: { gap: GapItem; onResolve: (id: string) => void; isResolving: boolean }) {
+    const [expanded, setExpanded] = useState(false);
+    const hasSteps = gap.remediationSteps && gap.remediationSteps.length > 0;
+
+    return (
+        <div className="rounded-xl border border-secondary bg-primary p-4">
+            <div className="flex items-start gap-3">
+                <span className={cx("mt-1 size-2.5 shrink-0 rounded-full", SEVERITY_DOT[gap.severity])} />
+                <div className="flex-1">
+                    <p className="text-sm font-medium text-primary">{gap.title}</p>
+                    <p className="mt-1 text-xs text-tertiary">{gap.description}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                        <Badge size="sm" color={SEVERITY_BADGE[gap.severity]} type="pill-color">{gap.severity}</Badge>
+                        <span className="text-xs text-tertiary">{gap.kloe} &middot; {gap.regulation}</span>
+                    </div>
+                </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+                <Button color="secondary" size="sm" iconTrailing={expanded ? ChevronUp : ChevronDown} onClick={() => setExpanded(!expanded)}>
+                    {expanded ? "Hide Remediation" : "View Remediation"}
+                </Button>
+                <Button color="tertiary" size="sm" isLoading={isResolving} onClick={() => onResolve(gap.id)}>Mark Resolved</Button>
+            </div>
+            {expanded && (
+                <div className="mt-3 rounded-lg border border-secondary bg-secondary p-4">
+                    <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Remediation Steps</p>
+                    {hasSteps ? (
+                        <ol className="mt-2 list-decimal space-y-1.5 pl-4">
+                            {gap.remediationSteps!.map((step, i) => <li key={i} className="text-sm text-primary">{step}</li>)}
+                        </ol>
+                    ) : (
+                        <p className="mt-2 text-sm text-tertiary">No specific remediation steps recorded. Review this gap with your compliance manager.</p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function GapsSection({ gaps, viewMode }: { gaps: GapItem[]; viewMode: ViewMode }) {
+    const [resolvingId, setResolvingId] = useState<string | null>(null);
+    const updateGap = useUpdateGap();
+
+    function handleResolve(gapId: string) {
+        setResolvingId(gapId);
+        updateGap.mutate({ id: gapId, status: "RESOLVED" }, { onSettled: () => setResolvingId(null) });
+    }
+
+    if (gaps.length === 0) {
+        return (
+            <EmptyState size="sm">
+                <EmptyState.Header pattern="none">
+                    <EmptyState.FeaturedIcon icon={CheckCircle} color="success" theme="light" size="sm" />
+                </EmptyState.Header>
+                <EmptyState.Content>
+                    <EmptyState.Title>No gaps in this domain</EmptyState.Title>
+                    <EmptyState.Description>Great progress! Continue maintaining your compliance standards.</EmptyState.Description>
+                </EmptyState.Content>
+            </EmptyState>
+        );
+    }
+
+    if (viewMode === "card") {
+        return (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {gaps.map((gap) => (
+                    <GapCard key={gap.id} gap={gap} onResolve={handleResolve} isResolving={resolvingId === gap.id} />
+                ))}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-3">
+            {gaps.map((gap) => (
+                <GapListRow key={gap.id} gap={gap} onResolve={handleResolve} isResolving={resolvingId === gap.id} />
+            ))}
+        </div>
+    );
+}
+
+function ConsentzDomainMetrics({ domain }: { domain: string }) {
+    const { data: metrics, freshness } = useConsentzMetricsForDomain(domain);
+    if (!metrics) return null;
+
+    return (
+        <div className="rounded-xl border border-secondary bg-primary p-5">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="text-lg font-semibold text-primary">Consentz Metrics</h3>
+                    {freshness && <p className="mt-0.5 text-xs text-tertiary">Synced {timeAgo(freshness)}</p>}
+                </div>
+                <Badge size="sm" color="brand" type="pill-color">Live</Badge>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(metrics).map(([key, m]: [string, ConsentzMetricEntry]) => {
+                    const val = m.value;
+                    const displayValue = val != null
+                        ? m.unit === '/10' ? `${val}${m.unit}` : `${Math.round(val)}${m.unit}`
+                        : '—';
+                    const isGood = val != null && (m.unit === '/10' ? val >= 7 : val >= 75);
+                    const isWarning = val != null && (m.unit === '/10' ? val >= 5 && val < 7 : val >= 50 && val < 75);
+                    return (
+                        <div key={key} className="flex flex-col gap-2 rounded-lg border border-secondary p-3">
+                            <span className="text-xs font-medium text-tertiary">{m.label}</span>
+                            <span className={cx(
+                                "font-mono text-2xl font-bold",
+                                val == null ? "text-quaternary" : isGood ? "text-success-primary" : isWarning ? "text-warning-primary" : "text-error-primary",
+                            )}>
+                                {displayValue}
+                            </span>
+                            <div className="h-1.5 w-full rounded-full bg-quaternary overflow-hidden">
+                                <div
+                                    className={cx(
+                                        "h-full rounded-full transition-all duration-500",
+                                        val == null ? "w-0" : isGood ? "bg-success-solid" : isWarning ? "bg-warning-solid" : "bg-error-solid",
+                                    )}
+                                    style={{ width: val != null ? `${Math.min(100, m.unit === '/10' ? val * 10 : val)}%` : '0%' }}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function timeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+}
+
+function SafeTreatmentRiskSection() {
+    const { data, isLoading, error } = useTreatmentRiskHeatmap();
+
+    return (
+        <div className="rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="text-lg font-semibold text-primary">Treatment Risk Heatmap</h3>
+                    <p className="mt-1 text-sm text-tertiary">Visual analysis of treatment risks across procedures.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Badge color="brand" size="sm" type="pill-color">S2 · Reg 12</Badge>
+                </div>
+            </div>
+            <div className="mt-5">
+                {isLoading && <TreatmentRiskHeatmapSkeleton />}
+                {error && <TreatmentRiskHeatmapEmpty />}
+                {data && <TreatmentRiskHeatmap data={data} />}
+            </div>
+        </div>
+    );
+}
+
 export default function DomainDetailPage() {
     const params = useParams();
     const router = useRouter();
     const slug = params.domain as DomainSlug;
 
+    const [kloeView, setKloeView] = useState<ViewMode>("card");
+    const [gapsView, setGapsView] = useState<ViewMode>("card");
+
     const { data: score, isLoading: scoreLoading, error: scoreError } = useComplianceScore();
     const { data: gapsResponse, isLoading: gapsLoading } = useComplianceGaps({ domain: slug, pageSize: 100 });
+    const { data: evidenceResponse } = useEvidence({ domain: slug, pageSize: 200 });
+    const allEvidence = (evidenceResponse?.data ?? []) as { id: string; kloe_code?: string; kloeCode?: string; category?: string; title?: string; file_name?: string; status?: string }[];
+
+    const evidenceByKloe = useMemo(() => {
+        const map: Record<string, typeof allEvidence> = {};
+        for (const ev of allEvidence) {
+            const codes = (ev.kloe_code ?? ev.kloeCode ?? "").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean);
+            for (const code of codes) {
+                (map[code] ??= []).push(ev);
+            }
+        }
+        return map;
+    }, [allEvidence]);
+
     const gaps = gapsResponse?.data ?? [];
     const domainScore = score?.domains.find((d) => d.slug === slug);
     const domainKloes = KLOES.filter((k) => k.domain === slug);
@@ -155,105 +460,120 @@ export default function DomainDetailPage() {
                 </div>
             </div>
 
+            {/* Consentz Metrics for this domain */}
+            <ConsentzDomainMetrics domain={slug} />
+
             {/* KLOEs */}
             <div>
-                <h2 className="mb-4 text-lg font-semibold text-primary">Key Lines of Enquiry</h2>
-                <div className="flex flex-col gap-3">
-                    {domainKloes.map((kloe) => {
-                        const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
-                        const kloeEvidence: { type: string }[] = [];
-                        const mockKloeScore = kloeGaps.length === 0 ? 85 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 40 : 60;
-
-                        return (
-                            <button
-                                key={kloe.code}
-                                onClick={() => router.push(`/domains/${slug}/${kloe.code.toLowerCase()}`)}
-                                className="flex items-center gap-4 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300"
-                            >
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-bold text-tertiary">{kloe.code}</span>
-                                        <span className="text-sm font-medium text-primary">{kloe.title}</span>
-                                    </div>
-                                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-tertiary">
-                                        {KLOE_REGULATIONS[kloe.code]?.length > 0 && (
-                                            <span>Linked: {KLOE_REGULATIONS[kloe.code].join(", ")}</span>
-                                        )}
-                                        <span>Evidence: {kloeEvidence.length} documents</span>
-                                        {kloeGaps.length > 0 && (
-                                            <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="font-mono text-sm font-bold text-primary">{mockKloeScore}%</span>
-                                    <Badge
-                                        size="sm"
-                                        color={kloeGaps.length === 0 ? "success" : "warning"}
-                                        type="pill-color"
-                                    >
-                                        {kloeGaps.length === 0 ? "✓" : "⚠"}
-                                    </Badge>
-                                    <ChevronRight className="size-4 text-fg-quaternary" />
-                                </div>
-                            </button>
-                        );
-                    })}
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-primary">Key Lines of Enquiry</h2>
+                    <ViewToggle mode={kloeView} onChange={setKloeView} />
                 </div>
+
+                {kloeView === "card" ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {domainKloes.map((kloe) => {
+                            const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
+                            const kloeEvidenceList = evidenceByKloe[kloe.code] ?? [];
+                            const hasPolicy = kloeEvidenceList.some((e) => e.category === "POLICY");
+                            const hasTraining = kloeEvidenceList.some((e) => e.category === "TRAINING_RECORD");
+                            const coverageFactors = [
+                                kloeGaps.length === 0 ? 40 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 0 : 15,
+                                kloeEvidenceList.length > 0 ? 25 : 0,
+                                hasPolicy ? 20 : 0,
+                                hasTraining ? 15 : 0,
+                            ];
+                            const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
+
+                            return (
+                                <button
+                                    key={kloe.code}
+                                    onClick={() => router.push(`/domains/${slug}/${kloe.code.toLowerCase()}`)}
+                                    className="group flex flex-col rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand hover:shadow-xs"
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <Badge size="sm" color="gray" type="pill-color">{kloe.code}</Badge>
+                                        <MiniScoreRing score={kloeScore} />
+                                    </div>
+                                    <p className="mt-3 text-sm font-semibold text-primary line-clamp-2">{kloe.title}</p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {KLOE_REGULATIONS[kloe.code]?.map((r) => (
+                                            <span key={r} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-tertiary">{r}</span>
+                                        ))}
+                                    </div>
+                                    <div className="mt-auto flex items-center justify-between pt-3">
+                                        <div className="flex items-center gap-3 text-xs text-tertiary">
+                                            <span>{kloeEvidenceList.length} doc{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
+                                            {kloeGaps.length > 0 && (
+                                                <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
+                                            )}
+                                        </div>
+                                        <ChevronRight className="size-4 text-fg-quaternary opacity-0 transition duration-100 group-hover:opacity-100" />
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        {domainKloes.map((kloe) => {
+                            const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
+                            const kloeEvidenceList = evidenceByKloe[kloe.code] ?? [];
+                            const hasPolicy = kloeEvidenceList.some((e) => e.category === "POLICY");
+                            const hasTraining = kloeEvidenceList.some((e) => e.category === "TRAINING_RECORD");
+                            const coverageFactors = [
+                                kloeGaps.length === 0 ? 40 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 0 : 15,
+                                kloeEvidenceList.length > 0 ? 25 : 0,
+                                hasPolicy ? 20 : 0,
+                                hasTraining ? 15 : 0,
+                            ];
+                            const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
+
+                            return (
+                                <button
+                                    key={kloe.code}
+                                    onClick={() => router.push(`/domains/${slug}/${kloe.code.toLowerCase()}`)}
+                                    className="flex items-center gap-4 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300"
+                                >
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-tertiary">{kloe.code}</span>
+                                            <span className="text-sm font-medium text-primary">{kloe.title}</span>
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-tertiary">
+                                            {KLOE_REGULATIONS[kloe.code]?.length > 0 && (
+                                                <span>Linked: {KLOE_REGULATIONS[kloe.code].join(", ")}</span>
+                                            )}
+                                            <span>Evidence: {kloeEvidenceList.length} document{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
+                                            {kloeGaps.length > 0 && (
+                                                <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-mono text-sm font-bold text-primary">{kloeScore}%</span>
+                                        <Badge size="sm" color={kloeGaps.length === 0 ? "success" : "warning"} type="pill-color">
+                                            {kloeGaps.length === 0 ? "✓" : "⚠"}
+                                        </Badge>
+                                        <ChevronRight className="size-4 text-fg-quaternary" />
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Gaps in this domain */}
             <div>
-                <h2 className="mb-4 text-lg font-semibold text-primary">Gaps in This Domain</h2>
-                {domainGaps.length > 0 ? (
-                    <div className="flex flex-col gap-3">
-                        {domainGaps.map((gap) => (
-                            <div key={gap.id} className="rounded-xl border border-secondary bg-primary p-4">
-                                <div className="flex items-start gap-3">
-                                    <span className={cx("mt-1 size-2.5 shrink-0 rounded-full", SEVERITY_DOT[gap.severity])} />
-                                    <div className="flex-1">
-                                        <p className="text-sm font-medium text-primary">{gap.title}</p>
-                                        <p className="mt-1 text-xs text-tertiary">{gap.description}</p>
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <Badge size="sm" color={SEVERITY_BADGE[gap.severity]} type="pill-color">{gap.severity}</Badge>
-                                            <span className="text-xs text-tertiary">{gap.kloe} &middot; {gap.regulation}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="mt-3 flex gap-2">
-                                    <Button color="secondary" size="sm">View Remediation</Button>
-                                    <Button color="tertiary" size="sm">Mark Resolved</Button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <EmptyState size="sm">
-                        <EmptyState.Header pattern="none">
-                            <EmptyState.FeaturedIcon icon={CheckCircle} color="success" theme="light" size="sm" />
-                        </EmptyState.Header>
-                        <EmptyState.Content>
-                            <EmptyState.Title>No gaps in this domain</EmptyState.Title>
-                            <EmptyState.Description>Great progress! Continue maintaining your compliance standards.</EmptyState.Description>
-                        </EmptyState.Content>
-                    </EmptyState>
-                )}
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-primary">Gaps in This Domain</h2>
+                    {domainGaps.length > 0 && <ViewToggle mode={gapsView} onChange={setGapsView} />}
+                </div>
+                <GapsSection gaps={domainGaps} viewMode={gapsView} />
             </div>
 
-            {slug === "safe" && (
-                <div className="rounded-xl border border-secondary bg-primary p-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h3 className="text-lg font-semibold text-primary">Treatment Risk Heatmap</h3>
-                            <p className="mt-1 text-sm text-tertiary">Visual analysis of treatment risks across procedures.</p>
-                        </div>
-                        <Badge color="gray" size="md">Coming Soon</Badge>
-                    </div>
-                    <div className="mt-6 flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-secondary bg-secondary">
-                        <p className="text-sm text-tertiary">Heatmap visualization will appear here when the Treatment Risk API is available.</p>
-                    </div>
-                </div>
-            )}
+            {slug === "safe" && <SafeTreatmentRiskSection />}
         </div>
     );
 }

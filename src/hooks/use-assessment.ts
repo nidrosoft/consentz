@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import type { ComplianceScore } from '@/types';
 
 // =============================================================================
@@ -59,7 +60,9 @@ export function useSaveAssessment() {
     }) => apiPost<Assessment>('/api/assessment', data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assessment'] });
+      toast.success('Assessment saved', 'Your progress has been saved.');
     },
+    onError: () => toast.error('Failed to save assessment', 'Please try again.'),
   });
 }
 
@@ -75,6 +78,8 @@ export function useCalculateAssessment() {
       queryClient.invalidateQueries({ queryKey: ['assessment'] });
       queryClient.invalidateQueries({ queryKey: ['compliance'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Assessment complete', 'Compliance scores have been calculated.');
     },
+    onError: () => toast.error('Calculation failed', 'Could not calculate results.'),
   });
 }

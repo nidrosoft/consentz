@@ -3,12 +3,16 @@
 import { useState, useRef, useEffect, useCallback, type FC } from "react";
 import type { Key } from "react-aria-components";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AuditLogPanel } from "@/app/(dashboard)/audits/page";
+import { ReportsPanel } from "@/app/(dashboard)/reports/page";
 import {
     Building07, Users01, CreditCard02, PuzzlePiece01, Bell01,
     Lock01, AlertTriangle, Plus, ChevronLeft, DotsVertical, X,
-    CheckCircle, Zap, ArrowUpRight,
+    CheckCircle, Zap, ArrowUpRight, Check,
     Copy01, Key01, RefreshCw01, Trash01, AlertCircle, Link01, LinkBroken01,
+    Rocket01,
 } from "@untitledui/icons";
+import { useWalkthrough } from "@/components/walkthrough/walkthrough-provider";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tabs } from "@/components/application/tabs/tabs";
 import { NativeSelect } from "@/components/base/select/select-native";
@@ -17,9 +21,13 @@ import { Button } from "@/components/base/buttons/button";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Badge } from "@/components/base/badges/badges";
 import { PricingCard } from "@/components/application/pricing-card/pricing-card";
-import { useOrganization } from "@/hooks/use-organization";
+import { Table, TableCard } from "@/components/application/table/table";
+import { BadgeWithIcon } from "@/components/base/badges/badges";
+import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
+import { useMarkOnboardingStep } from "@/hooks/use-onboarding";
 import { cx } from "@/utils/cx";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 // ---------------------------------------------------------------------------
 // Tab config
@@ -31,6 +39,8 @@ const tabs = [
     { id: "billing", label: "Billing" },
     { id: "integrations", label: "Integrations" },
     { id: "notifications", label: "Notifications" },
+    { id: "audit-log", label: "Audit Log" },
+    { id: "reports", label: "Reports" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -39,6 +49,45 @@ const tabs = [
 
 function OrganisationPanel() {
     const { data: org, isLoading, error } = useOrganization();
+    const updateOrg = useUpdateOrganization();
+    const markOnboardingStep = useMarkOnboardingStep();
+
+    const [name, setName] = useState("");
+    const [cqcProviderId, setCqcProviderId] = useState("");
+    const [cqcLocationId, setCqcLocationId] = useState("");
+    const [registeredManager, setRegisteredManager] = useState("");
+    const [bedCount, setBedCount] = useState("");
+    const [postcode, setPostcode] = useState("");
+    const [initialised, setInitialised] = useState(false);
+
+    useEffect(() => {
+        if (org && !initialised) {
+            setName(org.name ?? "");
+            setCqcProviderId(org.cqcProviderId ?? "");
+            setCqcLocationId(org.cqcLocationId ?? "");
+            setRegisteredManager(org.registeredManager ?? "");
+            setBedCount(org.bedCount != null ? String(org.bedCount) : "");
+            setPostcode(org.postcode ?? "");
+            setInitialised(true);
+        }
+    }, [org, initialised]);
+
+    const handleSaveOrg = useCallback(() => {
+        if (!name.trim()) return;
+        updateOrg.mutate(
+            {
+                name: name.trim(),
+                cqcProviderId: cqcProviderId.trim() || undefined,
+                cqcLocationId: cqcLocationId.trim() || undefined,
+                registeredManager: registeredManager.trim() || undefined,
+                bedCount: bedCount ? Number(bedCount) : undefined,
+                postcode: postcode.trim() || undefined,
+            } as any,
+            {
+                onSuccess: () => markOnboardingStep("org_profile"),
+            },
+        );
+    }, [name, cqcProviderId, cqcLocationId, registeredManager, bedCount, postcode, updateOrg, markOnboardingStep]);
 
     if (isLoading) {
         return (
@@ -70,11 +119,11 @@ function OrganisationPanel() {
                     <h2 className="text-lg font-semibold text-primary">Organisation Details</h2>
                     <p className="mt-1 text-sm text-tertiary">Manage your organisation name, CQC IDs, and service details.</p>
                 </div>
-                <Button color="primary" size="lg">Save</Button>
+                <Button color="primary" size="lg" isLoading={updateOrg.isPending} onClick={handleSaveOrg}>Save</Button>
             </div>
 
             <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
-                <Input label="Organisation name *" defaultValue={org.name} isRequired />
+                <Input label="Organisation name *" value={name} onChange={(v) => setName(v)} isRequired />
 
                 <div>
                     <label className="mb-1.5 block text-sm font-medium text-primary">Service type</label>
@@ -86,17 +135,19 @@ function OrganisationPanel() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    <Input label="CQC Provider ID" defaultValue={org.cqcProviderId} />
-                    <Input label="CQC Location ID" defaultValue={org.cqcLocationId} />
+                    <Input label="CQC Provider ID" value={cqcProviderId} onChange={(v) => setCqcProviderId(v)} />
+                    <Input label="CQC Location ID" value={cqcLocationId} onChange={(v) => setCqcLocationId(v)} />
                 </div>
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                    <Input label="Registered Manager" defaultValue={org.registeredManager} />
-                    <Input label="Number of beds" type="number" defaultValue={String(org.bedCount)} isRequired />
+                    <Input label="Registered Manager" value={registeredManager} onChange={(v) => setRegisteredManager(v)} />
+                    <Input label="Number of beds" type="number" value={bedCount} onChange={(v) => setBedCount(v)} isRequired />
                 </div>
 
-                <Input label="Address" defaultValue={org.postcode} />
+                <Input label="Address" value={postcode} onChange={(v) => setPostcode(v)} />
             </div>
+
+            <RestartTourCard />
 
             <div className="rounded-xl border border-error-primary bg-primary p-6">
                 <div className="flex items-start gap-3">
@@ -107,6 +158,41 @@ function OrganisationPanel() {
                     </div>
                     <Button color="primary-destructive" size="sm">Delete Organisation</Button>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function RestartTourCard() {
+    const { progress, restartWalkthrough } = useWalkthrough();
+    const router = useRouter();
+    const isCompleted = progress.phase1Status === "COMPLETED" || progress.phase1Status === "SKIPPED";
+
+    return (
+        <div className="rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-secondary">
+                    <Rocket01 className="size-5 text-fg-brand-primary" />
+                </div>
+                <div className="flex-1">
+                    <h2 className="text-sm font-semibold text-primary">Welcome Tour</h2>
+                    <p className="mt-1 text-sm text-tertiary">
+                        {isCompleted
+                            ? "You\u2019ve completed the welcome tour. Restart it anytime to refresh your memory."
+                            : "Take the guided tour to learn about every feature in the CQC Compliance Module."}
+                    </p>
+                </div>
+                <Button
+                    color="secondary"
+                    size="sm"
+                    iconLeading={Rocket01}
+                    onClick={() => {
+                        restartWalkthrough();
+                        router.push("/");
+                    }}
+                >
+                    {isCompleted ? "Restart Tour" : "Start Tour"}
+                </Button>
             </div>
         </div>
     );
@@ -206,14 +292,14 @@ function UsersPanel() {
             const res = await fetch(`/api/organization/users/${userId}`, { method: "DELETE" });
             const json = await res.json();
             if (!json.success) {
-                setActionFeedback(json.error?.message ?? "Failed to remove user");
+                toast.error("Failed to remove user", json.error?.message ?? "Please try again.");
                 return;
             }
-            setActionFeedback("User removed successfully");
+            toast.success("User removed", "The team member has been removed.");
             setConfirmRemoveId(null);
             await loadUsers();
         } catch {
-            setActionFeedback("Failed to remove user");
+            toast.error("Failed to remove user", "Please try again.");
         } finally {
             setRemoveLoading(false);
         }
@@ -230,15 +316,15 @@ function UsersPanel() {
             });
             const json = await res.json();
             if (!json.success) {
-                setActionFeedback(json.error?.message ?? "Failed to change role");
+                toast.error("Failed to change role", json.error?.message ?? "Please try again.");
                 return;
             }
-            setActionFeedback(`Role updated to ${ROLE_DISPLAY[newRole] ?? newRole}`);
+            toast.success("Role updated", `Role changed to ${ROLE_DISPLAY[newRole] ?? newRole}.`);
             setChangeRoleUser(null);
             setNewRole("");
             await loadUsers();
         } catch {
-            setActionFeedback("Failed to change role");
+            toast.error("Failed to change role", "Please try again.");
         } finally {
             setRoleLoading(false);
         }
@@ -254,9 +340,13 @@ function UsersPanel() {
                 body: JSON.stringify({ email: user.email, role: "STAFF" }),
             });
             const json = await res.json();
-            setActionFeedback(json.success ? `Invitation resent to ${user.email}` : (json.error?.message ?? "Failed to resend invitation"));
+            if (json.success) {
+                toast.success("Invitation resent", `Invitation resent to ${user.email}.`);
+            } else {
+                toast.error("Resend failed", json.error?.message ?? "Failed to resend invitation.");
+            }
         } catch {
-            setActionFeedback("Failed to resend invitation");
+            toast.error("Resend failed", "Failed to resend invitation.");
         } finally {
             setResendingId(null);
         }
@@ -469,6 +559,7 @@ function UsersPanel() {
                                         });
                                         const json = await res.json();
                                         if (!json.success) { setInviteError(json.error?.message ?? "Invitation failed"); return; }
+                                        toast.success("Invitation sent", `Invite sent to ${inviteEmail.trim()}.`);
                                         setShowInvite(false);
                                         setInviteEmail("");
                                         setInviteRole("STAFF");
@@ -689,6 +780,7 @@ const MOCK_WEBHOOK_URL = "https://api.consentz.com/webhooks/cqc-compliance";
 
 function IntegrationsPanel() {
     const queryClient = useQueryClient();
+    const markOnboardingStep = useMarkOnboardingStep();
     const [revealedKey, setRevealedKey] = useState<string | null>(null);
     const [revealedKeyId, setRevealedKeyId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -704,17 +796,29 @@ function IntegrationsPanel() {
 
     const generateMutation = useMutation({
         mutationFn: (name: string) => apiPost<SdkKey & { key: string }>("/api/sdk/keys", { name }).then((r) => r.data),
-        onSuccess: (data) => { setRevealedKey(data.key); setRevealedKeyId(data.id); queryClient.invalidateQueries({ queryKey: ["sdk-keys"] }); },
+        onSuccess: (data) => { setRevealedKey(data.key); setRevealedKeyId(data.id); queryClient.invalidateQueries({ queryKey: ["sdk-keys"] }); toast.success("API key generated", "Your new key is ready. Copy it now — it won't be shown again."); },
+        onError: () => toast.error("Key generation failed", "Please try again."),
     });
 
     const rotateMutation = useMutation({
         mutationFn: (id: string) => apiPatch<SdkKey & { key: string }>(`/api/sdk/keys/${id}`, {}).then((r) => r.data),
-        onSuccess: (data) => { setRevealedKey(data.key); setRevealedKeyId(data.id); queryClient.invalidateQueries({ queryKey: ["sdk-keys"] }); },
+        onSuccess: (data) => { setRevealedKey(data.key); setRevealedKeyId(data.id); queryClient.invalidateQueries({ queryKey: ["sdk-keys"] }); toast.success("Key rotated", "A new key has been issued. Copy it now."); },
+        onError: () => toast.error("Key rotation failed", "Please try again."),
     });
 
     const revokeMutation = useMutation({
         mutationFn: (id: string) => apiDelete(`/api/sdk/keys/${id}`),
-        onSuccess: () => { setConfirmRevokeId(null); queryClient.invalidateQueries({ queryKey: ["sdk-keys"] }); },
+        onMutate: async (id: string) => {
+            setConfirmRevokeId(null);
+            await queryClient.cancelQueries({ queryKey: ["sdk-keys"] });
+            const prev = queryClient.getQueryData<SdkKey[]>(["sdk-keys"]);
+            queryClient.setQueryData<SdkKey[]>(["sdk-keys"], (old) =>
+                old?.map((k) => k.id === id ? { ...k, status: "REVOKED" } : k),
+            );
+            return { prev };
+        },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["sdk-keys"] }); toast.success("Key revoked", "The API key has been permanently revoked."); },
+        onError: (_err, _id, context) => { if (context?.prev) queryClient.setQueryData(["sdk-keys"], context.prev); toast.error("Revocation failed", "Could not revoke the key."); },
     });
 
     const { data: consentzStatus, isLoading: consentzLoading } = useQuery({
@@ -724,25 +828,47 @@ function IntegrationsPanel() {
 
     const connectMutation = useMutation({
         mutationFn: () => apiPost<{ connected: boolean; clinicId: number; clinicName: string }>("/api/consentz/connect", { username: consentzUser, password: consentzPass }).then((r) => r.data),
-        onSuccess: () => { setConsentzUser(""); setConsentzPass(""); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); },
+        onSuccess: () => { setConsentzUser(""); setConsentzPass(""); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); markOnboardingStep("connect_consentz"); toast.success("Connected", "Consentz integration is now active."); },
+        onError: () => toast.error("Connection failed", "Could not connect to Consentz."),
     });
 
     const disconnectMutation = useMutation({
         mutationFn: () => apiDelete("/api/consentz/connect"),
-        onSuccess: () => { setShowDisconnectConfirm(false); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); },
+        onSuccess: () => { setShowDisconnectConfirm(false); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); toast.success("Disconnected", "Consentz integration has been removed."); },
+        onError: () => toast.error("Disconnect failed", "Could not disconnect from Consentz."),
+    });
+
+    const { data: lastSyncData } = useQuery({
+        queryKey: ["consentz-last-sync"],
+        queryFn: () => apiGet<{ synced_at: string | null }>("/api/consentz/last-sync").then((r) => r.data),
+        enabled: !!consentzStatus?.connected,
     });
 
     const syncMutation = useMutation({
         mutationFn: () => apiPost<{ synced: boolean }>("/api/consentz/sync", {}),
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["consentz-last-sync"] }); queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] }); toast.success("Sync complete", "Data has been synced with Consentz."); },
+        onError: () => toast.error("Sync failed", "Could not sync with Consentz."),
     });
 
     const handleCopy = (text: string, id: string) => {
         navigator.clipboard.writeText(text);
         setCopiedId(id);
+        toast.info("Copied to clipboard");
         setTimeout(() => setCopiedId(null), 2000);
     };
 
     const formatDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+    const syncTimeAgo = (dateStr: string | null | undefined): string => {
+        if (!dateStr) return "Never";
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "Just now";
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        return `${Math.floor(hrs / 24)}d ago`;
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -752,7 +878,7 @@ function IntegrationsPanel() {
             </div>
 
             {/* Consentz Platform Connection */}
-            <div className={cx("rounded-xl border bg-primary p-6", consentzStatus?.connected ? "border-success" : "border-brand-300")}>
+            <div className={cx("rounded-xl border bg-primary p-6", consentzStatus?.connected ? "border-secondary" : "border-brand-300")}>
                 <div className="flex items-center gap-3">
                     <div className={cx("flex size-10 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold", consentzStatus?.connected ? "bg-success-secondary text-fg-success-primary" : "bg-brand-primary text-brand-secondary")}>
                         {consentzStatus?.connected ? <CheckCircle className="size-5" /> : <Link01 className="size-5" />}
@@ -773,6 +899,9 @@ function IntegrationsPanel() {
                                 <div>
                                     <p className="text-sm font-medium text-primary">Clinic ID: {consentzStatus.clinicId}</p>
                                     <p className="text-xs text-tertiary">Connected as {consentzStatus.username}</p>
+                                    {lastSyncData?.synced_at && (
+                                        <p className="mt-0.5 text-xs text-tertiary">Last synced {syncTimeAgo(lastSyncData.synced_at)}</p>
+                                    )}
                                 </div>
                                 <div className="flex gap-2">
                                     <Button color="secondary" size="sm" iconLeading={RefreshCw01} isLoading={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
@@ -811,24 +940,16 @@ function IntegrationsPanel() {
             </div>
 
             {/* API Keys */}
-            <div className="rounded-xl border border-secondary bg-primary p-6">
-                <div className="mb-4 flex items-center justify-between">
-                    <div>
-                        <h3 className="text-lg font-semibold text-primary">API Keys</h3>
-                        <p className="mt-1 text-sm text-tertiary">Use API keys to authenticate requests to the Consentz Compliance API.</p>
-                    </div>
-                    <Button color="primary" size="sm" iconLeading={Plus} isLoading={generateMutation.isPending} onClick={() => generateMutation.mutate("API Key")}>Generate New Key</Button>
-                </div>
-
+            <div>
                 {revealedKey && (
-                    <div className="mb-4 rounded-lg border border-warning-300 bg-warning-primary p-4">
+                    <div className="mb-4 rounded-xl border border-secondary bg-primary p-4">
                         <div className="flex items-start gap-3">
                             <AlertCircle className="mt-0.5 size-5 shrink-0 text-fg-warning-primary" />
                             <div className="flex-1">
                                 <p className="text-sm font-semibold text-primary">Copy your API key now</p>
                                 <p className="mt-0.5 text-xs text-tertiary">This key will only be shown once.</p>
                                 <div className="mt-3 flex items-center gap-2">
-                                    <code className="flex-1 rounded-md bg-primary px-3 py-2 font-mono text-xs text-primary break-all border border-secondary">{revealedKey}</code>
+                                    <code className="flex-1 rounded-md border border-secondary bg-secondary px-3 py-2 font-mono text-xs text-primary break-all">{revealedKey}</code>
                                     <Button color="secondary" size="sm" iconLeading={Copy01} onClick={() => handleCopy(revealedKey, "revealed")}>{copiedId === "revealed" ? "Copied!" : "Copy"}</Button>
                                 </div>
                                 <div className="mt-2">
@@ -839,71 +960,76 @@ function IntegrationsPanel() {
                     </div>
                 )}
 
-                {isLoading && (
-                    <div className="flex flex-col gap-3">
-                        {[1, 2].map((i) => (
-                            <div key={i} className="animate-pulse rounded-lg border border-secondary p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-2"><div className="h-4 w-32 rounded bg-tertiary" /><div className="h-3 w-24 rounded bg-tertiary" /></div>
-                                    <div className="h-5 w-16 rounded-full bg-tertiary" />
-                                </div>
-                                <div className="mt-3 h-8 w-full rounded bg-tertiary" />
-                            </div>
-                        ))}
-                    </div>
-                )}
+                <TableCard.Root size="sm">
+                    <TableCard.Header
+                        title="API Keys"
+                        description="Use API keys to authenticate requests to the Consentz Compliance API."
+                        contentTrailing={
+                            <Button color="primary" size="sm" iconLeading={Plus} isLoading={generateMutation.isPending} onClick={() => generateMutation.mutate("API Key")}>Generate New Key</Button>
+                        }
+                    />
 
-                {!isLoading && keys.length === 0 && (
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-secondary py-10">
-                        <Key01 className="size-8 text-fg-quaternary" />
-                        <p className="mt-3 text-sm font-medium text-primary">No API keys generated yet</p>
-                        <p className="mt-1 text-xs text-tertiary">Generate a key to start using the Consentz Compliance API.</p>
-                        <div className="mt-4">
-                            <Button color="primary" size="sm" isLoading={generateMutation.isPending} onClick={() => generateMutation.mutate("API Key")}>Generate Your First Key</Button>
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="size-5 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
                         </div>
-                    </div>
-                )}
-
-                {!isLoading && keys.length > 0 && (
-                    <div className="flex flex-col gap-3">
-                        {keys.map((key) => {
-                            const isActive = key.status === "ACTIVE";
-                            const isRevealed = revealedKeyId === key.id && revealedKey;
-                            return (
-                                <div key={key.id} className={cx("rounded-lg border", isRevealed ? "border-brand bg-brand-section_subtle" : "border-secondary")}>
-                                    <div className="flex items-center justify-between border-b border-secondary px-4 py-3">
-                                        <div>
-                                            <p className="text-sm font-medium text-primary">{key.name}</p>
-                                            <p className="text-xs text-tertiary">Created {formatDate(key.created_at)}{key.last_used_at && <> &middot; Last used {formatDate(key.last_used_at)}</>}</p>
-                                        </div>
-                                        <Badge size="sm" color={isActive ? "success" : "gray"} type="pill-color">{isActive ? "Active" : "Revoked"}</Badge>
-                                    </div>
-                                    <div className="flex items-center gap-2 px-4 py-3">
-                                        <code className="flex-1 rounded-md bg-secondary px-3 py-2 font-mono text-xs text-primary">{key.key_prefix}{"••••••••••••"}</code>
-                                        <button onClick={() => handleCopy(key.key_prefix, key.id)} className="rounded-lg p-2 transition duration-100 ease-linear hover:bg-primary_hover" title="Copy prefix">
-                                            <Copy01 className="size-4 text-fg-quaternary" />
-                                        </button>
-                                    </div>
-                                    {copiedId === key.id && <p className="px-4 pb-3 text-xs text-success-primary">Copied to clipboard!</p>}
-                                    {isActive && (
-                                        <div className="flex items-center gap-2 border-t border-secondary px-4 py-3">
-                                            <Button color="secondary" size="sm" iconLeading={RefreshCw01} isLoading={rotateMutation.isPending} onClick={() => rotateMutation.mutate(key.id)}>Rotate Key</Button>
-                                            {confirmRevokeId === key.id ? (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-error-primary">Are you sure?</span>
-                                                    <Button color="primary-destructive" size="sm" isLoading={revokeMutation.isPending} onClick={() => revokeMutation.mutate(key.id)}>Confirm Revoke</Button>
-                                                    <Button color="secondary" size="sm" onClick={() => setConfirmRevokeId(null)}>Cancel</Button>
+                    ) : keys.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10">
+                            <Key01 className="size-8 text-fg-quaternary" />
+                            <p className="mt-3 text-sm font-medium text-primary">No API keys generated yet</p>
+                            <p className="mt-1 text-xs text-tertiary">Generate a key to start using the Consentz Compliance API.</p>
+                            <div className="mt-4">
+                                <Button color="primary" size="sm" isLoading={generateMutation.isPending} onClick={() => generateMutation.mutate("API Key")}>Generate Your First Key</Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <Table aria-label="API Keys" size="sm">
+                            <Table.Header>
+                                <Table.Head id="name" label="Name" isRowHeader />
+                                <Table.Head id="key" label="Key" />
+                                <Table.Head id="status" label="Status" />
+                                <Table.Head id="created" label="Created" />
+                                <Table.Head id="actions" label="" />
+                            </Table.Header>
+                            <Table.Body items={keys}>
+                                {(key) => (
+                                    <Table.Row id={key.id}>
+                                        <Table.Cell className="font-medium text-primary">{key.name}</Table.Cell>
+                                        <Table.Cell>
+                                            <div className="flex items-center gap-1.5">
+                                                <code className="font-mono text-xs text-tertiary">{key.key_prefix}••••••••</code>
+                                                <button onClick={() => handleCopy(key.key_prefix, key.id)} className="rounded p-0.5 transition duration-100 hover:bg-primary_hover" title="Copy prefix">
+                                                    {copiedId === key.id ? <Check className="size-3.5 text-fg-success-secondary" /> : <Copy01 className="size-3.5 text-fg-quaternary" />}
+                                                </button>
+                                            </div>
+                                        </Table.Cell>
+                                        <Table.Cell>
+                                            <BadgeWithIcon size="sm" color={key.status === "ACTIVE" ? "success" : "gray"} iconLeading={key.status === "ACTIVE" ? Check : X}>
+                                                {key.status === "ACTIVE" ? "Active" : "Revoked"}
+                                            </BadgeWithIcon>
+                                        </Table.Cell>
+                                        <Table.Cell className="whitespace-nowrap text-tertiary">{formatDate(key.created_at)}</Table.Cell>
+                                        <Table.Cell>
+                                            {key.status === "ACTIVE" && (
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <Button color="link-gray" size="sm" isLoading={rotateMutation.isPending} onClick={() => rotateMutation.mutate(key.id)}>Rotate</Button>
+                                                    {confirmRevokeId === key.id ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Button color="primary-destructive" size="sm" isLoading={revokeMutation.isPending} onClick={() => revokeMutation.mutate(key.id)}>Confirm</Button>
+                                                            <Button color="link-gray" size="sm" onClick={() => setConfirmRevokeId(null)}>Cancel</Button>
+                                                        </div>
+                                                    ) : (
+                                                        <Button color="link-destructive" size="sm" onClick={() => setConfirmRevokeId(key.id)}>Revoke</Button>
+                                                    )}
                                                 </div>
-                                            ) : (
-                                                <Button color="primary-destructive" size="sm" iconLeading={Trash01} onClick={() => setConfirmRevokeId(key.id)}>Revoke</Button>
                                             )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                        </Table.Cell>
+                                    </Table.Row>
+                                )}
+                            </Table.Body>
+                        </Table>
+                    )}
+                </TableCard.Root>
 
                 {generateMutation.isError && <p className="mt-2 text-xs text-error-primary">Failed to generate key. Please try again.</p>}
                 {revokeMutation.isError && <p className="mt-2 text-xs text-error-primary">Failed to revoke key. Please try again.</p>}
@@ -987,6 +1113,41 @@ const DIGEST_OPTIONS = [
 
 function NotificationsPanel() {
     const [digest, setDigest] = useState("individual");
+    const [emailEnabled, setEmailEnabled] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+        fetch("/api/me").then(r => r.json()).then(json => {
+            if (json.success && json.data) {
+                setEmailEnabled(json.data.emailNotifications ?? true);
+            }
+        }).catch(() => {});
+    }, []);
+
+    const handleSave = async () => {
+        setSaving(true);
+        setSaved(false);
+        try {
+            const res = await fetch("/api/me", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ emailNotifications: emailEnabled }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                setSaved(true);
+                toast.success("Preferences saved", "Notification settings have been updated.");
+            } else {
+                toast.error("Save failed", "Could not update notification preferences.");
+            }
+        } catch {
+            toast.error("Save failed", "Could not update notification preferences.");
+        } finally {
+            setSaving(false);
+            if (saved) setTimeout(() => setSaved(false), 3000);
+        }
+    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -995,10 +1156,27 @@ function NotificationsPanel() {
                     <h2 className="text-lg font-semibold text-primary">Notification Preferences</h2>
                     <p className="mt-1 text-sm text-tertiary">Choose which notifications you receive by email. All notifications appear in-app regardless.</p>
                 </div>
-                <Button color="primary" size="lg">Save</Button>
+                <div className="flex items-center gap-3">
+                    {saved && <span className="text-sm text-success-primary">Saved</span>}
+                    <Button color="primary" size="lg" isLoading={saving} onClick={handleSave}>Save</Button>
+                </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-secondary">
+            <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <input
+                    id="master-email-toggle"
+                    type="checkbox"
+                    checked={emailEnabled}
+                    onChange={(e) => setEmailEnabled(e.target.checked)}
+                    className="size-4 rounded border-secondary accent-brand-600"
+                />
+                <label htmlFor="master-email-toggle" className="cursor-pointer">
+                    <p className="text-sm font-medium text-primary">Receive email notifications</p>
+                    <p className="text-xs text-tertiary">When disabled, you will only see notifications in-app.</p>
+                </label>
+            </div>
+
+            <div className={cx("overflow-hidden rounded-xl border border-secondary", !emailEnabled && "opacity-50 pointer-events-none")}>
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-secondary bg-secondary">
@@ -1048,6 +1226,9 @@ const TAB_MAP: Record<string, string> = {
     billing: "billing",
     integrations: "integrations",
     notifications: "notifications",
+    "audit-log": "audit-log",
+    audits: "audit-log",
+    reports: "reports",
 };
 
 export default function SettingsPage() {
@@ -1092,6 +1273,8 @@ export default function SettingsPage() {
                 {selectedTab === "billing" && <BillingPanel />}
                 {selectedTab === "integrations" && <IntegrationsPanel />}
                 {selectedTab === "notifications" && <NotificationsPanel />}
+                {selectedTab === "audit-log" && <AuditLogPanel />}
+                {selectedTab === "reports" && <ReportsPanel />}
             </div>
         </div>
     );

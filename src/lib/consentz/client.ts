@@ -205,3 +205,16 @@ export function getConsentzAuthClient(): ConsentzAuthClient {
   }
   return _authClient;
 }
+
+/**
+ * Returns an authenticated ConsentzClient for the given clinic ID.
+ * Uses CONSENTZ_SESSION_TOKEN if set, otherwise logs in via env credentials.
+ */
+export async function getAuthenticatedClient(clinicId: number): Promise<ConsentzClient> {
+  const envToken = process.env.CONSENTZ_SESSION_TOKEN;
+  if (envToken) {
+    return new ConsentzClient({ sessionToken: envToken, clinicId });
+  }
+  const { sessionToken } = await getConsentzAuthClient().authenticate();
+  return new ConsentzClient({ sessionToken, clinicId });
+}

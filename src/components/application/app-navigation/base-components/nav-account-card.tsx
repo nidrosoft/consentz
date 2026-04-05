@@ -2,14 +2,14 @@
 
 import type { FC, HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import type { Placement } from "@react-types/overlays";
-import { BookOpen01, ChevronSelectorVertical, LogOut01, Plus, Settings01, User01 } from "@untitledui/icons";
+import { Bell01, BookOpen01, ChevronSelectorVertical, LogOut01, Settings01, User01, Users01 } from "@untitledui/icons";
 import { useFocusManager } from "react-aria";
 import type { DialogProps as AriaDialogProps } from "react-aria-components";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
 import { AvatarLabelGroup } from "@/components/base/avatar/avatar-label-group";
 import { Button } from "@/components/base/buttons/button";
-import { RadioButtonBase } from "@/components/base/radio-buttons/radio-buttons";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
 import { useSignOutConfirm } from "@/providers/sign-out-confirm-provider";
 import { cx } from "@/utils/cx";
@@ -35,13 +35,6 @@ const placeholderAccounts: NavAccountType[] = [
         avatar: "",
         status: "online",
     },
-    {
-        id: "mark",
-        name: "Mark Jones",
-        email: "mark@consentz.com",
-        avatar: "",
-        status: "online",
-    },
 ];
 
 export const NavAccountMenu = ({
@@ -52,6 +45,7 @@ export const NavAccountMenu = ({
 }: AriaDialogProps & { className?: string; accounts?: NavAccountType[]; selectedAccountId?: string }) => {
     const displayAccounts = accounts ?? placeholderAccounts;
     const { requestSignOutConfirm } = useSignOutConfirm();
+    const router = useRouter();
     const focusManager = useFocusManager();
     const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +76,8 @@ export const NavAccountMenu = ({
         };
     }, [onKeyDown]);
 
+    const selectedAccount = displayAccounts.find((a) => a.id === selectedAccountId) ?? displayAccounts[0];
+
     return (
         <AriaDialog
             {...dialogProps}
@@ -89,33 +85,20 @@ export const NavAccountMenu = ({
             className={cx("w-66 rounded-xl bg-secondary_alt shadow-lg ring ring-secondary_alt outline-hidden", className)}
         >
             <div className="rounded-xl bg-primary ring-1 ring-secondary">
+                {selectedAccount && (
+                    <div className="border-b border-secondary px-3 py-3">
+                        <AvatarLabelGroup status="online" size="md" src={selectedAccount.avatar} title={selectedAccount.name} subtitle={selectedAccount.email} />
+                    </div>
+                )}
                 <div className="flex flex-col gap-0.5 py-1.5">
-                    <NavAccountCardMenuItem label="View profile" icon={User01} shortcut="⌘K->P" />
-                    <NavAccountCardMenuItem label="Account settings" icon={Settings01} shortcut="⌘S" />
+                    <NavAccountCardMenuItem label="View profile" icon={User01} onClick={() => router.push("/settings")} />
+                    <NavAccountCardMenuItem label="Account settings" icon={Settings01} onClick={() => router.push("/settings")} />
+                    <NavAccountCardMenuItem label="Notifications" icon={Bell01} onClick={() => router.push("/settings?tab=notifications")} />
                     <NavAccountCardMenuItem label="Documentation" icon={BookOpen01} />
                 </div>
-                <div className="flex flex-col gap-0.5 border-t border-secondary py-1.5">
-                    <div className="px-3 pt-1.5 pb-1 text-xs font-semibold text-tertiary">Switch account</div>
-
-                    <div className="flex flex-col gap-0.5 px-1.5">
-                        {displayAccounts.map((account) => (
-                            <button
-                                key={account.id}
-                                className={cx(
-                                    "relative w-full cursor-pointer rounded-md px-2 py-1.5 text-left outline-focus-ring hover:bg-primary_hover focus:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
-                                    account.id === selectedAccountId && "bg-primary_hover",
-                                )}
-                            >
-                                <AvatarLabelGroup status="online" size="md" src={account.avatar} title={account.name} subtitle={account.email} />
-
-                                <RadioButtonBase isSelected={account.id === selectedAccountId} className="absolute top-2 right-2" />
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="flex flex-col gap-2 px-2 pt-0.5 pb-2">
-                    <Button iconLeading={Plus} color="secondary" size="sm">
-                        Add account
+                <div className="border-t border-secondary px-2 py-2">
+                    <Button iconLeading={Users01} color="secondary" size="sm" className="w-full" onClick={() => router.push("/settings?tab=users")}>
+                        Invite a Team Member
                     </Button>
                 </div>
             </div>

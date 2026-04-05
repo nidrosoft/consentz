@@ -44,10 +44,3 @@ export const STATUS_OPTIONS: { id: TaskStatus; label: string }[] = [
     { id: "DONE", label: "Done" },
 ];
 
-export const ASSIGNEE_OPTIONS = [
-    { id: "Jane Smith", label: "Jane Smith" },
-    { id: "Mark Jones", label: "Mark Jones" },
-    { id: "Sarah Williams", label: "Sarah Williams" },
-    { id: "Emily Taylor", label: "Emily Taylor" },
-    { id: "David Brown", label: "David Brown" },
-];

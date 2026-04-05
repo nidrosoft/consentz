@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
     themeColor: "#1f6068",
-    colorScheme: "light dark",
+    colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -30,7 +30,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body className={cx(inter.variable, "bg-primary antialiased")}>
+            <body className={cx(inter.variable, "bg-primary antialiased")} suppressHydrationWarning>
                 <QueryProvider>
                     <RouteProvider>
                         <Theme>

@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiDelete, buildQueryString } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import type { Evidence, EvidenceType, EvidenceStatus, DomainSlug } from '@/types';
 
 // =============================================================================
@@ -14,6 +15,7 @@ interface EvidenceFilters {
   category?: EvidenceType;
   status?: EvidenceStatus;
   domain?: DomainSlug;
+  kloeCode?: string;
   search?: string;
 }
 
@@ -58,7 +60,9 @@ export function useCreateEvidence() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['evidence'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Evidence uploaded', 'The evidence file has been saved.');
     },
+    onError: () => toast.error('Upload failed', 'Could not save the evidence.'),
   });
 }
 
@@ -77,7 +81,9 @@ export function useUploadEvidence() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['evidence'] });
+      toast.success('File uploaded', 'Your file has been uploaded successfully.');
     },
+    onError: () => toast.error('File upload failed', 'Please try again.'),
   });
 }
 
@@ -100,7 +106,9 @@ export function useUpdateEvidence() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['evidence'] });
       queryClient.invalidateQueries({ queryKey: ['evidence', variables.id] });
+      toast.success('Evidence updated', 'Changes have been saved.');
     },
+    onError: () => toast.error('Failed to update evidence', 'Please try again.'),
   });
 }
 
@@ -112,6 +120,8 @@ export function useDeleteEvidence() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['evidence'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Evidence deleted', 'The evidence has been removed.');
     },
+    onError: () => toast.error('Failed to delete evidence', 'Please try again.'),
   });
 }

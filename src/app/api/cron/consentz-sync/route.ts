@@ -3,6 +3,7 @@ import { apiSuccess } from '@/lib/api-response';
 import { checkRateLimit } from '@/lib/rate-limiter';
 import { ApiErrors } from '@/lib/api-response';
 import { syncConsentzData } from '@/lib/consentz/sync-service';
+import { recalculateComplianceScores } from '@/lib/services/score-engine';
 import { getDb } from '@/lib/db';
 
 export const GET = withPublic(async () => {
@@ -21,6 +22,7 @@ export const GET = withPublic(async () => {
   for (const org of orgs ?? []) {
     try {
       await syncConsentzData(org.id);
+      await recalculateComplianceScores(org.id);
       results.push({ organizationId: org.id, name: org.name, status: 'success' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

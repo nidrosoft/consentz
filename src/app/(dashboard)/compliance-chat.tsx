@@ -115,6 +115,7 @@ export function ComplianceChat() {
                 onClick={() => setOpen(true)}
                 className="fixed right-6 bottom-6 z-50 flex size-14 items-center justify-center rounded-full bg-brand-solid text-white shadow-lg transition duration-100 hover:bg-brand-solid_hover hover:shadow-xl"
                 aria-label="Open CQC Compliance Assistant"
+                data-tour="ai-chat-button"
             >
                 <MessageChatCircle className="size-6" />
             </button>

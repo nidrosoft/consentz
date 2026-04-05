@@ -1,23 +1,25 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { Plus, SearchLg, AlertTriangle, AlertCircle, ArrowsUp, FilterLines, XClose } from "@untitledui/icons";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Plus, SearchLg, AlertTriangle, AlertCircle, ArrowsUp, FilterLines, XClose, Calendar, User01, ShieldTick, Flag06, Tag01, BarChartSquare02, File06, Clock } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
-import { useIncidents } from "@/hooks/use-incidents";
+import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-menu";
+import { useIncidents, useIncidentDetail } from "@/hooks/use-incidents";
 import { PageSkeleton } from "@/components/shared/page-skeleton";
+import { cx } from "@/utils/cx";
 import type { Incident, IncidentSeverity, IncidentStatus, IncidentType } from "@/types";
 
 const SEVERITY_BADGE: Record<string, "error" | "warning" | "brand" | "gray"> = {
-    CRITICAL: "error", MAJOR: "warning", MINOR: "brand", NEAR_MISS: "gray",
+    CRITICAL: "error", MAJOR: "warning", HIGH: "warning", MINOR: "brand", MEDIUM: "brand", NEAR_MISS: "gray", LOW: "gray",
 };
 const STATUS_BADGE: Record<string, "error" | "warning" | "success" | "gray"> = {
-    REPORTED: "warning", INVESTIGATING: "error", RESOLVED: "success", CLOSED: "gray",
+    REPORTED: "warning", OPEN: "warning", INVESTIGATING: "error", ACTIONED: "error", RESOLVED: "success", CLOSED: "gray",
 };
 
 function formatDate(dateStr: string): string {
@@ -28,21 +30,40 @@ const SEVERITIES: IncidentSeverity[] = ["CRITICAL", "MAJOR", "MINOR", "NEAR_MISS
 const STATUSES: IncidentStatus[] = ["REPORTED", "INVESTIGATING", "RESOLVED", "CLOSED"];
 const INCIDENT_TYPES: IncidentType[] = ["PREMISES", "PATIENT_COMPLICATION"];
 
-const TYPE_LABELS: Record<IncidentType, string> = {
+const TYPE_LABELS: Record<string, string> = {
     PREMISES: "Premises",
     PATIENT_COMPLICATION: "Patient Complication",
+    INFECTION: "Infection",
+    COMPLICATION: "Complication",
+    PREMISES_INCIDENT: "Premises",
+    SAFEGUARDING: "Safeguarding",
+    MEDICATION_ERROR: "Medication Error",
+    DATA_BREACH: "Data Breach",
+    COMPLAINT: "Complaint",
+    NEAR_MISS: "Near Miss",
+    OTHER: "Other",
 };
 
-const TYPE_BADGE: Record<IncidentType, "blue" | "pink"> = {
+const TYPE_BADGE: Record<string, "blue" | "pink" | "orange" | "purple" | "gray"> = {
     PREMISES: "blue",
     PATIENT_COMPLICATION: "pink",
+    INFECTION: "orange",
+    COMPLICATION: "pink",
+    PREMISES_INCIDENT: "blue",
+    SAFEGUARDING: "purple",
+    MEDICATION_ERROR: "orange",
+    DATA_BREACH: "orange",
+    COMPLAINT: "pink",
+    NEAR_MISS: "gray",
+    OTHER: "gray",
 };
 
 export default function IncidentsPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { data, isLoading, error, refetch } = useIncidents();
     const incidents = (data?.data ?? []) as Incident[];
-    const categories = useMemo(() => [...new Set(incidents.map((i) => i.category))], [incidents]);
+    const categories = useMemo(() => [...new Set(incidents.map((i) => i.category).filter(Boolean))], [incidents]);
 
     const [search, setSearch] = useState("");
     const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
@@ -51,6 +72,9 @@ export default function IncidentsPage() {
     const [typeFilter, setTypeFilter] = useState<IncidentType | null>(null);
     const [sortBy, setSortBy] = useState<"date" | "severity">("date");
     const [showFilters, setShowFilters] = useState(false);
+    const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("detail"));
+    const { data: detailData, isLoading: detailLoading } = useIncidentDetail(selectedId ?? "");
+    const selectedIncident = selectedId ? (detailData as Incident | undefined) : undefined;
 
     const filtered = useMemo(() => {
         let result = incidents.filter((inc) => {
@@ -170,7 +194,7 @@ export default function IncidentsPage() {
                             onSelectionChange={(key) => setTypeFilter(key === "" ? null : (key as IncidentType))}
                             items={[{ id: "" }, ...INCIDENT_TYPES.map((t) => ({ id: t }))]}
                         >
-                            {(item) => <Select.Item id={item.id}>{item.id ? TYPE_LABELS[item.id as IncidentType] : "All types"}</Select.Item>}
+                            {(item) => <Select.Item id={item.id}>{item.id ? (TYPE_LABELS[item.id] ?? item.id) : "All types"}</Select.Item>}
                         </Select>
                     </div>
                 </div>
@@ -200,7 +224,7 @@ export default function IncidentsPage() {
                     )}
                     {typeFilter && (
                         <button onClick={() => setTypeFilter(null)} className="inline-flex items-center gap-1.5 rounded-full border border-secondary bg-primary px-2.5 py-1 text-xs font-medium text-secondary transition duration-100 hover:bg-primary_hover">
-                            <span className="text-quaternary">Type:</span> {TYPE_LABELS[typeFilter]}
+                            <span className="text-quaternary">Type:</span> {TYPE_LABELS[typeFilter] ?? typeFilter}
                             <XClose className="size-3 text-quaternary" />
                         </button>
                     )}
@@ -244,7 +268,7 @@ export default function IncidentsPage() {
                     </Table.Header>
                     <Table.Body items={filtered}>
                         {(inc) => (
-                            <Table.Row id={inc.id} className="cursor-pointer" onAction={() => router.push(`/incidents/${inc.id}`)}>
+                            <Table.Row id={inc.id} className="cursor-pointer" onAction={() => setSelectedId(inc.id)}>
                                 <Table.Cell>
                                     <div className="flex items-center gap-3">
                                         <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-error-primary">
@@ -257,7 +281,7 @@ export default function IncidentsPage() {
                                     </div>
                                 </Table.Cell>
                                 <Table.Cell>
-                                    <Badge size="sm" color={TYPE_BADGE[inc.incidentType]} type="pill-color">{TYPE_LABELS[inc.incidentType]}</Badge>
+                                    <Badge size="sm" color={TYPE_BADGE[inc.incidentType] ?? "gray"} type="pill-color">{TYPE_LABELS[inc.incidentType] ?? inc.incidentType}</Badge>
                                 </Table.Cell>
                                 <Table.Cell>
                                     <Badge size="sm" color="gray" type="modern">{inc.category}</Badge>
@@ -279,6 +303,229 @@ export default function IncidentsPage() {
                     </Table.Body>
                 </Table>
             </TableCard.Root>)}
+
+            {/* Incident detail slideout */}
+            <SlideoutMenu isOpen={!!selectedId} onOpenChange={(open) => { if (!open) setSelectedId(null); }} isDismissable>
+                <SlideoutMenu.Header onClose={() => setSelectedId(null)} className="relative flex w-full flex-col gap-0.5 px-4 pt-6 md:px-6">
+                    {detailLoading ? (
+                        <div className="flex flex-col gap-3 animate-pulse pr-8">
+                            <div className="h-5 w-10 rounded bg-secondary" />
+                            <div className="h-6 w-56 rounded bg-secondary" />
+                            <div className="flex gap-2"><div className="h-5 w-16 rounded-full bg-secondary" /><div className="h-5 w-20 rounded-full bg-secondary" /><div className="h-5 w-24 rounded-full bg-secondary" /></div>
+                        </div>
+                    ) : selectedIncident ? (
+                        <div className="pr-8">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-tertiary uppercase tracking-wider">Incident Detail</span>
+                            </div>
+                            <div className="mt-2 flex items-start gap-3">
+                                <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-error-secondary">
+                                    <AlertTriangle className="size-4 text-fg-error-primary" />
+                                </div>
+                                <h1 className="text-lg font-semibold text-primary leading-snug">{selectedIncident.title}</h1>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <BadgeWithDot size="sm" color={selectedIncident.severity ? (SEVERITY_BADGE[selectedIncident.severity] ?? "gray") : "gray"}>
+                                    {selectedIncident.severity ? selectedIncident.severity.replace("_", " ") : "No severity"}
+                                </BadgeWithDot>
+                                <BadgeWithDot size="sm" color={selectedIncident.status ? (STATUS_BADGE[selectedIncident.status] ?? "gray") : "gray"}>
+                                    {selectedIncident.status ?? "No status"}
+                                </BadgeWithDot>
+                                <Badge size="sm" color={selectedIncident.incidentType ? (TYPE_BADGE[selectedIncident.incidentType] ?? "gray") : "gray"} type="pill-color">
+                                    {selectedIncident.incidentType ? (TYPE_LABELS[selectedIncident.incidentType] ?? selectedIncident.incidentType) : "No type"}
+                                </Badge>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-sm text-tertiary">Incident not found.</p>
+                    )}
+                </SlideoutMenu.Header>
+
+                <SlideoutMenu.Content>
+                    {detailLoading ? (
+                        <div className="flex flex-col gap-4 animate-pulse">
+                            <div className="grid grid-cols-2 gap-3">
+                                {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary" />)}
+                            </div>
+                            <div className="h-4 w-full rounded bg-secondary" />
+                            <div className="h-20 w-full rounded bg-secondary" />
+                        </div>
+                    ) : selectedIncident ? (
+                        <div className="flex flex-col gap-6">
+                            {/* Detail grid */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+                                        <File06 className="size-4 text-fg-quaternary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-tertiary">Incident Type</p>
+                                        <p className="mt-0.5 text-sm font-medium text-primary truncate">
+                                            {selectedIncident.incidentType ? (TYPE_LABELS[selectedIncident.incidentType] ?? selectedIncident.incidentType) : "—"}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+                                        <Tag01 className="size-4 text-fg-quaternary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-tertiary">Category</p>
+                                        <p className="mt-0.5 text-sm font-medium text-primary truncate">{selectedIncident.category ?? "—"}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+                                        <Flag06 className="size-4 text-fg-quaternary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-tertiary">Severity</p>
+                                        <div className="mt-1">
+                                            <BadgeWithDot size="sm" color={selectedIncident.severity ? (SEVERITY_BADGE[selectedIncident.severity] ?? "gray") : "gray"}>
+                                                {selectedIncident.severity ? selectedIncident.severity.replace("_", " ") : "—"}
+                                            </BadgeWithDot>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+                                        <Clock className="size-4 text-fg-quaternary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-tertiary">Status</p>
+                                        <div className="mt-1">
+                                            <BadgeWithDot size="sm" color={selectedIncident.status ? (STATUS_BADGE[selectedIncident.status] ?? "gray") : "gray"}>
+                                                {selectedIncident.status ?? "—"}
+                                            </BadgeWithDot>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+                                        <User01 className="size-4 text-fg-quaternary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-tertiary">Reported by</p>
+                                        <p className="mt-0.5 text-sm font-medium text-primary truncate">{selectedIncident.reportedBy ?? "—"}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
+                                        <Calendar className="size-4 text-fg-quaternary" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-tertiary">Date Reported</p>
+                                        <p className="mt-0.5 text-sm font-medium text-primary truncate">{selectedIncident.reportedAt ? formatDate(selectedIncident.reportedAt) : "—"}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* CQC Domain */}
+                            <div className="flex items-center gap-3 rounded-lg border border-secondary bg-primary p-3">
+                                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-secondary">
+                                    <BarChartSquare02 className="size-4 text-fg-brand-primary" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs text-tertiary">CQC Domain</p>
+                                    {selectedIncident.domain ? (
+                                        <Badge size="sm" color="brand" type="pill-color"><span className="capitalize">{selectedIncident.domain}</span></Badge>
+                                    ) : (
+                                        <p className="mt-0.5 text-sm font-medium text-primary">—</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="border-t border-secondary" />
+
+                            {/* Description */}
+                            <div>
+                                <h3 className="mb-2 text-sm font-semibold text-primary">Description</h3>
+                                <div className="rounded-lg border border-secondary bg-secondary_alt p-3">
+                                    <p className="text-sm leading-relaxed text-secondary">
+                                        {selectedIncident.description || "No description provided."}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="border-t border-secondary" />
+
+                            {/* Timeline */}
+                            <div>
+                                <h3 className="mb-3 text-sm font-semibold text-primary">Timeline</h3>
+                                <div className="relative flex flex-col gap-0">
+                                    {/* Vertical connector line */}
+                                    <div className="absolute left-[5px] top-2.5 bottom-2.5 w-px bg-tertiary/20" />
+
+                                    <div className="relative flex items-start gap-3 pb-4">
+                                        <div className="relative z-10 mt-0.5 flex size-[11px] shrink-0 items-center justify-center rounded-full border-2 border-warning-solid bg-primary" />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-medium text-primary">Incident reported</p>
+                                            <p className="text-xs text-tertiary">
+                                                {selectedIncident.reportedAt ? formatDate(selectedIncident.reportedAt) : "—"}
+                                                {selectedIncident.reportedBy ? ` by ${selectedIncident.reportedBy}` : ""}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {((selectedIncident.status as string) !== "REPORTED" && (selectedIncident.status as string) !== "OPEN") ? (
+                                        <div className="relative flex items-start gap-3 pb-4">
+                                            <div className="relative z-10 mt-0.5 flex size-[11px] shrink-0 items-center justify-center rounded-full border-2 border-brand-solid bg-primary" />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium text-primary">Investigation started</p>
+                                                <p className="text-xs text-tertiary">Assigned for review</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="relative flex items-start gap-3 pb-4 opacity-40">
+                                            <div className="relative z-10 mt-0.5 flex size-[11px] shrink-0 items-center justify-center rounded-full border-2 border-tertiary bg-primary" />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium text-primary">Investigation</p>
+                                                <p className="text-xs text-tertiary">Pending</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {(selectedIncident.status === "RESOLVED" || selectedIncident.status === "CLOSED") ? (
+                                        <div className="relative flex items-start gap-3">
+                                            <div className="relative z-10 mt-0.5 flex size-[11px] shrink-0 items-center justify-center rounded-full border-2 border-success-solid bg-primary" />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium text-primary">Incident resolved</p>
+                                                <p className="text-xs text-tertiary">Corrective actions implemented</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="relative flex items-start gap-3 opacity-40">
+                                            <div className="relative z-10 mt-0.5 flex size-[11px] shrink-0 items-center justify-center rounded-full border-2 border-tertiary bg-primary" />
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium text-primary">Resolution</p>
+                                                <p className="text-xs text-tertiary">Pending</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
+                </SlideoutMenu.Content>
+
+                {selectedIncident && (
+                    <SlideoutMenu.Footer className="flex w-full items-center justify-between">
+                        <p className="text-xs text-tertiary">ID: {selectedIncident.id?.slice(0, 8) ?? "—"}</p>
+                        <div className="flex gap-2">
+                            {((selectedIncident.status as string) === "REPORTED" || (selectedIncident.status as string) === "OPEN") && <Button color="primary" size="sm" iconLeading={ShieldTick}>Begin Investigation</Button>}
+                            {((selectedIncident.status as string) === "INVESTIGATING" || (selectedIncident.status as string) === "ACTIONED") && <Button color="primary" size="sm">Mark Resolved</Button>}
+                            {selectedIncident.status === "RESOLVED" && <Button color="secondary" size="sm">Close Incident</Button>}
+                        </div>
+                    </SlideoutMenu.Footer>
+                )}
+            </SlideoutMenu>
         </div>
     );
 }

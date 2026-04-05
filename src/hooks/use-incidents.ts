@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, buildQueryString } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 
 interface IncidentFilters {
   page?: number;
@@ -44,7 +45,9 @@ export function useCreateIncident() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Incident reported', 'The incident has been logged.');
     },
+    onError: () => toast.error('Failed to report incident', 'Please try again.'),
   });
 }
 
@@ -56,6 +59,8 @@ export function useUpdateIncident() {
     onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] });
       queryClient.invalidateQueries({ queryKey: ['incidents', vars.id] });
+      toast.success('Incident updated', 'Changes have been saved.');
     },
+    onError: () => toast.error('Failed to update incident', 'Please try again.'),
   });
 }

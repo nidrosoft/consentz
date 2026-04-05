@@ -12,6 +12,7 @@ export const createEvidenceSchema = z.object({
   description: longString(2000).optional(),
   category: evidenceCategorySchema,
   linkedKloes: kloeCodesSchema.optional().default([]),
+  linkedDomains: z.array(domainSlugSchema).optional().default([]),
   linkedRegulations: regulationCodesSchema.optional().default([]),
   validFrom: dateStringSchema.optional(),
   validUntil: dateStringSchema.optional(),

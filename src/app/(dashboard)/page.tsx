@@ -8,7 +8,6 @@ import {
     File06, CheckSquare as CheckSquareIcon, PieChart01, AlertCircle, ChevronRight, Users01,
 } from "@untitledui/icons";
 import { EmptyState } from "@/components/application/empty-state/empty-state";
-import { OnboardingChecklist } from "./onboarding-checklist";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { MetricsChart04 } from "@/components/application/metrics/metrics";
@@ -16,7 +15,7 @@ import { Table, TableCard } from "@/components/application/table/table";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { useDashboard, type PriorityGap } from "@/hooks/use-dashboard";
+import { useDashboard, type PriorityGap, type ConsentzMetricEntry } from "@/hooks/use-dashboard";
 import { RATING_LABELS, RATING_THRESHOLDS, KLOES } from "@/lib/constants/cqc-framework";
 import type { FC } from "react";
 import type { ComplianceGap, ActivityLogEntry, UpcomingDeadline } from "@/types";
@@ -143,10 +142,9 @@ export default function DashboardPage() {
                 </p>
             </div>
 
-            <OnboardingChecklist />
-
             {/* Metric Cards */}
             <div className="grid grid-cols-1 gap-4 min-[560px]:grid-cols-2 xl:grid-cols-4">
+                <div data-tour="compliance-score">
                 <MetricsChart04
                     subtitle="Compliance Score"
                     title={`${score?.overall ?? 0}%`}
@@ -156,8 +154,9 @@ export default function DashboardPage() {
                     chartColor="text-fg-success-secondary"
                     chartData={[{ value: 42 }, { value: 45 }, { value: 48 }, { value: 52 }, { value: 55 }, { value: score?.overall ?? 58 }]}
                 />
+                </div>
 
-                <div className="relative">
+                <div className="relative" data-tour="predicted-rating">
                     <MetricsChart04
                         subtitle="Predicted Rating"
                         title={`${score?.overall ?? 0}%`}
@@ -179,6 +178,7 @@ export default function DashboardPage() {
                     )}
                 </div>
 
+                <div data-tour="open-gaps">
                 <MetricsChart04
                     subtitle="Open Gaps"
                     title={String(totalOpenGaps)}
@@ -188,7 +188,9 @@ export default function DashboardPage() {
                     chartColor="text-fg-error-secondary"
                     chartData={[{ value: 8 }, { value: 10 }, { value: 11 }, { value: 12 }, { value: 13 }, { value: totalOpenGaps }]}
                 />
+                </div>
 
+                <div data-tour="overdue-tasks">
                 <MetricsChart04
                     subtitle="Overdue Tasks"
                     title={String(overdueCount)}
@@ -198,10 +200,11 @@ export default function DashboardPage() {
                     chartColor="text-fg-warning-secondary"
                     chartData={[{ value: 0 }, { value: 1 }, { value: 1 }, { value: 2 }, { value: 1 }, { value: overdueCount }]}
                 />
+                </div>
             </div>
 
             {/* Domain Overview — always show five domains; placeholders when no compliance data yet */}
-            <div>
+            <div data-tour="domain-overview">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-semibold text-primary">CQC Domain Overview</h2>
                     <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => router.push("/reassessment")}>
@@ -276,9 +279,69 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            {/* Consentz Integration Metrics */}
+            {overview.consentzMetrics && (
+                <div>
+                    <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 className="text-lg font-semibold text-primary">Consentz Live Metrics</h2>
+                            {overview.consentzDataFreshness && (
+                                <p className="text-xs text-tertiary">
+                                    Last synced {timeAgo(overview.consentzDataFreshness)}
+                                </p>
+                            )}
+                        </div>
+                        <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => router.push("/settings")}>
+                            Sync Settings &rarr;
+                        </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+                        {Object.entries(overview.consentzMetrics).map(([key, m]: [string, ConsentzMetricEntry]) => {
+                            const val = m.value;
+                            const displayValue = val != null
+                                ? m.unit === '/10' ? `${val}${m.unit}` : `${Math.round(val)}${m.unit}`
+                                : '—';
+                            const isGood = val != null && (m.unit === '/10' ? val >= 7 : val >= 75);
+                            const isWarning = val != null && (m.unit === '/10' ? val >= 5 && val < 7 : val >= 50 && val < 75);
+                            const domainColor = DOMAIN_COLORS[m.domain];
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => router.push(`/domains/${m.domain}`)}
+                                    className="flex flex-col gap-1.5 rounded-xl border border-secondary bg-primary p-3 text-left transition duration-100 hover:border-brand hover:shadow-xs"
+                                >
+                                    <span className="text-xs font-medium text-tertiary leading-tight">{m.label}</span>
+                                    <span className={cx(
+                                        "font-mono text-xl font-bold",
+                                        val == null ? "text-quaternary" : isGood ? "text-success-primary" : isWarning ? "text-warning-primary" : "text-error-primary",
+                                    )}>
+                                        {displayValue}
+                                    </span>
+                                    <div className="h-1 w-full rounded-full bg-quaternary overflow-hidden">
+                                        <div
+                                            className={cx(
+                                                "h-full rounded-full transition-all duration-500",
+                                                val == null ? "w-0" : isGood ? "bg-success-solid" : isWarning ? "bg-warning-solid" : "bg-error-solid",
+                                            )}
+                                            style={{ width: val != null ? `${Math.min(100, m.unit === '/10' ? val * 10 : val)}%` : '0%' }}
+                                        />
+                                    </div>
+                                    {domainColor && (
+                                        <span className={cx("mt-0.5 inline-flex w-fit rounded px-1 py-px text-[9px] font-semibold leading-tight capitalize", domainColor.text, domainColor.bg)}>
+                                            {m.domain.replace("-", "-")}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Priority Gaps + Recent Activity */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-                <div className="lg:col-span-3 rounded-xl border border-secondary bg-primary">
+                <div className="lg:col-span-3 rounded-xl border border-secondary bg-primary" data-tour="priority-gaps">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-secondary">
                         <h2 className="text-lg font-semibold text-primary">Priority Gaps</h2>
                         <Button color="link-color" size="sm" onClick={() => router.push("/domains")}>View all gaps &rarr;</Button>

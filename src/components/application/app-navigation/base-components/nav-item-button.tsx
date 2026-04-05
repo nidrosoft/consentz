@@ -55,8 +55,8 @@ export const NavItemButton = ({
                     aria-label={label}
                     onClick={onClick}
                     className={cx(
-                        "relative flex w-full cursor-pointer items-center justify-center rounded-md bg-primary p-2 text-fg-quaternary outline-focus-ring transition duration-100 ease-linear select-none hover:bg-primary_hover hover:text-fg-quaternary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
-                        current && "bg-active text-fg-quaternary_hover hover:bg-secondary_hover",
+                        "relative flex w-full cursor-pointer items-center justify-center rounded-md bg-transparent p-2 text-fg-quaternary outline-focus-ring transition duration-100 ease-linear select-none hover:bg-[#E8E0D4] hover:text-fg-quaternary_hover dark:hover:bg-primary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
+                        current && "bg-[#DDD4C4] text-fg-quaternary_hover hover:bg-[#D4C9B7] dark:bg-active dark:hover:bg-secondary_hover",
                         styles[size].root,
                         className,
                     )}

@@ -1,13 +1,15 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, File06, AlertTriangle, CheckCircle } from "@untitledui/icons";
+import { ChevronLeft, File06, AlertTriangle, CheckCircle, ChevronDown, ChevronUp } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { useComplianceGaps } from "@/hooks/use-compliance";
-import { KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
+import { useComplianceGaps, useUpdateGap } from "@/hooks/use-compliance";
+import { useEvidence } from "@/hooks/use-evidence";
+import { KLOES, REGULATIONS, POLICY_TEMPLATES } from "@/lib/constants/cqc-framework";
 import type { DomainSlug } from "@/types";
 
 const SEVERITY_DOT: Record<string, string> = {
@@ -16,6 +18,23 @@ const SEVERITY_DOT: Record<string, string> = {
 const SEVERITY_BADGE: Record<string, "error" | "warning" | "brand" | "gray"> = {
     CRITICAL: "error", HIGH: "warning", MEDIUM: "brand", LOW: "gray",
 };
+
+interface EvidenceRow {
+    id: string;
+    title?: string;
+    file_name?: string;
+    fileName?: string;
+    category?: string;
+    file_size?: string;
+    fileSize?: string;
+    uploaded_by?: string;
+    uploadedBy?: string;
+    status?: string;
+    kloe_code?: string;
+    kloeCode?: string;
+    created_at?: string;
+    createdAt?: string;
+}
 
 function KloeDetailSkeleton() {
     return (
@@ -42,13 +61,61 @@ export default function KloeDetailPage() {
     const kloeCode = (params.kloe as string).toUpperCase();
 
     const kloe = KLOES.find((k) => k.code === kloeCode);
-    const { data: gapsResponse, isLoading, error } = useComplianceGaps({ domain: domainSlug, pageSize: 100 });
+    const { data: gapsResponse, isLoading: gapsLoading, error } = useComplianceGaps({ domain: domainSlug, pageSize: 100 });
+    const { data: evidenceResponse, isLoading: evidenceLoading } = useEvidence({ domain: domainSlug, pageSize: 200 });
+    const updateGap = useUpdateGap();
+
     const allGaps = gapsResponse?.data ?? [];
     const kloeGaps = allGaps.filter((g) => g.kloe === kloeCode);
-    const kloeEvidence: { id: string; name: string; type: string; fileSize: string; uploadedBy: string; status: string }[] = [];
-    const kloeRegulations = REGULATIONS.filter((r) => r.domains.includes(domainSlug));
-    const mockScore = kloeGaps.filter((g) => g.status === "OPEN").length === 0 ? 85 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 40 : 60;
     const openGaps = kloeGaps.filter((g) => g.status === "OPEN");
+
+    const allEvidence = (evidenceResponse?.data ?? []) as EvidenceRow[];
+    const kloeEvidence = useMemo(() => {
+        return allEvidence.filter((ev) => {
+            const codes = (ev.kloe_code ?? ev.kloeCode ?? "").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean);
+            return codes.includes(kloeCode);
+        });
+    }, [allEvidence, kloeCode]);
+
+    const kloeRegCodes = new Set<string>();
+    POLICY_TEMPLATES.forEach((pt) => {
+        if ((pt.linkedKloes as readonly string[]).includes(kloeCode)) {
+            pt.linkedRegulations.forEach((r) => kloeRegCodes.add(r));
+        }
+    });
+    const kloeRegulations = REGULATIONS.filter((r) => kloeRegCodes.has(r.code));
+
+    const hasPolicy = kloeEvidence.some((e) => e.category === "POLICY");
+    const hasTraining = kloeEvidence.some((e) => e.category === "TRAINING_RECORD");
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+    const hasAudit = kloeEvidence.some((e) => {
+        if (e.category !== "AUDIT_REPORT") return false;
+        const dateStr = e.created_at ?? e.createdAt;
+        if (!dateStr) return true;
+        return new Date(dateStr) >= twelveMonthsAgo;
+    });
+
+    const coverageFactors = [
+        openGaps.length === 0 ? 40 : openGaps.some((g) => g.severity === "CRITICAL") ? 0 : 15,
+        kloeEvidence.length > 0 ? 25 : 0,
+        hasPolicy ? 20 : 0,
+        hasTraining ? 15 : 0,
+    ];
+    const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
+
+    const isLoading = gapsLoading || evidenceLoading;
+
+    const [expandedGapId, setExpandedGapId] = useState<string | null>(null);
+    const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+    function handleResolve(gapId: string) {
+        setResolvingId(gapId);
+        updateGap.mutate(
+            { id: gapId, status: "RESOLVED" },
+            { onSettled: () => setResolvingId(null) },
+        );
+    }
 
     if (!kloe) return <p className="text-tertiary">KLOE not found.</p>;
     if (isLoading) return <KloeDetailSkeleton />;
@@ -60,7 +127,7 @@ export default function KloeDetailPage() {
                 </Button>
                 <div className="flex flex-col items-center justify-center gap-4 py-20">
                     <AlertTriangle className="size-10 text-warning-primary" />
-                    <p className="text-sm text-tertiary">Failed to load compliance gaps. Please try again.</p>
+                    <p className="text-sm text-tertiary">Failed to load compliance data. Please try again.</p>
                     <Button color="secondary" size="sm" onClick={() => window.location.reload()}>Retry</Button>
                 </div>
             </div>
@@ -84,10 +151,10 @@ export default function KloeDetailPage() {
             {/* Score */}
             <div className="rounded-xl border border-secondary bg-primary p-5">
                 <div className="flex items-center gap-4">
-                    <span className="font-mono text-2xl font-bold text-primary">{mockScore}%</span>
-                    <div className="flex-1"><ProgressBarBase value={mockScore} min={0} max={100} /></div>
-                    <Badge size="sm" color={kloeGaps.filter((g) => g.status === "OPEN").length === 0 ? "success" : "warning"} type="pill-color">
-                        {kloeGaps.filter((g) => g.status === "OPEN").length === 0 ? "Compliant" : "Gaps Found"}
+                    <span className="font-mono text-2xl font-bold text-primary">{kloeScore}%</span>
+                    <div className="flex-1"><ProgressBarBase value={kloeScore} min={0} max={100} /></div>
+                    <Badge size="sm" color={openGaps.length === 0 ? "success" : "warning"} type="pill-color">
+                        {openGaps.length === 0 ? "Compliant" : "Gaps Found"}
                     </Badge>
                 </div>
             </div>
@@ -112,19 +179,27 @@ export default function KloeDetailPage() {
                 <h2 className="mb-3 text-lg font-semibold text-primary">Requirements Checklist</h2>
                 <div className="rounded-xl border border-secondary bg-primary">
                     {[
-                        { label: "Policy or procedure documented", done: kloeEvidence.some((e) => e.type === "POLICY") },
-                        { label: "Evidence uploaded and linked", done: kloeEvidence.length > 0 },
-                        { label: "No open compliance gaps", done: openGaps.length === 0 },
-                        { label: "Staff training completed", done: kloeEvidence.some((e) => e.type === "TRAINING_RECORD") },
-                        { label: "Last audit within 12 months", done: kloeEvidence.some((e) => e.type === "AUDIT_REPORT") },
+                        { label: "Policy or procedure documented", done: hasPolicy, action: `/evidence/upload?category=POLICY&kloe=${kloeCode}&domain=${domainSlug}`, actionLabel: "Upload policy" },
+                        { label: "Evidence uploaded and linked", done: kloeEvidence.length > 0, action: `/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`, actionLabel: "Upload evidence" },
+                        { label: "No open compliance gaps", done: openGaps.length === 0, action: null as string | null, actionLabel: "Resolve gaps below" },
+                        { label: "Staff training completed", done: hasTraining, action: `/evidence/upload?category=TRAINING_RECORD&kloe=${kloeCode}&domain=${domainSlug}`, actionLabel: "Upload training record" },
+                        { label: "Last audit within 12 months", done: hasAudit, action: `/evidence/upload?category=AUDIT_REPORT&kloe=${kloeCode}&domain=${domainSlug}`, actionLabel: "Upload audit report" },
                     ].map((item, i) => (
-                        <div key={item.label} className={cx("flex items-center gap-3 px-4 py-3", i > 0 && "border-t border-secondary")}>
-                            {item.done ? (
-                                <CheckCircle className="size-5 shrink-0 text-success-primary" />
-                            ) : (
-                                <div className="flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-tertiary" />
+                        <div key={item.label} className={cx("flex items-center justify-between gap-3 px-4 py-3", i > 0 && "border-t border-secondary")}>
+                            <div className="flex items-center gap-3">
+                                {item.done ? (
+                                    <CheckCircle className="size-5 shrink-0 text-success-primary" />
+                                ) : (
+                                    <div className="flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-tertiary" />
+                                )}
+                                <span className={cx("text-sm", item.done ? "text-primary" : "text-tertiary")}>{item.label}</span>
+                            </div>
+                            {!item.done && item.action && (
+                                <Button color="link-color" size="sm" onClick={() => router.push(item.action!)}>{item.actionLabel}</Button>
                             )}
-                            <span className={cx("text-sm", item.done ? "text-primary" : "text-tertiary")}>{item.label}</span>
+                            {!item.done && !item.action && (
+                                <span className="text-xs text-tertiary">{item.actionLabel}</span>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -138,22 +213,32 @@ export default function KloeDetailPage() {
                 </div>
                 {kloeEvidence.length > 0 ? (
                     <div className="flex flex-col gap-2">
-                        {kloeEvidence.map((ev) => (
-                            <button
-                                key={ev.id}
-                                onClick={() => router.push(`/evidence/${ev.id}`)}
-                                className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300"
-                            >
-                                <File06 className="size-5 text-fg-quaternary" />
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-primary">{ev.name}</p>
-                                    <p className="text-xs text-tertiary">{ev.type} &middot; {ev.fileSize} &middot; Uploaded by {ev.uploadedBy}</p>
-                                </div>
-                                <Badge size="sm" color={ev.status === "VALID" ? "success" : ev.status === "EXPIRED" ? "error" : "warning"} type="pill-color">
-                                    {ev.status.replace("_", " ")}
-                                </Badge>
-                            </button>
-                        ))}
+                        {kloeEvidence.map((ev) => {
+                            const name = ev.title ?? ev.file_name ?? ev.fileName ?? "Untitled";
+                            const category = ev.category ?? "OTHER";
+                            const size = ev.file_size ?? ev.fileSize ?? "";
+                            const uploader = ev.uploaded_by ?? ev.uploadedBy ?? "";
+                            const status = ev.status ?? "VALID";
+
+                            return (
+                                <button
+                                    key={ev.id}
+                                    onClick={() => router.push(`/evidence/${ev.id}`)}
+                                    className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300"
+                                >
+                                    <File06 className="size-5 text-fg-quaternary" />
+                                    <div className="flex-1">
+                                        <p className="text-sm font-medium text-primary">{name}</p>
+                                        <p className="text-xs text-tertiary">
+                                            {category.replace(/_/g, " ")}{size ? ` · ${size}` : ""}{uploader ? ` · Uploaded by ${uploader}` : ""}
+                                        </p>
+                                    </div>
+                                    <Badge size="sm" color={status === "VALID" ? "success" : status === "EXPIRED" ? "error" : "warning"} type="pill-color">
+                                        {status.replace(/_/g, " ")}
+                                    </Badge>
+                                </button>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="rounded-xl border border-dashed border-secondary bg-secondary p-8 text-center">
@@ -168,26 +253,64 @@ export default function KloeDetailPage() {
                 <h2 className="mb-4 text-lg font-semibold text-primary">Compliance Gaps ({kloeGaps.length})</h2>
                 {kloeGaps.length > 0 ? (
                     <div className="flex flex-col gap-3">
-                        {kloeGaps.map((gap) => (
-                            <div key={gap.id} className="rounded-xl border border-secondary bg-primary p-4">
-                                <div className="flex items-start gap-3">
-                                    <span className={cx("mt-1 size-2.5 shrink-0 rounded-full", SEVERITY_DOT[gap.severity])} />
-                                    <div className="flex-1">
-                                        <p className="text-sm font-medium text-primary">{gap.title}</p>
-                                        <p className="mt-1 text-xs text-tertiary">{gap.description}</p>
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <Badge size="sm" color={SEVERITY_BADGE[gap.severity]} type="pill-color">{gap.severity}</Badge>
-                                            <Badge size="sm" color="gray" type="pill-color">{gap.status.replace("_", " ")}</Badge>
-                                            <span className="text-xs text-tertiary">{gap.regulation}</span>
+                        {kloeGaps.map((gap) => {
+                            const isExpanded = expandedGapId === gap.id;
+                            const hasSteps = gap.remediationSteps && gap.remediationSteps.length > 0;
+
+                            return (
+                                <div key={gap.id} className="rounded-xl border border-secondary bg-primary p-4">
+                                    <div className="flex items-start gap-3">
+                                        <span className={cx("mt-1 size-2.5 shrink-0 rounded-full", SEVERITY_DOT[gap.severity])} />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-medium text-primary">{gap.title}</p>
+                                            <p className="mt-1 text-xs text-tertiary">{gap.description}</p>
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <Badge size="sm" color={SEVERITY_BADGE[gap.severity]} type="pill-color">{gap.severity}</Badge>
+                                                <Badge size="sm" color="gray" type="pill-color">{gap.status.replace("_", " ")}</Badge>
+                                                <span className="text-xs text-tertiary">{gap.regulation}</span>
+                                            </div>
                                         </div>
                                     </div>
+                                    <div className="mt-3 flex gap-2">
+                                        <Button
+                                            color="secondary"
+                                            size="sm"
+                                            iconTrailing={isExpanded ? ChevronUp : ChevronDown}
+                                            onClick={() => setExpandedGapId(isExpanded ? null : gap.id)}
+                                        >
+                                            {isExpanded ? "Hide Remediation" : "View Remediation"}
+                                        </Button>
+                                        {gap.status !== "RESOLVED" && (
+                                            <Button
+                                                color="tertiary"
+                                                size="sm"
+                                                isLoading={resolvingId === gap.id}
+                                                onClick={() => handleResolve(gap.id)}
+                                            >
+                                                Mark Resolved
+                                            </Button>
+                                        )}
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="mt-3 rounded-lg border border-secondary bg-secondary p-4">
+                                            <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Remediation Steps</p>
+                                            {hasSteps ? (
+                                                <ol className="mt-2 list-decimal space-y-1.5 pl-4">
+                                                    {gap.remediationSteps!.map((step: string, i: number) => (
+                                                        <li key={i} className="text-sm text-primary">{step}</li>
+                                                    ))}
+                                                </ol>
+                                            ) : (
+                                                <p className="mt-2 text-sm text-tertiary">
+                                                    No specific remediation steps recorded. Review this gap with your compliance manager and document the corrective actions taken.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="mt-3 flex gap-2">
-                                    <Button color="secondary" size="sm">View Remediation</Button>
-                                    <Button color="tertiary" size="sm">Mark Resolved</Button>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="flex items-center gap-3 rounded-xl border border-success-200 bg-success-primary p-4">

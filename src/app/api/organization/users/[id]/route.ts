@@ -2,6 +2,7 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { AuditService } from '@/lib/services/audit-service';
+import { createAdminSupabaseClient } from '@/lib/supabase/server';
 import { getDb } from '@/lib/db';
 import { z } from 'zod';
 
@@ -34,6 +35,14 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
     .eq('id', memberId)
     .select()
     .single();
+
+  // Also update the `users` table so resolveSessionAuth picks up the new role
+  // regardless of which table it resolves from.
+  if (!member.auth_user_id.startsWith('pending_invite_')) {
+    await client.from('users')
+      .update({ role: validated.role })
+      .eq('supabase_user_id', member.auth_user_id);
+  }
 
   await AuditService.log({
     organizationId: auth.organizationId,
@@ -74,7 +83,23 @@ export const DELETE = withAuth(async (req, { params, auth }) => {
     return ApiErrors.notFound('User');
   }
 
+  // 1. Delete the org membership row
   await client.from('organization_members').delete().eq('id', memberId);
+
+  // 2. For real (non-pending) users, unlink from the org in the `users` table
+  //    and invalidate their Supabase session so they're locked out immediately.
+  if (!member.auth_user_id.startsWith('pending_invite_')) {
+    await client.from('users')
+      .update({ organization_id: null })
+      .eq('supabase_user_id', member.auth_user_id);
+
+    try {
+      const admin = createAdminSupabaseClient();
+      await admin.auth.admin.signOut(member.auth_user_id);
+    } catch (e) {
+      console.warn('[user-removal] Could not sign out user session:', e);
+    }
+  }
 
   await AuditService.log({
     organizationId: auth.organizationId,

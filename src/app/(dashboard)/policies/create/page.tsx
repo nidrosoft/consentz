@@ -1,19 +1,136 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Stars01 } from "@untitledui/icons";
+import { AnimatePresence, motion } from "motion/react";
+import { CheckCircle, ChevronLeft, FileCheck02, Loading01, Stars01 } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
+import { TextArea } from "@/components/base/textarea/textarea";
+import { useCreatePolicy, useGeneratePolicy, useTemplates, useUpdatePolicy } from "@/hooks/use-policies";
 
 const CATEGORIES = ["Health & Safety", "Clinical", "Governance", "HR", "Operations", "Safeguarding"];
+
+const GENERATION_STEPS = [
+    "Analyzing CQC regulations and requirements",
+    "Mapping relevant KLOEs and quality statements",
+    "Structuring policy sections and procedures",
+    "Writing detailed compliance content",
+    "Adding roles, responsibilities and training requirements",
+    "Formatting, cross-referencing and final review",
+] as const;
+
+const STEP_DELAYS = [5000, 8000, 15000, 25000, 20000, 30000];
+
+function useGenerationProgress(isGenerating: boolean) {
+    const [stepIndex, setStepIndex] = useState(0);
+
+    useEffect(() => {
+        if (!isGenerating) {
+            setStepIndex(0);
+            return;
+        }
+
+        let timeout: ReturnType<typeof setTimeout>;
+        let current = 0;
+
+        function advance() {
+            if (current < GENERATION_STEPS.length - 1) {
+                current++;
+                setStepIndex(current);
+                timeout = setTimeout(advance, STEP_DELAYS[current] ?? 15000);
+            }
+        }
+
+        timeout = setTimeout(advance, STEP_DELAYS[0] ?? 5000);
+        return () => clearTimeout(timeout);
+    }, [isGenerating]);
+
+    return stepIndex;
+}
 
 export default function CreatePolicyPage() {
     const router = useRouter();
 
+    // AI generation state
+    const [aiExpanded, setAiExpanded] = useState(false);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+    const [customInstructions, setCustomInstructions] = useState("");
+
+    // Manual form state
+    const [title, setTitle] = useState("");
+    const [category, setCategory] = useState<string | null>(null);
+    const [content, setContent] = useState("");
+    const [version, setVersion] = useState("");
+
+    // Hooks
+    const { data: templates, isLoading: templatesLoading } = useTemplates();
+    const generatePolicy = useGeneratePolicy();
+    const createPolicy = useCreatePolicy();
+    const updatePolicy = useUpdatePolicy();
+
+    const isGenerating = generatePolicy.isPending;
+    const stepIndex = useGenerationProgress(isGenerating);
+
+    const templateItems = useMemo(() => {
+        if (!templates) return [];
+        return templates.map((t) => ({
+            id: t.id,
+            label: t.name,
+            supportingText: t.description,
+        }));
+    }, [templates]);
+
+    const manualFormValid = title.trim().length > 0 && category !== null && content.trim().length > 0;
+
+    const handleGenerate = useCallback(() => {
+        if (!selectedTemplateId) return;
+        generatePolicy.mutate(
+            { templateId: selectedTemplateId, customInstructions: customInstructions || undefined },
+            {
+                onSuccess: (data) => {
+                    router.push(`/policies/${data.policy.id}`);
+                },
+            },
+        );
+    }, [selectedTemplateId, customInstructions, generatePolicy, router]);
+
+    const handleSaveDraft = useCallback(() => {
+        if (!title.trim() || !category) return;
+        createPolicy.mutate(
+            { title: title.trim(), content: content.trim() || undefined, category },
+            {
+                onSuccess: (data) => {
+                    if (data?.id) router.push(`/policies/${data.id}`);
+                },
+            },
+        );
+    }, [title, category, content, createPolicy, router]);
+
+    const handleSubmitForReview = useCallback(() => {
+        if (!manualFormValid) return;
+        createPolicy.mutate(
+            { title: title.trim(), content: content.trim(), category: category! },
+            {
+                onSuccess: (data) => {
+                    if (!data?.id) return;
+                    updatePolicy.mutate(
+                        { id: data.id, status: "UNDER_REVIEW" },
+                        { onSuccess: () => router.push(`/policies/${data.id}`) },
+                    );
+                },
+            },
+        );
+    }, [manualFormValid, title, content, category, createPolicy, updatePolicy, router]);
+
+    const isSaving = createPolicy.isPending || updatePolicy.isPending;
+
     return (
         <div className="flex flex-col gap-6">
-            <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/policies")}>Back to Policies</Button>
+            <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/policies")}>
+                Back to Policies
+            </Button>
 
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">Create New Policy</h1>
@@ -28,8 +145,91 @@ export default function CreatePolicyPage() {
                     </div>
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-primary">AI-Generated Policy</h3>
-                        <p className="mt-1 text-sm text-tertiary">Generate a CQC-compliant policy draft using AI. You can then review and edit before publishing.</p>
-                        <Button color="primary" size="sm" className="mt-3">Generate with AI</Button>
+                        <p className="mt-1 text-sm text-tertiary">
+                            Generate a CQC-compliant policy draft using AI. You can then review and edit before publishing.
+                        </p>
+
+                        {!aiExpanded && !isGenerating && (
+                            <Button color="primary" size="sm" className="mt-3" onClick={() => setAiExpanded(true)}>
+                                Generate with AI
+                            </Button>
+                        )}
+
+                        <AnimatePresence>
+                            {(aiExpanded || isGenerating) && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.25 }}
+                                    className="overflow-hidden"
+                                >
+                                    {isGenerating ? (
+                                        <div className="mt-5 flex flex-col gap-3">
+                                            {GENERATION_STEPS.map((step, i) => (
+                                                <div key={step} className="flex items-center gap-3">
+                                                    {i < stepIndex ? (
+                                                        <CheckCircle className="size-5 text-fg-success-secondary" />
+                                                    ) : i === stepIndex ? (
+                                                        <Loading01 className="size-5 animate-spin text-fg-brand-primary" />
+                                                    ) : (
+                                                        <div className="size-5 rounded-full border-2 border-tertiary" />
+                                                    )}
+                                                    <span
+                                                        className={
+                                                            i <= stepIndex ? "text-sm font-medium text-primary" : "text-sm text-quaternary"
+                                                        }
+                                                    >
+                                                        {step}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="mt-5 flex flex-col gap-4">
+                                            <Select
+                                                label="Policy template"
+                                                placeholder={templatesLoading ? "Loading templates…" : "Select a template"}
+                                                isRequired
+                                                isDisabled={templatesLoading}
+                                                items={templateItems}
+                                                selectedKey={selectedTemplateId}
+                                                onSelectionChange={(key) => setSelectedTemplateId(key as string)}
+                                            >
+                                                {(item) => (
+                                                    <Select.Item key={item.id} id={item.id} supportingText={item.supportingText}>
+                                                        {item.label}
+                                                    </Select.Item>
+                                                )}
+                                            </Select>
+
+                                            <TextArea
+                                                label="Additional instructions"
+                                                placeholder="e.g. Focus on domiciliary care settings, include specific medication administration procedures…"
+                                                rows={3}
+                                                value={customInstructions}
+                                                onChange={setCustomInstructions}
+                                            />
+
+                                            <div className="flex gap-3">
+                                                <Button
+                                                    color="primary"
+                                                    size="sm"
+                                                    iconLeading={Stars01}
+                                                    isDisabled={!selectedTemplateId}
+                                                    onClick={handleGenerate}
+                                                >
+                                                    Generate
+                                                </Button>
+                                                <Button color="tertiary" size="sm" onClick={() => setAiExpanded(false)}>
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 </div>
             </div>
@@ -37,27 +237,64 @@ export default function CreatePolicyPage() {
             {/* Manual form */}
             <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
                 <h2 className="text-lg font-semibold text-primary">Or write manually</h2>
-                <Input label="Policy title" placeholder="Safeguarding Adults Policy" isRequired />
-                <Select label="Category" placeholder="Select category...">
+
+                <Input
+                    label="Policy title"
+                    placeholder="Safeguarding Adults Policy"
+                    isRequired
+                    value={title}
+                    onChange={setTitle}
+                />
+
+                <Select
+                    label="Category"
+                    placeholder="Select category..."
+                    isRequired
+                    selectedKey={category}
+                    onSelectionChange={(key) => setCategory(key as string)}
+                >
                     {CATEGORIES.map((c) => (
-                        <Select.Item key={c} id={c}>{c}</Select.Item>
+                        <Select.Item key={c} id={c}>
+                            {c}
+                        </Select.Item>
                     ))}
                 </Select>
-                <Input label="Version" placeholder="v1.0" />
 
-                {/* Rich text editor placeholder */}
-                <div>
-                    <label className="mb-1.5 block text-sm font-medium text-secondary">Policy content</label>
-                    <div className="min-h-[300px] rounded-lg border border-secondary bg-primary p-4">
-                        <p className="text-sm text-quaternary">Start typing your policy content here...</p>
-                    </div>
-                </div>
+                <Input label="Version" placeholder="v1.0" value={version} onChange={setVersion} />
+
+                <TextArea
+                    label="Policy content"
+                    placeholder="Start typing your policy content here..."
+                    isRequired
+                    rows={12}
+                    value={content}
+                    onChange={setContent}
+                />
             </div>
 
             <div className="flex justify-end gap-3">
-                <Button color="secondary" size="lg" onClick={() => router.push("/policies")}>Cancel</Button>
-                <Button color="tertiary" size="lg">Save as Draft</Button>
-                <Button color="primary" size="lg">Submit for Review</Button>
+                <Button color="secondary" size="lg" onClick={() => router.push("/policies")}>
+                    Cancel
+                </Button>
+                <Button
+                    color="tertiary"
+                    size="lg"
+                    iconLeading={FileCheck02}
+                    isDisabled={!title.trim() || !category}
+                    isLoading={isSaving}
+                    onClick={handleSaveDraft}
+                >
+                    Save as Draft
+                </Button>
+                <Button
+                    color="primary"
+                    size="lg"
+                    isDisabled={!manualFormValid}
+                    isLoading={isSaving}
+                    onClick={handleSubmitForReview}
+                >
+                    Submit for Review
+                </Button>
             </div>
         </div>
     );

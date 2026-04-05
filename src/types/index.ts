@@ -75,6 +75,9 @@ export interface ComplianceGap {
   kloe: string;
   regulation: string;
   createdAt: string;
+  remediationSteps?: string[];
+  dueDate?: string | null;
+  resolutionNotes?: string | null;
 }
 
 export interface Task {

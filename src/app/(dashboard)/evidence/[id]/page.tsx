@@ -1,10 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, Download01, Trash01, File06, Calendar, User01, Link01 } from "@untitledui/icons";
+import { ChevronLeft, Download01, Trash01, File06, Calendar, User01, Link01, AlertTriangle } from "@untitledui/icons";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
-import { useEvidenceDetail } from "@/hooks/use-evidence";
+import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
+import { DialogTrigger, ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
+import { useEvidenceDetail, useDeleteEvidence } from "@/hooks/use-evidence";
+import { useUiStore } from "@/stores/ui-store";
 import { toEvidence } from "@/lib/evidence-mapper";
 
 const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray"> = {
@@ -17,6 +21,37 @@ export default function EvidenceDetailPage() {
     const id = typeof params.id === "string" ? params.id : "";
     const { data: rawData, isLoading, error } = useEvidenceDetail(id);
     const evidence = rawData ? toEvidence(rawData as unknown as Record<string, unknown>) : null;
+    const deleteMutation = useDeleteEvidence();
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const setBreadcrumbLabel = useUiStore((s) => s.setBreadcrumbLabel);
+    const clearBreadcrumbLabel = useUiStore((s) => s.clearBreadcrumbLabel);
+
+    useEffect(() => {
+        if (evidence?.name) setBreadcrumbLabel(id, evidence.name);
+        return () => clearBreadcrumbLabel(id);
+    }, [id, evidence?.name, setBreadcrumbLabel, clearBreadcrumbLabel]);
+
+    function handleDownload() {
+        setIsDownloading(true);
+        const link = document.createElement("a");
+        link.href = `/api/evidence/${id}/download`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => setIsDownloading(false), 2000);
+    }
+
+    function handleDelete() {
+        deleteMutation.mutate(id, {
+            onSuccess: () => {
+                setShowDeleteConfirm(false);
+                router.push("/evidence");
+            },
+        });
+    }
 
     if (error) {
         return (
@@ -74,8 +109,12 @@ export default function EvidenceDetailPage() {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button color="secondary" size="sm" iconLeading={Download01}>Download</Button>
-                    <Button color="secondary-destructive" size="sm" iconLeading={Trash01}>Delete</Button>
+                    <Button color="secondary" size="sm" iconLeading={Download01} onClick={handleDownload} isLoading={isDownloading}>
+                        Download
+                    </Button>
+                    <Button color="secondary-destructive" size="sm" iconLeading={Trash01} onClick={() => setShowDeleteConfirm(true)}>
+                        Delete
+                    </Button>
                 </div>
             </div>
 
@@ -108,7 +147,7 @@ export default function EvidenceDetailPage() {
                     <div className="flex items-center gap-3">
                         <Link01 className="size-4 text-fg-quaternary" />
                         <span className="text-sm font-medium text-tertiary">Linked KLOEs</span>
-                        <span className="text-sm text-primary">{evidence.linkedKloes.join(", ")}</span>
+                        <span className="text-sm text-primary">{evidence.linkedKloes.join(", ") || "None"}</span>
                     </div>
                 </div>
             </div>
@@ -116,17 +155,21 @@ export default function EvidenceDetailPage() {
             {/* Linked Domains */}
             <div>
                 <h2 className="mb-3 text-lg font-semibold text-primary">Linked Domains</h2>
-                <div className="flex flex-wrap gap-2">
-                    {evidence.linkedDomains.map((d) => (
-                        <button
-                            key={d}
-                            onClick={() => router.push(`/domains/${d}`)}
-                            className="rounded-lg border border-secondary bg-primary px-3 py-2 text-sm font-medium text-primary transition duration-100 hover:border-brand-300"
-                        >
-                            {d.charAt(0).toUpperCase() + d.slice(1)}
-                        </button>
-                    ))}
-                </div>
+                {evidence.linkedDomains.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                        {evidence.linkedDomains.map((d) => (
+                            <button
+                                key={d}
+                                onClick={() => router.push(`/domains/${d}`)}
+                                className="rounded-lg border border-secondary bg-primary px-3 py-2 text-sm font-medium text-primary transition duration-100 hover:border-brand-300"
+                            >
+                                {d.charAt(0).toUpperCase() + d.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-tertiary">No linked domains.</p>
+                )}
             </div>
 
             {/* Preview placeholder */}
@@ -134,9 +177,48 @@ export default function EvidenceDetailPage() {
                 <div className="text-center">
                     <File06 className="mx-auto size-12 text-fg-quaternary" />
                     <p className="mt-3 text-sm text-tertiary">Document preview will appear here</p>
-                    <Button color="secondary" size="sm" className="mt-3" iconLeading={Download01}>Download to view</Button>
+                    <Button color="secondary" size="sm" className="mt-3" iconLeading={Download01} onClick={handleDownload} isLoading={isDownloading}>
+                        Download to view
+                    </Button>
                 </div>
             </div>
+
+            {/* Delete confirmation modal */}
+            <DialogTrigger isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                <ModalOverlay isDismissable>
+                    <Modal className="sm:max-w-md">
+                        <Dialog className="rounded-xl bg-primary p-6 shadow-xl">
+                            <div className="flex flex-col items-center text-center">
+                                <FeaturedIcon icon={AlertTriangle} color="error" theme="light" size="lg" />
+                                <h2 className="mt-4 text-lg font-semibold text-primary">Delete evidence</h2>
+                                <p className="mt-1 text-sm text-tertiary">
+                                    Are you sure you want to delete <span className="font-medium text-primary">{evidence.name}</span>? This action cannot be undone and will remove the evidence from your compliance records.
+                                </p>
+                                <div className="mt-6 flex w-full gap-3">
+                                    <Button
+                                        color="secondary"
+                                        size="md"
+                                        className="flex-1"
+                                        onClick={() => setShowDeleteConfirm(false)}
+                                        isDisabled={deleteMutation.isPending}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        color="primary-destructive"
+                                        size="md"
+                                        className="flex-1"
+                                        onClick={handleDelete}
+                                        isLoading={deleteMutation.isPending}
+                                    >
+                                        Delete
+                                    </Button>
+                                </div>
+                            </div>
+                        </Dialog>
+                    </Modal>
+                </ModalOverlay>
+            </DialogTrigger>
         </div>
     );
 }

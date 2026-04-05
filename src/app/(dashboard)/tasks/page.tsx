@@ -16,6 +16,55 @@ import { AddTaskModal } from "./_components/add-task-modal";
 
 type ViewMode = "board" | "list" | "my";
 
+interface ApiTaskRow {
+    id: string;
+    title?: string;
+    description?: string;
+    status?: string;
+    priority?: string;
+    assigned_to_name?: string;
+    assignedToName?: string;
+    assignee?: string;
+    due_date?: string;
+    dueDate?: string;
+    gap_id?: string | null;
+    gapId?: string | null;
+    domains?: string[];
+    domain?: string;
+    [key: string]: unknown;
+}
+
+function toTask(row: ApiTaskRow): Task {
+    const statusMap: Record<string, TaskStatus> = { COMPLETED: "DONE", TODO: "TODO", IN_PROGRESS: "IN_PROGRESS" };
+    const priorityMap: Record<string, TaskPriority> = { CRITICAL: "URGENT", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW" };
+
+    const rawStatus = row.status ?? "TODO";
+    let mappedStatus = statusMap[rawStatus] ?? (rawStatus as TaskStatus);
+
+    const rawDue = row.due_date ?? row.dueDate ?? "";
+    if (mappedStatus !== "DONE" && rawDue) {
+        const daysLeft = Math.ceil((new Date(rawDue).getTime() - Date.now()) / 86400000);
+        if (daysLeft < 0) mappedStatus = "OVERDUE";
+    }
+
+    const rawPriority = row.priority ?? "MEDIUM";
+    const mappedPriority = priorityMap[rawPriority] ?? (rawPriority as TaskPriority);
+
+    const domain = (row.domain ?? (row.domains?.[0]) ?? "safe") as DomainSlug;
+
+    return {
+        id: row.id,
+        title: row.title ?? "",
+        description: row.description ?? "",
+        status: mappedStatus,
+        priority: mappedPriority,
+        assignee: row.assigned_to_name ?? row.assignedToName ?? row.assignee ?? "",
+        dueDate: rawDue,
+        relatedGapId: row.gap_id ?? row.gapId ?? null,
+        domain,
+    };
+}
+
 export default function TasksPage() {
     const { data: meData } = useMe();
     const currentUserId = meData?.id;
@@ -23,7 +72,7 @@ export default function TasksPage() {
     const { data, isLoading, error, refetch } = useTasks({
         assignedToId: view === "my" ? (currentUserId ?? undefined) : undefined,
     });
-    const tasks = (data?.data ?? []) as Task[];
+    const tasks = ((data?.data ?? []) as ApiTaskRow[]).map(toTask);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [slideOverOpen, setSlideOverOpen] = useState(false);
 
@@ -52,7 +101,16 @@ export default function TasksPage() {
 
     function handleUpdateTask(taskId: string, updates: Partial<Task>) {
         if (selectedTask?.id === taskId) setSelectedTask((prev) => prev ? { ...prev, ...updates } : prev);
-        updateTaskMutation.mutate({ id: taskId, ...updates }, { onSettled: () => refetch() });
+
+        const apiPayload: Record<string, unknown> = { id: taskId };
+        if (updates.status !== undefined) apiPayload.status = updates.status;
+        if (updates.priority !== undefined) apiPayload.priority = updates.priority;
+        if (updates.title !== undefined) apiPayload.title = updates.title;
+        if (updates.description !== undefined) apiPayload.description = updates.description;
+        if (updates.dueDate !== undefined) apiPayload.dueDate = updates.dueDate;
+        if (updates.assignee !== undefined) apiPayload.assignedToName = updates.assignee;
+
+        updateTaskMutation.mutate(apiPayload as { id: string } & Record<string, unknown>, { onSettled: () => refetch() });
     }
 
     function handleSelectTask(task: Task) {

@@ -1,11 +1,17 @@
 "use client";
 
 import type { SVGProps } from "react";
-import { useId } from "react";
+import { useId, useState, useEffect } from "react";
 import { cx } from "@/utils/cx";
 
 export const UntitledLogoMinimal = (props: SVGProps<SVGSVGElement>) => {
     const id = useId();
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => setMounted(true), []);
+
+    if (!mounted) {
+        return <div className={cx("size-8", props.className)} />;
+    }
 
     return (
         <svg viewBox="0 0 38 38" fill="none" {...props} className={cx("size-8 origin-center scale-[1.2]", props.className)}>

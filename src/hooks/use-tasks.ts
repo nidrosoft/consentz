@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiDelete, buildQueryString } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 
 interface TaskFilters {
   page?: number;
@@ -40,7 +41,9 @@ export function useCreateTask() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Task created', 'New task has been added.');
     },
+    onError: () => toast.error('Failed to create task', 'Please try again.'),
   });
 }
 
@@ -49,11 +52,13 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string } & Record<string, unknown>) =>
       apiPatch<unknown>(`/api/tasks/${id}`, data).then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['compliance'] });
+      toast.success('Task updated', vars.status === 'DONE' ? 'Task marked as complete.' : 'Task has been updated.');
     },
+    onError: () => toast.error('Failed to update task', 'Please try again.'),
   });
 }
 
@@ -64,6 +69,8 @@ export function useDeleteTask() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Task deleted', 'The task has been removed.');
     },
+    onError: () => toast.error('Failed to delete task', 'Please try again.'),
   });
 }

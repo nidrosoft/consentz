@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import type { Notification } from '@/types';
 
 // =============================================================================
@@ -41,8 +42,9 @@ export function useMarkRead() {
   return useMutation({
     mutationFn: (notificationIds: string[]) =>
       apiPatch('/api/notifications/read', { notificationIds }),
-    onSuccess: () => {
+    onSuccess: (_d, ids) => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      if (ids.length > 1) toast.success('Notifications cleared', 'All notifications marked as read.');
     },
   });
 }

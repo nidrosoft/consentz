@@ -73,7 +73,7 @@ export default function Step1ServiceType({ data, updateData }: Props) {
                                     <p
                                         className={cx(
                                             "font-semibold",
-                                            isSelected ? "text-primary_on-brand" : "text-primary",
+                                            isSelected ? "text-primary" : "text-primary",
                                         )}
                                     >
                                         {option.label}
@@ -82,7 +82,7 @@ export default function Step1ServiceType({ data, updateData }: Props) {
                                 <p
                                     className={cx(
                                         "mt-1 text-sm",
-                                        isSelected ? "text-secondary_on-brand" : "text-tertiary",
+                                        isSelected ? "text-brand-secondary" : "text-tertiary",
                                     )}
                                 >
                                     {option.desc}

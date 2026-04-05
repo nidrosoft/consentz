@@ -19,9 +19,20 @@ export interface PriorityGap {
   dueDate: string | null;
 }
 
+export interface ConsentzMetricEntry {
+  value: number | null;
+  label: string;
+  unit: string;
+  domain: string;
+}
+
+export type ConsentzMetrics = Record<string, ConsentzMetricEntry> | null;
+
 interface DashboardOverview {
   compliance: ComplianceScore;
   priorityGaps: PriorityGap[];
+  consentzDataFreshness: string | null;
+  consentzMetrics: ConsentzMetrics;
   gaps: {
     CRITICAL: number;
     HIGH: number;
@@ -66,6 +77,25 @@ export function useDashboard() {
     queryKey: ['dashboard', 'overview'],
     queryFn: () => apiGet<DashboardOverview>('/api/dashboard/overview').then((r) => r.data),
   });
+}
+
+// =============================================================================
+// Consentz Metrics (filtered by domain)
+// =============================================================================
+
+export function useConsentzMetricsForDomain(domain: string) {
+  const { data, ...rest } = useDashboard();
+  const metrics = data?.consentzMetrics;
+  const freshness = data?.consentzDataFreshness ?? null;
+
+  if (!metrics) return { data: null as Record<string, ConsentzMetricEntry> | null, freshness, ...rest };
+
+  const domainMetrics = Object.entries(metrics).filter(([, m]) => m.domain === domain);
+  return {
+    data: domainMetrics.length > 0 ? Object.fromEntries(domainMetrics) as Record<string, ConsentzMetricEntry> : null,
+    freshness,
+    ...rest,
+  };
 }
 
 // =============================================================================

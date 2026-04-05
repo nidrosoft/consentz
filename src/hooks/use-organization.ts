@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 import type { Organization, AppUser } from '@/types';
 
 export function useOrganization() {
@@ -18,7 +19,9 @@ export function useUpdateOrganization() {
       apiPatch<Organization>('/api/organization', data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organization'] });
+      toast.success('Organisation updated', 'Your changes have been saved.');
     },
+    onError: () => toast.error('Update failed', 'Could not update the organisation.'),
   });
 }
 

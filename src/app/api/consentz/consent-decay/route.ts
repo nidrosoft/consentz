@@ -1,6 +1,6 @@
 import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
-import { ConsentzClient } from '@/lib/consentz/client';
+import { getAuthenticatedClient } from '@/lib/consentz/client';
 import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { auth }) => {
@@ -20,11 +20,7 @@ export const GET = withAuth(async (req, { auth }) => {
   const expiringWithinDays = Number(searchParams.get('expiringWithinDays') ?? 30);
   const showOnlyExpired = Number(searchParams.get('showOnlyExpired') ?? 0);
 
-  const client = new ConsentzClient({
-    sessionToken: process.env.CONSENTZ_SESSION_TOKEN ?? '',
-    clinicId: org.consentz_clinic_id,
-  });
-
+  const client = await getAuthenticatedClient(org.consentz_clinic_id);
   const data = await client.getConsentDecay(startDate, endDate, expiringWithinDays, showOnlyExpired);
   return apiSuccess(data);
 });

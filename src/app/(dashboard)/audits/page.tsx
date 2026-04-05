@@ -1,27 +1,52 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { File06, CheckSquare, PieChart01, AlertCircle, AlertTriangle, Users01, Award02, SearchLg, ChevronDown, ChevronUp, FilterLines, XClose, FileSearch01 } from "@untitledui/icons";
+import {
+    File06, CheckSquare, PieChart01, AlertCircle, AlertTriangle, Users01,
+    Award02, SearchLg, FilterLines, XClose, FileSearch01,
+    Clock, ArrowRight, Edit01, Plus, Trash01, RefreshCw01, Eye,
+    ShieldTick, Link01,
+} from "@untitledui/icons";
 import { EmptyState } from "@/components/application/empty-state/empty-state";
-import { Badge } from "@/components/base/badges/badges";
+import { Table, TableCard } from "@/components/application/table/table";
+import { Badge, BadgeWithIcon } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
+import { Avatar } from "@/components/base/avatar/avatar";
 import { cx } from "@/utils/cx";
 import { useAuditLog } from "@/hooks/use-audit";
 import { PageSkeleton } from "@/components/shared/page-skeleton";
+import type { FC } from "react";
 
-const ENTITY_ICONS: Record<string, typeof File06> = {
-    EVIDENCE: File06, TASK: CheckSquare, ORGANIZATION: PieChart01, POLICY: File06,
-    INCIDENT: AlertCircle, STAFF: Users01, TRAINING: Award02, GAP: AlertTriangle,
+const ENTITY_META: Record<string, { icon: FC<{ className?: string }>; bg: string; fg: string; label: string }> = {
+    EVIDENCE:     { icon: File06,        bg: "bg-[#ECFDF3]", fg: "text-[#12B76A]", label: "Evidence" },
+    TASK:         { icon: CheckSquare,   bg: "bg-[#EEF4FF]", fg: "text-[#3538CD]", label: "Task" },
+    ORGANIZATION: { icon: PieChart01,    bg: "bg-[#F4F3FF]", fg: "text-[#6938EF]", label: "Organisation" },
+    POLICY:       { icon: File06,        bg: "bg-[#FFF1F3]", fg: "text-[#C01048]", label: "Policy" },
+    INCIDENT:     { icon: AlertCircle,   bg: "bg-[#FEF3F2]", fg: "text-[#D92D20]", label: "Incident" },
+    STAFF:        { icon: Users01,       bg: "bg-[#F0F9FF]", fg: "text-[#026AA2]", label: "Staff" },
+    TRAINING:     { icon: Award02,       bg: "bg-[#FFFAEB]", fg: "text-[#DC6803]", label: "Training" },
+    GAP:          { icon: AlertTriangle, bg: "bg-[#FEF0C7]", fg: "text-[#B54708]", label: "Gap" },
+    ASSESSMENT:   { icon: ShieldTick,    bg: "bg-[#F4F3FF]", fg: "text-[#6938EF]", label: "Assessment" },
+    NOTIFICATION: { icon: AlertCircle,   bg: "bg-[#EEF4FF]", fg: "text-[#3538CD]", label: "Notification" },
 };
 
-const ENTITY_COLORS: Record<string, "brand" | "success" | "warning" | "error" | "gray"> = {
-    EVIDENCE: "brand", TASK: "success", ORGANIZATION: "gray", POLICY: "brand",
-    INCIDENT: "error", STAFF: "gray", TRAINING: "success", GAP: "warning",
+const ACTION_META: Record<string, { icon: FC<{ className?: string }>; color: "success" | "brand" | "warning" | "error" | "gray" | "blue" }> = {
+    CREATE:     { icon: Plus,        color: "success" },
+    UPDATE:     { icon: Edit01,      color: "brand" },
+    DELETE:     { icon: Trash01,     color: "error" },
+    UPLOAD:     { icon: ArrowRight,  color: "success" },
+    VIEW:       { icon: Eye,         color: "gray" },
+    SYNC:       { icon: RefreshCw01, color: "blue" },
+    INVITE:     { icon: Users01,     color: "brand" },
+    REMOVE:     { icon: Trash01,     color: "error" },
+    LINK:       { icon: Link01,      color: "brand" },
+    COMPLETE:   { icon: CheckSquare, color: "success" },
+    GENERATE:   { icon: ShieldTick,  color: "brand" },
 };
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -30,7 +55,19 @@ function formatTime(dateStr: string): string {
     return new Date(dateStr).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+function getInitials(name: string): string {
+    return name.split(/[\s@]/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+}
+
+function formatAction(action: string): string {
+    return action.charAt(0) + action.slice(1).toLowerCase().replace(/_/g, " ");
+}
+
 export default function AuditLogPage() {
+    return <AuditLogPanel />;
+}
+
+export function AuditLogPanel() {
     const { data, isLoading, error, refetch } = useAuditLog({ pageSize: 100 });
     const activityLog = data?.data ?? [];
     const users = useMemo(() => [...new Set(activityLog.map((e: { user: string }) => e.user))], [activityLog]);
@@ -41,7 +78,6 @@ export default function AuditLogPage() {
     const [userFilter, setUserFilter] = useState<string | null>(null);
     const [entityFilter, setEntityFilter] = useState<string | null>(null);
     const [actionFilter, setActionFilter] = useState<string | null>(null);
-    const [expandedId, setExpandedId] = useState<string | null>(null);
     const [page, setPage] = useState(1);
     const [showFilters, setShowFilters] = useState(false);
 
@@ -81,9 +117,17 @@ export default function AuditLogPage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <div>
-                <h1 className="text-display-xs font-semibold text-primary">Audit Log</h1>
-                <p className="mt-1 text-sm text-tertiary">Immutable record of all platform activity.</p>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h1 className="text-display-xs font-semibold text-primary">Audit Log</h1>
+                    <p className="mt-1 text-sm text-tertiary">Immutable record of all platform activity.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 rounded-lg border border-secondary bg-primary px-3 py-1.5">
+                        <span className="size-2 rounded-full bg-success-solid animate-pulse" />
+                        <span className="text-xs font-medium text-tertiary">{filtered.length} entries</span>
+                    </div>
+                </div>
             </div>
 
             {/* Search + Filter Toggle */}
@@ -173,49 +217,87 @@ export default function AuditLogPage() {
                 </div>
             )}
 
-            {/* Log entries */}
-            <div className="rounded-xl border border-secondary bg-primary">
-                {paged.map((entry, i) => {
-                    const Icon = ENTITY_ICONS[entry.entityType] ?? File06;
-                    const isExpanded = expandedId === entry.id;
-                    return (
-                        <div key={entry.id} className={cx(i < paged.length - 1 && "border-b border-secondary")}>
-                            <button
-                                onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                                className="flex w-full items-start gap-4 px-5 py-4 text-left transition duration-100 hover:bg-primary_hover"
-                            >
-                                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary">
-                                    <Icon className="size-4 text-fg-quaternary" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-sm text-primary">{entry.description}</p>
-                                    <div className="mt-1 flex items-center gap-2">
-                                        <span className="text-xs text-tertiary">{entry.user}</span>
-                                        <span className="text-xs text-quaternary">&middot;</span>
-                                        <span className="text-xs text-tertiary">{formatDate(entry.createdAt)} at {formatTime(entry.createdAt)}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Badge size="sm" color={ENTITY_COLORS[entry.entityType] ?? "gray"} type="pill-color">
-                                        {entry.entityType}
-                                    </Badge>
-                                    {isExpanded ? <ChevronUp className="size-4 text-fg-quaternary" /> : <ChevronDown className="size-4 text-fg-quaternary" />}
-                                </div>
-                            </button>
-                            {isExpanded && (
-                                <div className="border-t border-dashed border-secondary bg-secondary px-5 py-3">
-                                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                                        <div><span className="font-medium text-tertiary">Action:</span> <span className="text-primary">{entry.action}</span></div>
-                                        <div><span className="font-medium text-tertiary">Entity:</span> <span className="text-primary">{entry.entityType}</span></div>
-                                        <div><span className="font-medium text-tertiary">User:</span> <span className="text-primary">{entry.user}</span></div>
-                                        <div><span className="font-medium text-tertiary">Timestamp:</span> <span className="text-primary">{new Date(entry.createdAt).toISOString()}</span></div>
-                                    </div>
-                                    <p className="mt-2 text-xs text-quaternary">Entry ID: {entry.id}</p>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
+            {/* Table */}
+            <TableCard.Root>
+                <Table aria-label="Audit log entries" selectionMode="none">
+                    <Table.Header>
+                        <Table.Head id="description" label="Activity" isRowHeader />
+                        <Table.Head id="user" label="User" />
+                        <Table.Head id="entity" label="Entity" />
+                        <Table.Head id="action" label="Action" />
+                        <Table.Head id="date" label="Date" />
+                    </Table.Header>
+                    <Table.Body items={paged}>
+                        {(entry) => {
+                            const meta = ENTITY_META[entry.entityType] ?? ENTITY_META.ORGANIZATION;
+                            const Icon = meta.icon;
+                            const actionMeta = ACTION_META[entry.action];
+
+                            return (
+                                <Table.Row id={entry.id}>
+                                    <Table.Cell>
+                                        <div className="flex items-center gap-3">
+                                            <span className={cx("flex size-9 shrink-0 items-center justify-center rounded-full", meta.bg)}>
+                                                <Icon className={cx("size-4", meta.fg)} />
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium text-primary max-w-xs xl:max-w-md">{entry.description}</p>
+                                                <p className="mt-0.5 text-xs text-tertiary font-mono">{entry.id.slice(0, 8)}…</p>
+                                            </div>
+                                        </div>
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        <div className="flex items-center gap-2.5">
+                                            <Avatar initials={getInitials(entry.user)} size="sm" />
+                                            <span className="whitespace-nowrap text-sm text-secondary">{entry.user.split("@")[0]}</span>
+                                        </div>
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        <Badge size="sm" color={
+                                            entry.entityType === "EVIDENCE" ? "success"
+                                            : entry.entityType === "TASK" ? "blue"
+                                            : entry.entityType === "INCIDENT" ? "error"
+                                            : entry.entityType === "GAP" ? "warning"
+                                            : entry.entityType === "TRAINING" ? "orange"
+                                            : entry.entityType === "POLICY" ? "pink"
+                                            : entry.entityType === "STAFF" ? "blue-light"
+                                            : entry.entityType === "ORGANIZATION" ? "purple"
+                                            : entry.entityType === "ASSESSMENT" ? "indigo"
+                                            : "gray"
+                                        } type="pill-color">
+                                            {meta.label}
+                                        </Badge>
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        {actionMeta ? (
+                                            <BadgeWithIcon
+                                                size="sm"
+                                                color={actionMeta.color}
+                                                iconLeading={actionMeta.icon}
+                                            >
+                                                {formatAction(entry.action)}
+                                            </BadgeWithIcon>
+                                        ) : (
+                                            <Badge size="sm" color="gray" type="pill-color">
+                                                {formatAction(entry.action)}
+                                            </Badge>
+                                        )}
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                            <Clock className="size-3.5 text-fg-quaternary" />
+                                            <div>
+                                                <p className="text-sm text-primary">{formatDate(entry.createdAt)}</p>
+                                                <p className="text-xs text-tertiary">{formatTime(entry.createdAt)}</p>
+                                            </div>
+                                        </div>
+                                    </Table.Cell>
+                                </Table.Row>
+                            );
+                        }}
+                    </Table.Body>
+                </Table>
+
                 {paged.length === 0 && (
                     <div className="px-5 py-12">
                         <EmptyState size="md">
@@ -229,19 +311,20 @@ export default function AuditLogPage() {
                         </EmptyState>
                     </div>
                 )}
-            </div>
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between">
-                <span className="text-xs text-tertiary">{filtered.length} entries &middot; Page {page} of {totalPages}</span>
-                <div className="flex gap-2">
-                    <Button color="secondary" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>&larr; Previous</Button>
-                    <Button color="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next &rarr;</Button>
+                {/* Pagination */}
+                <div className="flex items-center justify-between border-t border-secondary px-4 py-3 md:px-6 md:pt-3 md:pb-4">
+                    <span className="text-sm text-tertiary">{filtered.length} entries &middot; Page {page} of {totalPages}</span>
+                    <div className="flex gap-2">
+                        <Button color="secondary" size="sm" isDisabled={page <= 1} onClick={() => setPage(page - 1)}>&larr; Previous</Button>
+                        <Button color="secondary" size="sm" isDisabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next &rarr;</Button>
+                    </div>
                 </div>
-            </div>
+            </TableCard.Root>
 
             {/* Retention notice */}
-            <div className="rounded-lg border border-secondary bg-secondary px-4 py-3">
+            <div className="flex items-center gap-2 rounded-lg border border-secondary bg-secondary_subtle px-4 py-3">
+                <ShieldTick className="size-4 shrink-0 text-fg-brand-secondary" />
                 <p className="text-xs text-tertiary">Entries are read-only and cannot be edited or deleted. 7-year retention per NHS Records Management Code.</p>
             </div>
         </div>

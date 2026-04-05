@@ -23,11 +23,13 @@ export const GET = withAuth(async (req, { params, auth }) => {
     category?: EvidenceType;
     status?: EvidenceStatus;
     domain?: DomainSlug;
+    kloeCode?: string;
   } = {};
 
   if (rawFilters.category) filters.category = rawFilters.category as EvidenceType;
   if (rawFilters.status) filters.status = rawFilters.status as EvidenceStatus;
   if (rawFilters.domain) filters.domain = rawFilters.domain as DomainSlug;
+  if (rawFilters.kloeCode) filters.kloeCode = rawFilters.kloeCode as string;
 
   const result = await EvidenceService.list({
     organizationId: auth.organizationId,
@@ -49,9 +51,11 @@ export const POST = withAuth(async (req, { params, auth }) => {
     name: validated.name,
     category: validated.category as EvidenceType,
     fileName: validated.fileName,
+    fileUrl: validated.fileUrl,
+    fileType: validated.fileType,
     uploadedBy: auth.fullName,
     expiresAt: validated.validUntil ?? null,
-    linkedDomains: [],
+    linkedDomains: validated.linkedDomains ?? [],
     linkedKloes: validated.linkedKloes ?? [],
   });
 

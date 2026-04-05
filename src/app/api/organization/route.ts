@@ -52,8 +52,25 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   const body = await req.json();
   const validated = updateOrganizationSchema.parse(body);
 
+  const dbUpdate: Record<string, unknown> = {};
+  if (validated.name !== undefined) dbUpdate.name = validated.name;
+  if (validated.cqcProviderId !== undefined) dbUpdate.cqc_provider_id = validated.cqcProviderId;
+  if (validated.cqcLocationId !== undefined) dbUpdate.cqc_location_id = validated.cqcLocationId;
+  if (validated.cqcRegisteredName !== undefined) dbUpdate.cqc_registered_name = validated.cqcRegisteredName;
+  if (validated.cqcCurrentRating !== undefined) dbUpdate.cqc_current_rating = validated.cqcCurrentRating;
+  if (validated.cqcLastInspection !== undefined) dbUpdate.cqc_last_inspection = validated.cqcLastInspection;
+  if (validated.cqcNextInspection !== undefined) dbUpdate.cqc_next_inspection = validated.cqcNextInspection;
+  if (validated.address !== undefined) dbUpdate.address = validated.address;
+  if (validated.city !== undefined) dbUpdate.city = validated.city;
+  if (validated.postcode !== undefined) dbUpdate.postcode = validated.postcode;
+  if (validated.phone !== undefined) dbUpdate.phone = validated.phone;
+  if (validated.email !== undefined) dbUpdate.email = validated.email;
+  if (validated.registeredManager !== undefined) dbUpdate.registered_manager = validated.registeredManager;
+  if (validated.bedCount !== undefined) dbUpdate.bed_count = validated.bedCount;
+  if (validated.staffCount !== undefined) dbUpdate.staff_count = validated.staffCount;
+
   const { data: updated } = await client.from('organizations')
-    .update(validated)
+    .update(dbUpdate)
     .eq('id', auth.organizationId)
     .select()
     .single();

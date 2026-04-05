@@ -22,6 +22,7 @@ import {
   type ServiceType,
 } from "@/lib/constants/assessment-questions";
 import { apiGet, apiPost } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 const DOMAIN_ORDER: CqcDomainType[] = ["SAFE", "EFFECTIVE", "CARING", "RESPONSIVE", "WELL_LED"];
 
@@ -213,9 +214,12 @@ export default function ReAssessmentPage() {
         answers: payloadAnswers,
       });
       await apiPost("/api/assessment/calculate", { assessmentId: saved.data.id });
+      toast.success("Assessment submitted", "Compliance scores have been updated.");
       router.push("/");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit assessment.");
+      const msg = e instanceof Error ? e.message : "Failed to submit assessment.";
+      setError(msg);
+      toast.error("Submission failed", msg);
     } finally {
       setSubmitting(false);
     }

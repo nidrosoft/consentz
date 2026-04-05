@@ -1,5 +1,5 @@
 import { withAuth } from '@/lib/api-handler';
-import { apiSuccess } from '@/lib/api-response';
+import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { parsePagination } from '@/lib/pagination';
 import { TaskService } from '@/lib/services/task-service';
@@ -56,6 +56,10 @@ export const POST = withAuth(async (req, { params, auth }) => {
     gapId: validated.gapId,
     kloeCode: validated.kloeCode,
   });
+
+  if (!task) {
+    return ApiErrors.internal('Failed to create task');
+  }
 
   await AuditService.log({
     organizationId: auth.organizationId,

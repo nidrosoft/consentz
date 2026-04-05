@@ -32,6 +32,7 @@ interface GapUpdateParams {
 }
 
 function mapRowToComplianceGap(row: any): ComplianceGap {
+  const remediation = row.remediation_steps as { steps?: string[] } | null | undefined;
   return {
     id: row.id,
     title: row.title,
@@ -42,6 +43,9 @@ function mapRowToComplianceGap(row: any): ComplianceGap {
     kloe: row.kloe_code ?? '',
     regulation: row.regulation_code ?? '',
     createdAt: row.created_at,
+    remediationSteps: remediation?.steps ?? [],
+    dueDate: row.due_date ?? null,
+    resolutionNotes: row.resolution_notes ?? null,
   };
 }
 

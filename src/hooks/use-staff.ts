@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, apiPatch, apiDelete, buildQueryString } from '@/lib/api-client';
+import { toast } from '@/lib/toast';
 
 interface StaffFilters {
   page?: number;
@@ -36,7 +37,9 @@ export function useCreateStaff() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Staff member added', 'New staff record has been created.');
     },
+    onError: () => toast.error('Failed to add staff', 'Please try again.'),
   });
 }
 
@@ -48,7 +51,9 @@ export function useUpdateStaff() {
     onSuccess: (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       queryClient.invalidateQueries({ queryKey: ['staff', vars.id] });
+      toast.success('Staff updated', 'Staff record has been updated.');
     },
+    onError: () => toast.error('Failed to update staff', 'Please try again.'),
   });
 }
 
@@ -59,7 +64,9 @@ export function useDeleteStaff() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Staff removed', 'Staff record has been deleted.');
     },
+    onError: () => toast.error('Failed to remove staff', 'Please try again.'),
   });
 }
 
@@ -81,6 +88,8 @@ export function useCreateTraining() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['training'] });
       queryClient.invalidateQueries({ queryKey: ['staff'] });
+      toast.success('Training recorded', 'Training record has been saved.');
     },
+    onError: () => toast.error('Failed to save training', 'Please try again.'),
   });
 }

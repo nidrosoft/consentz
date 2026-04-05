@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, SearchLg, FileCheck02, ArrowsUp, FilterLines, XClose, File06 } from "@untitledui/icons";
+import { Plus, SearchLg, FileCheck02, ArrowsUp, FilterLines, XClose, File06, Stars01 } from "@untitledui/icons";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { EmptyState } from "@/components/application/empty-state/empty-state";
@@ -17,6 +17,19 @@ const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray" | "b
     ACTIVE: "success", UNDER_REVIEW: "warning",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+    ACTIVE: "Active", UNDER_REVIEW: "Under Review", DRAFT: "Draft", ARCHIVED: "Archived",
+};
+
+function formatDate(dateStr: string | null | undefined): string {
+    if (!dateStr) return "—";
+    try {
+        return new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    } catch {
+        return "—";
+    }
+}
+
 const STATUSES: PolicyStatus[] = ["PUBLISHED", "APPROVED", "REVIEW", "DRAFT"];
 
 type ApiPolicy = {
@@ -26,23 +39,24 @@ type ApiPolicy = {
     version?: string;
     category?: string;
     domains?: string[];
-    createdBy?: string;
-    createdAt?: string;
-    updatedAt?: string;
-    lastReviewDate?: string;
-    nextReviewDate?: string;
+    created_by?: string;
+    created_at?: string;
+    updated_at?: string;
+    last_updated?: string;
+    is_ai_generated?: boolean;
+    review_date?: string;
 };
 
 function toDisplayPolicy(p: ApiPolicy) {
     const category = p.category ?? p.domains?.[0] ?? "—";
-    const status = p.status;
     return {
         ...p,
         category,
         version: p.version ?? "1.0",
-        createdBy: p.createdBy ?? "—",
-        updatedAt: p.updatedAt ?? "",
-        nextReviewDate: p.nextReviewDate ?? null,
+        createdBy: p.created_by ?? "—",
+        updatedAt: p.updated_at ?? p.last_updated ?? "",
+        reviewDate: p.review_date ?? null,
+        isAiGenerated: p.is_ai_generated ?? false,
     };
 }
 
@@ -80,9 +94,9 @@ export default function PoliciesPage() {
         });
         if (sortBy === "updated") result = [...result].sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
         else result = [...result].sort((a, b) => {
-            if (!a.nextReviewDate) return 1;
-            if (!b.nextReviewDate) return -1;
-            return new Date(a.nextReviewDate).getTime() - new Date(b.nextReviewDate).getTime();
+            if (!a.reviewDate) return 1;
+            if (!b.reviewDate) return -1;
+            return new Date(a.reviewDate).getTime() - new Date(b.reviewDate).getTime();
         });
         return result;
     }, [displayPolicies, search, statusFilter, categoryFilter, sortBy]);
@@ -269,7 +283,10 @@ export default function PoliciesPage() {
                                         <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary">
                                             <FileCheck02 className="size-4 text-fg-quaternary" />
                                         </div>
-                                        <p className="text-sm font-medium text-primary whitespace-nowrap">{policy.title}</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-medium text-primary whitespace-nowrap">{policy.title}</p>
+                                            {policy.isAiGenerated && <Stars01 className="size-3.5 text-fg-brand-secondary" aria-label="AI generated" />}
+                                        </div>
                                     </div>
                                 </Table.Cell>
                                 <Table.Cell>
@@ -282,13 +299,13 @@ export default function PoliciesPage() {
                                     <span className="text-sm text-tertiary whitespace-nowrap">{policy.createdBy}</span>
                                 </Table.Cell>
                                 <Table.Cell>
-                                    <BadgeWithDot size="sm" color={STATUS_BADGE[policy.status] ?? "gray"}>{policy.status}</BadgeWithDot>
+                                    <BadgeWithDot size="sm" color={STATUS_BADGE[policy.status] ?? "gray"}>{STATUS_LABEL[policy.status] ?? policy.status}</BadgeWithDot>
                                 </Table.Cell>
                                 <Table.Cell>
-                                    <span className="text-sm text-tertiary whitespace-nowrap">{policy.updatedAt}</span>
+                                    <span className="text-sm text-tertiary whitespace-nowrap">{formatDate(policy.updatedAt)}</span>
                                 </Table.Cell>
                                 <Table.Cell>
-                                    <span className="text-sm text-tertiary whitespace-nowrap">{policy.nextReviewDate || "—"}</span>
+                                    <span className="text-sm text-tertiary whitespace-nowrap">{formatDate(policy.reviewDate)}</span>
                                 </Table.Cell>
                             </Table.Row>
                         )}

@@ -10,7 +10,9 @@ import { DatePickerField } from "@/components/application/date-picker/date-picke
 import { DialogTrigger, ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
 import { CloseButton } from "@/components/base/buttons/close-button";
 import type { Task, TaskPriority, DomainSlug } from "@/types";
-import { DOMAIN_OPTIONS, PRIORITY_OPTIONS, ASSIGNEE_OPTIONS } from "./task-constants";
+import { useCreateTask } from "@/hooks/use-tasks";
+import { useStaff } from "@/hooks/use-staff";
+import { DOMAIN_OPTIONS, PRIORITY_OPTIONS } from "./task-constants";
 
 interface AddTaskModalProps {
     onAdd: (task: Task) => void;
@@ -21,30 +23,58 @@ export function AddTaskModal({ onAdd }: AddTaskModalProps) {
     const [description, setDescription] = useState("");
     const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
     const [domain, setDomain] = useState<DomainSlug>("safe");
-    const [assignee, setAssignee] = useState("Jane Smith");
+    const [assigneeId, setAssigneeId] = useState<string | null>(null);
     const [dueDate, setDueDate] = useState("");
 
-    function handleSubmit(close: () => void) {
-        if (!title.trim()) return;
-        const newTask: Task = {
-            id: `task-${Date.now()}`,
-            title: title.trim(),
-            description: description.trim(),
-            status: "TODO",
-            priority,
-            assignee,
-            dueDate: dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-            relatedGapId: null,
-            domain,
-        };
-        onAdd(newTask);
+    const createTask = useCreateTask();
+    const { data: staffData } = useStaff({ pageSize: 100 });
+    const staffList = (staffData?.data ?? []) as { id: string; first_name?: string; last_name?: string; firstName?: string; lastName?: string; name?: string }[];
+
+    const assigneeOptions = staffList.map((s) => {
+        const fullName = s.name ?? `${s.first_name ?? s.firstName ?? ""} ${s.last_name ?? s.lastName ?? ""}`.trim();
+        return { id: s.id, label: fullName || "Unknown" };
+    });
+
+    function resetForm() {
         setTitle("");
         setDescription("");
         setPriority("MEDIUM");
         setDomain("safe");
-        setAssignee("Jane Smith");
+        setAssigneeId(null);
         setDueDate("");
-        close();
+    }
+
+    function handleSubmit(close: () => void) {
+        if (!title.trim()) return;
+
+        createTask.mutate(
+            {
+                title: title.trim(),
+                description: description.trim() || undefined,
+                priority,
+                domain,
+                assignedToId: assigneeId || undefined,
+                dueDate: dueDate || undefined,
+            },
+            {
+                onSuccess: (data: any) => {
+                    const task: Task = {
+                        id: data?.id ?? `temp-${Date.now()}`,
+                        title: title.trim(),
+                        description: description.trim(),
+                        status: "TODO",
+                        priority,
+                        assignee: assigneeOptions.find((a) => a.id === assigneeId)?.label ?? "",
+                        dueDate: dueDate || new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+                        relatedGapId: null,
+                        domain,
+                    };
+                    onAdd(task);
+                    resetForm();
+                    close();
+                },
+            },
+        );
     }
 
     return (
@@ -103,9 +133,11 @@ export function AddTaskModal({ onAdd }: AddTaskModalProps) {
                                         <Select
                                             label="Assign to"
                                             size="sm"
-                                            selectedKey={assignee}
-                                            onSelectionChange={(key) => setAssignee(key as string)}
-                                            items={ASSIGNEE_OPTIONS}
+                                            placeholder={assigneeOptions.length === 0 ? "No staff found" : "Select..."}
+                                            selectedKey={assigneeId}
+                                            onSelectionChange={(key) => setAssigneeId(key as string)}
+                                            items={assigneeOptions}
+                                            isDisabled={assigneeOptions.length === 0}
                                         >
                                             {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
                                         </Select>
@@ -119,8 +151,14 @@ export function AddTaskModal({ onAdd }: AddTaskModalProps) {
                                 </div>
 
                                 <div className="mt-6 flex justify-end gap-3">
-                                    <Button color="secondary" size="md" onClick={close}>Cancel</Button>
-                                    <Button color="primary" size="md" onClick={() => handleSubmit(close)} isDisabled={!title.trim()}>
+                                    <Button color="secondary" size="md" onClick={close} isDisabled={createTask.isPending}>Cancel</Button>
+                                    <Button
+                                        color="primary"
+                                        size="md"
+                                        onClick={() => handleSubmit(close)}
+                                        isDisabled={!title.trim()}
+                                        isLoading={createTask.isPending}
+                                    >
                                         Create Task
                                     </Button>
                                 </div>

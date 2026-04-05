@@ -8,7 +8,7 @@ export type RateLimitCategory = 'default' | 'assessment' | 'aiGeneration' | 'upl
 const RATE_LIMITS: Record<RateLimitCategory, { maxRequests: number; windowMs: number }> = {
   default: { maxRequests: 60, windowMs: 60_000 },
   assessment: { maxRequests: 10, windowMs: 60_000 },
-  aiGeneration: { maxRequests: 5, windowMs: 60_000 },
+  aiGeneration: { maxRequests: 3, windowMs: 600_000 },
   upload: { maxRequests: 20, windowMs: 60_000 },
   export: { maxRequests: 5, windowMs: 300_000 },
   cron: { maxRequests: 1, windowMs: 60_000 },

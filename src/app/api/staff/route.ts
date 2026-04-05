@@ -1,5 +1,5 @@
 import { withAuth } from '@/lib/api-handler';
-import { apiSuccess } from '@/lib/api-response';
+import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { parsePagination } from '@/lib/pagination';
 import { StaffService } from '@/lib/services/staff-service';
@@ -63,6 +63,10 @@ export const POST = withAuth(async (req, { params, auth }) => {
     dbsCertificateDate: validated.dbsCertificateDate,
     dbsLevel: validated.dbsLevel,
   });
+
+  if (!member) {
+    return ApiErrors.internal('Failed to create staff member. Please try again.');
+  }
 
   await AuditService.log({
     organizationId: auth.organizationId,

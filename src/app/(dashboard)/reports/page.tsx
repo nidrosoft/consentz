@@ -30,14 +30,22 @@ const REPORT_TYPES = [
 ];
 
 export default function ReportsPage() {
-    const router = useRouter();
-
     return (
         <div className="flex flex-col gap-6">
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">Reports</h1>
                 <p className="mt-1 text-sm text-tertiary">Generate compliance reports and prepare for inspections.</p>
             </div>
+            <ReportsPanel />
+        </div>
+    );
+}
+
+export function ReportsPanel() {
+    const router = useRouter();
+
+    return (
+        <div className="flex flex-col gap-6">
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {REPORT_TYPES.map((report) => (

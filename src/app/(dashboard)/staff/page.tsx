@@ -24,7 +24,16 @@ const CREDENTIAL_BADGE: Record<CredentialStatus, "success" | "warning" | "error"
 };
 
 function daysUntil(dateStr: string) {
+    if (!dateStr) return Infinity;
     return Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
+function deriveCredentialStatus(expiryStr: string | null | undefined): CredentialStatus {
+    if (!expiryStr) return "NOT_APPLICABLE";
+    const days = daysUntil(expiryStr);
+    if (days <= 0) return "EXPIRED";
+    if (days <= 30) return "EXPIRING_SOON";
+    return "VALID";
 }
 
 const STAFF_TYPE_LABELS: Record<string, string> = {
@@ -33,10 +42,49 @@ const STAFF_TYPE_LABELS: Record<string, string> = {
     ADMINISTRATIVE: "Administrative",
 };
 
+type ApiStaffRow = Record<string, any>;
+
+function toStaffMember(row: ApiStaffRow): StaffMember {
+    const dbsCertDate = row.dbs_certificate_date ?? row.dbsCertificateDate ?? null;
+    const dbsDays = dbsCertDate ? daysUntil(dbsCertDate) : -Infinity;
+    let dbsStatus: StaffMember["dbsStatus"] = "PENDING";
+    if (dbsCertDate && dbsDays > 0) dbsStatus = "CLEAR";
+    else if (dbsCertDate && dbsDays <= 0) dbsStatus = "EXPIRED";
+
+    const regBody = row.registration_body ?? row.registrationBody ?? null;
+    const regExpiry = row.registration_expiry ?? row.registrationExpiry ?? null;
+    const isGmc = regBody === "GMC";
+
+    const staffRole = row.staff_role ?? row.staffRole ?? "OTHER";
+    let staffType: StaffMember["staffType"] = "ADMINISTRATIVE";
+    if (["REGISTERED_NURSE", "PRACTITIONER", "MEDICAL_DIRECTOR"].includes(staffRole)) staffType = "MEDICAL";
+    else if (["REGISTERED_MANAGER", "DEPUTY_MANAGER", "SENIOR_CARER", "CARE_ASSISTANT"].includes(staffRole)) staffType = "NON_MEDICAL";
+
+    return {
+        id: row.id,
+        name: row.name ?? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim(),
+        email: row.email ?? "",
+        role: row.job_title ?? row.jobTitle ?? row.role ?? "—",
+        department: row.department ?? "—",
+        startDate: row.start_date ?? row.startDate ?? "",
+        dbsStatus,
+        dbsExpiry: dbsCertDate ?? "",
+        isActive: row.is_active ?? row.isActive ?? true,
+        gmcNumber: isGmc ? (row.registration_number ?? row.registrationNumber ?? null) : null,
+        gmcStatus: isGmc ? deriveCredentialStatus(regExpiry) : "NOT_APPLICABLE",
+        gmcExpiry: isGmc ? regExpiry : null,
+        aestheticQualification: row.aesthetic_qualification ?? row.aestheticQualification ?? null,
+        aestheticQualificationStatus: deriveCredentialStatus(row.aesthetic_qualification_expiry ?? row.aestheticQualificationExpiry ?? null),
+        aestheticQualificationExpiry: row.aesthetic_qualification_expiry ?? row.aestheticQualificationExpiry ?? null,
+        staffType,
+    };
+}
+
 export default function StaffPage() {
     const router = useRouter();
     const { data, isLoading, error, refetch } = useStaff();
-    const staffList = (data?.data ?? []) as StaffMember[];
+    const rawRows = (data?.data ?? []) as ApiStaffRow[];
+    const staffList = rawRows.map(toStaffMember);
     const roles = useMemo(() => [...new Set(staffList.map((s) => s.role))], [staffList]);
     const departments = useMemo(() => [...new Set(staffList.map((s) => s.department))], [staffList]);
 
@@ -310,7 +358,7 @@ export default function StaffPage() {
                     </Table.Header>
                     <Table.Body items={filtered}>
                         {(staff) => {
-                            const dbsDays = daysUntil(staff.dbsExpiry);
+                            const dbsDays = staff.dbsExpiry ? daysUntil(staff.dbsExpiry) : Infinity;
                             const gmcDays = staff.gmcExpiry ? daysUntil(staff.gmcExpiry) : null;
                             const aqDays = staff.aestheticQualificationExpiry ? daysUntil(staff.aestheticQualificationExpiry) : null;
                             return (

@@ -6,7 +6,7 @@ export const policyStatusSchema = z.enum(['DRAFT', 'REVIEW', 'APPROVED', 'PUBLIS
 export const createPolicySchema = z.object({
   title: shortString(255),
   description: longString(2000).optional(),
-  content: z.string().min(1).max(100_000),
+  content: z.string().max(100_000).optional().default(''),
   category: z.string().min(1).max(100),
   linkedKloes: kloeCodesSchema.optional().default([]),
   linkedRegulations: regulationCodesSchema.optional().default([]),

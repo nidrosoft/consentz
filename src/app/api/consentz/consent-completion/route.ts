@@ -1,6 +1,6 @@
 import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
-import { ConsentzClient } from '@/lib/consentz/client';
+import { getAuthenticatedClient } from '@/lib/consentz/client';
 import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { auth }) => {
@@ -18,11 +18,7 @@ export const GET = withAuth(async (req, { auth }) => {
   const startDate = searchParams.get('startDate') ?? undefined;
   const endDate = searchParams.get('endDate') ?? undefined;
 
-  const client = new ConsentzClient({
-    sessionToken: process.env.CONSENTZ_SESSION_TOKEN ?? '',
-    clinicId: org.consentz_clinic_id,
-  });
-
+  const client = await getAuthenticatedClient(org.consentz_clinic_id);
   const data = await client.getConsentCompletion(startDate, endDate);
   return apiSuccess(data);
 });

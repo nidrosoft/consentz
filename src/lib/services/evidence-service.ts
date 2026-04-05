@@ -12,6 +12,7 @@ interface EvidenceListParams {
     category?: string | string[];
     status?: string | string[];
     domain?: string | string[];
+    kloeCode?: string;
   };
 }
 
@@ -30,10 +31,15 @@ export class EvidenceService {
       if (params.filters?.status) {
         const stats = Array.isArray(params.filters.status) ? params.filters.status : [params.filters.status];
         q = q.in('status', stats);
+      } else {
+        q = q.neq('status', 'ARCHIVED');
       }
       if (params.filters?.domain) {
         const doms = Array.isArray(params.filters.domain) ? params.filters.domain : [params.filters.domain];
         q = q.overlaps('domains', doms);
+      }
+      if (params.filters?.kloeCode) {
+        q = q.ilike('kloe_code', `%${params.filters.kloeCode}%`);
       }
       if (params.pagination.search) {
         const s = params.pagination.search.replace(/%/g, '\\%');
@@ -169,8 +175,24 @@ export class EvidenceService {
 
   static async softDelete(id: string) {
     const client = await getDb();
+
+    const { data: row } = await client.from('evidence_items')
+      .select('file_url')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (row?.file_url) {
+      const bucket = 'evidence';
+      const publicBase = `/storage/v1/object/public/${bucket}/`;
+      const idx = (row.file_url as string).indexOf(publicBase);
+      if (idx !== -1) {
+        const storagePath = (row.file_url as string).slice(idx + publicBase.length);
+        await client.storage.from(bucket).remove([storagePath]);
+      }
+    }
+
     await client.from('evidence_items')
-      .update({ status: 'ARCHIVED' })
+      .delete()
       .eq('id', id);
     return true;
   }

@@ -1,5 +1,5 @@
 import { getDb } from '@/lib/db';
-import { ConsentzClient, getConsentzAuthClient } from './client';
+import { type ConsentzClient, getAuthenticatedClient } from './client';
 
 async function getClientForOrg(organizationId: string): Promise<ConsentzClient | null> {
   const dbClient = await getDb();
@@ -13,13 +13,7 @@ async function getClientForOrg(organizationId: string): Promise<ConsentzClient |
     return null;
   }
 
-  const envToken = process.env.CONSENTZ_SESSION_TOKEN;
-  if (envToken) {
-    return new ConsentzClient({ sessionToken: envToken, clinicId: org.consentz_clinic_id });
-  }
-
-  const authClient = getConsentzAuthClient();
-  return authClient.getClient();
+  return getAuthenticatedClient(org.consentz_clinic_id);
 }
 
 export async function syncConsentzData(organizationId: string) {
@@ -191,8 +185,9 @@ async function syncIncidents(
         description: incident.notes || incident.followUpAction || '',
         severity: mapSeverity(incident.severity),
         status: incident.isResolved ? 'CLOSED' : mapIncidentStatus(incident.status),
-        patient_name: incident.patientName,
+        patient_name: incident.patientName || '',
         patient_id: incident.patientId,
+        reported_by: 'Consentz Sync',
         reported_at: new Date(incident.reportedAt).toISOString(),
         domains: ['safe'],
       });

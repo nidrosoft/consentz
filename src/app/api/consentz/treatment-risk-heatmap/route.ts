@@ -1,6 +1,6 @@
 import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
-import { ConsentzClient } from '@/lib/consentz/client';
+import { getAuthenticatedClient } from '@/lib/consentz/client';
 import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { auth }) => {
@@ -17,11 +17,7 @@ export const GET = withAuth(async (req, { auth }) => {
   const { searchParams } = new URL(req.url);
   const from = searchParams.get('from') ?? undefined;
 
-  const client = new ConsentzClient({
-    sessionToken: process.env.CONSENTZ_SESSION_TOKEN ?? '',
-    clinicId: org.consentz_clinic_id,
-  });
-
+  const client = await getAuthenticatedClient(org.consentz_clinic_id);
   const data = await client.getTreatmentRiskHeatmap(from);
   return apiSuccess(data);
 });

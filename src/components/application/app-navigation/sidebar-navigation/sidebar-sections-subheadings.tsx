@@ -24,12 +24,22 @@ interface SidebarNavigationSectionsSubheadingsProps {
     items: Array<{ label: string; items: NavItemType[] }>;
     /** Current user info for the account card. */
     user?: { name: string; email: string; avatar?: string };
+    /** Optional content rendered above the footer (collapse toggle + account). */
+    footerContent?: React.ReactNode;
 }
 
 const EXPANDED_WIDTH = 292;
 const COLLAPSED_WIDTH = 68;
 
-export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, user }: SidebarNavigationSectionsSubheadingsProps) => {
+const EXACT_MATCH_ROUTES = new Set(["/", "/domains"]);
+
+function isActive(href: string | undefined, activeUrl: string): boolean {
+    if (!href) return false;
+    if (EXACT_MATCH_ROUTES.has(href)) return activeUrl === href;
+    return activeUrl === href || activeUrl.startsWith(href + "/");
+}
+
+export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, user, footerContent }: SidebarNavigationSectionsSubheadingsProps) => {
     const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
     const toggleSidebar = useUiStore((s) => s.toggleSidebar);
     const sidebarWidth = sidebarCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
@@ -57,8 +67,8 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
                         </div>
                         <ul className="px-4 pb-5">
                             {group.items.map((item) => (
-                                <li key={item.label} className="py-0.5">
-                                    <NavItemBase icon={item.icon} href={item.href} badge={item.badge} type="link" current={item.href === activeUrl}>
+                                <li key={item.label} className="py-0.5" {...(item.dataTour ? { "data-tour": item.dataTour } : {})}>
+                                    <NavItemBase icon={item.icon} href={item.href} badge={item.badge} type="link" current={isActive(item.href, activeUrl)}>
                                         {item.label}
                                     </NavItemBase>
                                 </li>
@@ -68,6 +78,7 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
                 ))}
             </ul>
 
+            {footerContent && <div className="px-4 pb-2">{footerContent}</div>}
             <div className="mt-auto flex flex-col gap-5 px-2 py-4">
                 <NavAccountCard items={accountItems} selectedAccountId={accountItems ? "current" : undefined} />
             </div>
@@ -80,15 +91,24 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
     const desktopContent = (
         <aside
             style={{ "--width": `${sidebarWidth}px` } as React.CSSProperties}
-            className="flex h-full flex-col justify-between overflow-x-hidden overflow-y-auto rounded-xl border border-secondary bg-primary pt-5 shadow-xs transition-[width] duration-200 ease-in-out lg:w-(--width)"
+            className="flex h-full flex-col justify-between overflow-x-hidden overflow-y-auto rounded-xl border border-secondary bg-[#F3EEE5] pt-5 shadow-xs transition-[width] duration-200 ease-in-out dark:border-[color:var(--color-gray-800)] dark:bg-[color:var(--color-gray-900)] lg:w-(--width)"
         >
-            {/* Logo */}
-            <div className={cx("flex flex-col gap-5 transition-all duration-200", sidebarCollapsed ? "items-center px-3" : "px-5")}>
+            {/* Logo + collapse toggle */}
+            <div className={cx("flex items-center transition-all duration-200", sidebarCollapsed ? "justify-center px-3" : "justify-between px-5")}>
                 {sidebarCollapsed ? <UntitledLogoMinimal className="size-8" /> : <UntitledLogo className="h-8" />}
+                {!sidebarCollapsed && (
+                    <button
+                        onClick={toggleSidebar}
+                        aria-label="Collapse sidebar"
+                        className="flex size-8 items-center justify-center rounded-md text-fg-quaternary transition duration-100 ease-linear hover:bg-[#E8E0D4] hover:text-fg-quaternary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 outline-focus-ring"
+                    >
+                        <ChevronLeft className="size-4.5" />
+                    </button>
+                )}
             </div>
 
             {/* Navigation items */}
-            <ul className="mt-8 flex-1 overflow-x-hidden">
+            <ul className="mt-6 flex-1 overflow-x-hidden overflow-y-auto">
                 {items.map((group, groupIndex) => (
                     <li key={group.label}>
                         {/* Section header or divider */}
@@ -104,18 +124,18 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
                             </div>
                         )}
 
-                        <ul className={cx(sidebarCollapsed ? "px-3 pb-2" : "px-4 pb-5")}>
+                        <ul className={cx(sidebarCollapsed ? "px-3 pb-2" : "px-4 pb-3")}>
                             {group.items.map((item) => (
-                                <li key={item.label} className="py-0.5">
+                                <li key={item.label} {...(item.dataTour ? { "data-tour": item.dataTour } : {})}>
                                     {sidebarCollapsed && item.icon ? (
                                         <NavItemButton
                                             icon={item.icon}
                                             href={item.href}
                                             label={item.label}
-                                            current={item.href === activeUrl}
+                                            current={isActive(item.href, activeUrl)}
                                         />
                                     ) : (
-                                        <NavItemBase icon={item.icon} href={item.href} badge={item.badge} type="link" current={item.href === activeUrl}>
+                                        <NavItemBase icon={item.icon} href={item.href} badge={item.badge} type="link" current={isActive(item.href, activeUrl)}>
                                             {item.label}
                                         </NavItemBase>
                                     )}
@@ -126,19 +146,22 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
                 ))}
             </ul>
 
-            {/* Footer: toggle button + account */}
-            <div className={cx("mt-auto flex flex-col gap-3 py-4", sidebarCollapsed ? "items-center px-3" : "px-4")}>
-                {/* Collapse / expand toggle */}
-                <button
-                    onClick={toggleSidebar}
-                    aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                    className="flex size-10 items-center justify-center rounded-md text-fg-quaternary outline-focus-ring transition duration-100 ease-linear hover:bg-primary_hover hover:text-fg-quaternary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2"
-                >
-                    <ChevronLeft className={cx("size-5 transition-transform duration-200", sidebarCollapsed && "rotate-180")} />
-                </button>
+            {/* Footer content (e.g. onboarding widget) */}
+            {!sidebarCollapsed && footerContent && (
+                <div className="px-4 pb-2">{footerContent}</div>
+            )}
 
-                {/* Account card */}
+            {/* Footer: account card */}
+            <div className={cx("flex flex-col gap-2 py-3", sidebarCollapsed ? "items-center px-3" : "px-4")}>
                 {sidebarCollapsed ? (
+                    <>
+                    <button
+                        onClick={toggleSidebar}
+                        aria-label="Expand sidebar"
+                        className="flex size-10 items-center justify-center rounded-md text-fg-quaternary outline-focus-ring transition duration-100 ease-linear hover:bg-[#E8E0D4] hover:text-fg-quaternary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2"
+                    >
+                        <ChevronLeft className="size-5 rotate-180" />
+                    </button>
                     <div className="flex justify-center">
                         <AriaDialogTrigger>
                             <AriaButton
@@ -172,6 +195,7 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
                             </AriaPopover>
                         </AriaDialogTrigger>
                     </div>
+                    </>
                 ) : (
                     <NavAccountCard items={accountItems} selectedAccountId={accountItems ? "current" : undefined} />
                 )}
@@ -185,7 +209,7 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
             <MobileNavigationHeader>{mobileContent}</MobileNavigationHeader>
 
             {/* Desktop sidebar navigation */}
-            <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:py-1 lg:pl-1">{desktopContent}</div>
+            <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:py-1 lg:pl-1" data-tour="sidebar-nav">{desktopContent}</div>
 
             {/* Placeholder to take up physical space because the real sidebar has `fixed` position. */}
             <div

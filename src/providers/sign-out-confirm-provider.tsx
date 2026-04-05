@@ -13,6 +13,7 @@ import { ModalOverlay, Modal, Dialog } from "@/components/application/modals/mod
 import { Button } from "@/components/base/buttons/button";
 import { CloseButton } from "@/components/base/buttons/close-button";
 import { signOutEverywhere } from "@/lib/supabase/client-sign-out";
+import { toast } from "@/lib/toast";
 
 type SignOutConfirmContextValue = {
     requestSignOutConfirm: () => void;
@@ -40,6 +41,7 @@ export function SignOutConfirmProvider({ children }: { children: ReactNode }) {
 
     async function confirmSignOut() {
         setOpen(false);
+        toast.info("Signing out…", "You are being signed out.");
         await signOutEverywhere();
     }
 

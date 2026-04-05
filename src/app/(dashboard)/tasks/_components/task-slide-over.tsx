@@ -8,7 +8,8 @@ import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-m
 import { DomainBadge, getDomainConfig } from "@/components/shared/domain-badge";
 import { cx } from "@/utils/cx";
 import type { Task, TaskStatus, TaskPriority } from "@/types";
-import { PRIORITY_BADGE, STATUS_OPTIONS, PRIORITY_OPTIONS, ASSIGNEE_OPTIONS } from "./task-constants";
+import { useStaff } from "@/hooks/use-staff";
+import { PRIORITY_BADGE, STATUS_OPTIONS, PRIORITY_OPTIONS } from "./task-constants";
 
 function daysUntil(dateStr: string) {
     const diff = new Date(dateStr).getTime() - Date.now();
@@ -23,6 +24,15 @@ interface TaskSlideOverProps {
 }
 
 export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOverProps) {
+    const { data: staffData } = useStaff({ pageSize: 100 });
+    const staffList = (staffData?.data ?? []) as { id: string; first_name?: string; last_name?: string; firstName?: string; lastName?: string; name?: string }[];
+
+    const assigneeOptions = staffList.map((s) => {
+        const fullName = s.name ?? `${s.first_name ?? s.firstName ?? ""} ${s.last_name ?? s.lastName ?? ""}`.trim();
+        const label = fullName || "Unknown";
+        return { id: label, label };
+    });
+
     if (!task) return null;
 
     const days = daysUntil(task.dueDate);
@@ -46,7 +56,6 @@ export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOver
             </SlideoutMenu.Header>
 
             <SlideoutMenu.Content>
-                {/* Editable fields */}
                 <div className="flex flex-col gap-4">
                     <div className="grid grid-cols-2 gap-4">
                         <Select
@@ -74,7 +83,8 @@ export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOver
                             size="sm"
                             selectedKey={task.assignee}
                             onSelectionChange={(key) => onUpdate(task.id, { assignee: key as string })}
-                            items={ASSIGNEE_OPTIONS}
+                            items={assigneeOptions}
+                            placeholder={assigneeOptions.length === 0 ? "No staff" : "Select..."}
                         >
                             {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
                         </Select>
@@ -93,10 +103,8 @@ export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOver
                     )}
                 </div>
 
-                {/* Divider */}
                 <div className="h-px bg-secondary" />
 
-                {/* CQC Context */}
                 <div className="flex flex-col gap-3">
                     <h3 className="text-sm font-semibold text-primary">CQC Context</h3>
                     <div className="flex items-center gap-3 rounded-lg border border-secondary bg-secondary_subtle p-3">
@@ -105,19 +113,15 @@ export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOver
                     </div>
                 </div>
 
-                {/* Divider */}
                 <div className="h-px bg-secondary" />
 
-                {/* Description */}
                 <div className="flex flex-col gap-2">
                     <h3 className="text-sm font-semibold text-primary">Description</h3>
                     <p className="text-sm text-tertiary leading-relaxed">{task.description}</p>
                 </div>
 
-                {/* Divider */}
                 <div className="h-px bg-secondary" />
 
-                {/* Quick Actions */}
                 <div className="flex flex-col gap-3">
                     <h3 className="text-sm font-semibold text-primary">Quick Actions</h3>
                     <div className="flex flex-col gap-2">

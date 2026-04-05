@@ -26,6 +26,7 @@ interface PolicyCreateParams {
   createdBy: string;
   content?: string;
   category?: string;
+  isAiGenerated?: boolean;
 }
 
 interface PolicyUpdateParams {
@@ -94,14 +95,34 @@ export class PolicyService {
 
   static async create(params: PolicyCreateParams) {
     const client = await getDb();
-    const { data } = await client.from('policies').insert({
+    const insert: Record<string, unknown> = {
       organization_id: params.organizationId,
       title: params.title,
       content: params.content ?? '',
       created_by: params.createdBy,
       status: 'DRAFT',
       version: '1.0',
-    }).select().single();
+    };
+    if (params.category) {
+      insert.domains = [params.category];
+    }
+
+    if (params.isAiGenerated) {
+      insert.is_ai_generated = true;
+    }
+
+    let { data, error } = await client.from('policies').insert(insert).select().single();
+
+    if (error && params.isAiGenerated) {
+      console.warn('[PolicyService.create] Insert failed with is_ai_generated, retrying without it:', error.message);
+      delete insert.is_ai_generated;
+      ({ data, error } = await client.from('policies').insert(insert).select().single());
+    }
+
+    if (error) {
+      console.error('[PolicyService.create] Insert failed:', error.message);
+      throw new Error(`Failed to create policy: ${error.message}`);
+    }
     return data;
   }
 

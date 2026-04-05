@@ -21,6 +21,7 @@ export const updateTaskSchema = z.object({
   status: taskStatusSchema.optional(),
   priority: taskPrioritySchema.optional(),
   assignedToId: z.string().optional().nullable(),
+  assignedToName: shortString(255).optional(),
   dueDate: dateStringSchema.optional().nullable(),
   completionNotes: longString(5000).optional(),
 });

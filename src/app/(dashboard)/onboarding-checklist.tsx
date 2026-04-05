@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle, Circle, ChevronDown, ChevronUp, X, Rocket01,
   Building01, Link01, File06, Users01, ShieldTick,
@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/base/buttons/button";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { cx } from "@/utils/cx";
-import { apiGet, apiPost } from "@/lib/api-client";
+import { apiGet } from "@/lib/api-client";
 import type { FC } from "react";
 
 interface OnboardingStep {
@@ -26,14 +26,14 @@ const STEPS: OnboardingStep[] = [
     key: "org_profile",
     label: "Complete your organisation profile",
     description: "Add your CQC provider ID, location details, and registered manager.",
-    href: "/settings/organization",
+    href: "/settings",
     icon: Building01,
   },
   {
     key: "connect_consentz",
     label: "Connect your Consentz platform",
     description: "Link your Consentz clinic to automatically import compliance data.",
-    href: "/settings/integrations",
+    href: "/settings?tab=integrations",
     icon: Link01,
   },
   {
@@ -61,7 +61,6 @@ const STEPS: OnboardingStep[] = [
 
 export function OnboardingChecklist() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(true);
   const [dismissed, setDismissed] = useState(false);
 
@@ -69,11 +68,6 @@ export function OnboardingChecklist() {
     queryKey: ["onboarding-progress"],
     queryFn: () =>
       apiGet<{ steps: { step_key: string; completed_at: string }[] }>("/api/onboarding/progress").then((r) => r.data),
-  });
-
-  const markComplete = useMutation({
-    mutationFn: (stepKey: string) => apiPost("/api/onboarding/progress", { stepKey }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["onboarding-progress"] }),
   });
 
   if (dismissed || isLoading) return null;
@@ -152,7 +146,6 @@ export function OnboardingChecklist() {
                       size="sm"
                       onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
-                        markComplete.mutate(step.key);
                         router.push(step.href);
                       }}
                     >

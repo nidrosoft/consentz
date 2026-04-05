@@ -269,7 +269,7 @@ function SingleSelectCards({
                                 <p
                                     className={cx(
                                         "font-semibold",
-                                        isSelected ? "text-primary_on-brand" : "text-primary",
+                                        isSelected ? "text-primary" : "text-primary",
                                     )}
                                 >
                                     {opt.label}
@@ -283,7 +283,7 @@ function SingleSelectCards({
                             <p
                                 className={cx(
                                     "mt-1 text-sm",
-                                    isSelected ? "text-secondary_on-brand" : "text-tertiary",
+                                    isSelected ? "text-brand-secondary" : "text-tertiary",
                                 )}
                             >
                                 {opt.desc}
@@ -329,7 +329,7 @@ function MultiSelectCards({
                             <p
                                 className={cx(
                                     "font-semibold",
-                                    isSelected ? "text-primary_on-brand" : "text-primary",
+                                    isSelected ? "text-primary" : "text-primary",
                                 )}
                             >
                                 {opt.label}
@@ -338,7 +338,7 @@ function MultiSelectCards({
                                 <p
                                     className={cx(
                                         "mt-1 text-sm",
-                                        isSelected ? "text-secondary_on-brand" : "text-tertiary",
+                                        isSelected ? "text-brand-secondary" : "text-tertiary",
                                     )}
                                 >
                                     {opt.desc}

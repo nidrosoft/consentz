@@ -263,10 +263,13 @@ export class DashboardService {
       .limit(1)
       .maybeSingle();
 
+    const consentzMetrics = await getConsentzLiveMetrics(client, params.organizationId);
+
     return {
       compliance,
       priorityGaps,
       consentzDataFreshness: lastSync?.synced_at ?? null,
+      consentzMetrics,
       gaps: {
         CRITICAL: openGaps.filter((g) => g.severity === 'CRITICAL').length,
         HIGH: openGaps.filter((g) => g.severity === 'HIGH').length,
@@ -312,4 +315,73 @@ export class DashboardService {
       notifications: { unreadCount: unreadNotifs },
     };
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getConsentzLiveMetrics(client: any, organizationId: string) {
+  const endpoints = [
+    'consent-completion',
+    'staff-competency',
+    'incidents',
+    'safety-checklist',
+    'patient-feedback',
+    'policy-acknowledgement',
+    'consent-decay',
+  ] as const;
+
+  const metrics: Record<string, { value: number | null; label: string; unit: string; domain: string }> = {
+    consentCompletion:  { value: null, label: 'Consent Completion', unit: '%', domain: 'effective' },
+    staffCompetency:    { value: null, label: 'Staff Competency', unit: '%', domain: 'well-led' },
+    incidentResolution: { value: null, label: 'Incident Resolution', unit: '%', domain: 'safe' },
+    safetyChecklist:    { value: null, label: 'Safety Checklist', unit: '%', domain: 'safe' },
+    patientFeedback:    { value: null, label: 'Patient Feedback', unit: '/10', domain: 'caring' },
+    policyAcknowledgement: { value: null, label: 'Policy Acknowledgement', unit: '%', domain: 'well-led' },
+    consentDecay:       { value: null, label: 'Consent Decay', unit: '%', domain: 'effective' },
+  };
+
+  const { data: logs } = await client
+    .from('consentz_sync_logs')
+    .select('endpoint, response_data, synced_at')
+    .eq('organization_id', organizationId)
+    .eq('status', 'success')
+    .in('endpoint', [...endpoints])
+    .order('synced_at', { ascending: false });
+
+  if (!logs?.length) return null;
+
+  const seen = new Set<string>();
+  for (const log of logs) {
+    if (seen.has(log.endpoint)) continue;
+    seen.add(log.endpoint);
+    const d = log.response_data as Record<string, unknown>;
+    if (!d) continue;
+
+    switch (log.endpoint) {
+      case 'consent-completion':
+        metrics.consentCompletion.value = (d.completionRate as number) ?? null;
+        break;
+      case 'staff-competency':
+        metrics.staffCompetency.value = (d.overallCompetencyRate as number) ?? null;
+        break;
+      case 'incidents':
+        metrics.incidentResolution.value = (d.resolutionRate as number) ?? null;
+        break;
+      case 'safety-checklist':
+        metrics.safetyChecklist.value = (d.overallScore as number) ?? null;
+        break;
+      case 'patient-feedback': {
+        const avg = (d.averageRating as number) ?? (d.rollingAvg as number);
+        metrics.patientFeedback.value = avg != null ? Math.round(avg * 10) / 10 : null;
+        break;
+      }
+      case 'policy-acknowledgement':
+        metrics.policyAcknowledgement.value = (d.acknowledgementRate as number) ?? null;
+        break;
+      case 'consent-decay':
+        metrics.consentDecay.value = (d.decayRate as number) ?? null;
+        break;
+    }
+  }
+
+  return metrics;
 }

@@ -58,6 +58,7 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   if (validated.status !== undefined) updateData.status = validated.status === 'DONE' ? 'COMPLETED' : validated.status;
   if (validated.priority !== undefined) updateData.priority = validated.priority === 'URGENT' ? 'CRITICAL' : validated.priority;
   if (validated.assignedToId !== undefined) updateData.assignedTo = validated.assignedToId;
+  if (validated.assignedToName !== undefined) updateData.assignedToName = validated.assignedToName;
   if (validated.dueDate !== undefined) updateData.dueDate = validated.dueDate;
 
   const updated = await TaskService.update(params.id, updateData);

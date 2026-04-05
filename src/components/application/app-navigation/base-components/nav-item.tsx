@@ -7,8 +7,8 @@ import { Badge } from "@/components/base/badges/badges";
 import { cx, sortCx } from "@/utils/cx";
 
 const styles = sortCx({
-    root: "group relative flex w-full cursor-pointer items-center rounded-md bg-primary outline-focus-ring transition duration-100 ease-linear select-none hover:bg-primary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
-    rootSelected: "bg-active hover:bg-secondary_hover",
+    root: "group relative flex w-full cursor-pointer items-center rounded-md bg-transparent outline-focus-ring transition duration-100 ease-linear select-none hover:bg-[#E8E0D4] dark:hover:bg-primary_hover focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2",
+    rootSelected: "bg-[#DDD4C4] hover:bg-[#D4C9B7] dark:bg-active dark:hover:bg-secondary_hover",
 });
 
 interface NavItemBaseProps {
@@ -49,7 +49,7 @@ export const NavItemBase = ({ current, type, badge, href, icon: Icon, children, 
     const labelElement = (
         <span
             className={cx(
-                "flex-1 text-md font-semibold text-secondary transition-inherit-all group-hover:text-secondary_hover",
+                "flex-1 text-sm font-medium text-secondary transition-inherit-all group-hover:text-secondary_hover",
                 truncate && "truncate",
                 current && "text-secondary_hover",
             )}
