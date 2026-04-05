@@ -17,6 +17,7 @@ A **CQC (Care Quality Commission) compliance management platform** for UK health
 - [Database Schema](#database-schema)
 - [Authentication & Security](#authentication--security)
 - [Assessment Engine](#assessment-engine)
+- [Consentz Integration](#consentz-integration)
 - [Design System](#design-system)
 - [Deployment](#deployment)
 - [Specification Documents](#specification-documents)
@@ -39,12 +40,14 @@ Consentz provides a single platform that:
 3. **Predicts** the organisation's CQC rating using the same methodology inspectors use
 4. **Remediates** gaps with AI-generated policies, task management, evidence tracking, and staff training records
 5. **Maintains** compliance with automated expiry alerts, periodic re-assessment, and live scoring
+6. **Integrates** with Consentz CRM to auto-import consent forms, patient feedback, safety checklists, and treatment risk data
 
 ### Core User Journey
 
 ```
 Sign up → Select service type → Complete ~60 compliance questions
   → Get predicted CQC rating → See all gaps ranked by severity
+  → Complete onboarding checklist (profile, Consentz link, evidence, staff, domains)
   → Resolve gaps (upload evidence, generate policies, complete training)
   → Score improves in real-time → Prepare for CQC inspection
 ```
@@ -67,24 +70,38 @@ Sign up → Select service type → Complete ~60 compliance questions
 - KLOE sub-code visibility per domain card
 - Priority gaps with severity indicators and remediation actions
 - Upcoming deadlines with urgency tracking
+- AI compliance chat assistant
+
+### Onboarding & Account Setup
+- Guided first-time user walkthrough with spotlight overlay
+- 5-step sidebar checklist (org profile, Consentz link, evidence, staff, domains)
+- Auto-completing steps when users perform real actions
+- Service-type-specific initial assessment (~60 questions)
+- Immediate gap generation and remediation task creation from results
 
 ### CQC Domain Management
 - Drill-down into each domain (Safe, Effective, Caring, Responsive, Well-Led)
-- Per-KLOE compliance status with evidence mapping
-- Gap analysis with auto-generated remediation steps
-- Regulation cross-referencing (14 Fundamental Standards)
+- Per-KLOE compliance scoring based on evidence, gaps, policies, and training
+- Toggleable card/list views for KLOEs and gaps
+- Gap analysis with auto-generated remediation steps and expandable details
+- Regulation cross-referencing (14 Fundamental Standards per KLOE)
+- Treatment risk heatmap with vibrant colour-coded severity
+- Requirements checklist per KLOE with actionable links to evidence upload
 
 ### Evidence Library
 - Grid and list view with domain-linked evidence
 - Status tracking (Valid, Expiring Soon, Expired)
 - CQC domain and KLOE linking for each document
+- Pre-filled upload form when navigating from KLOE requirements
 - Automated expiry notifications
 
 ### Policy Management
-- Policy library with versioning and approval workflow
-- AI-powered policy generation (planned)
-- Template library covering all required CQC policies
+- Policy library with versioning and approval/publish workflow
+- AI-powered policy generation via Anthropic Claude with comprehensive CQC system prompt
+- Policy template library covering all required CQC policies
+- Rate-limited AI generation (3 requests per 10 minutes) with server-side retry
 - Review date tracking and reminders
+- Category and domain filtering
 
 ### Staff Directory & Credentials
 - Staff profiles with role classification (Medical, Non-Medical, Administrative)
@@ -92,6 +109,8 @@ Sign up → Select service type → Complete ~60 compliance questions
 - GMC registration monitoring (medical staff)
 - Aesthetic qualification tracking (non-medical practitioners)
 - Training matrix with mandatory course tracking
+- Inline editing of contact and department details
+- Consentz staff competency metrics integration
 
 ### Incident Reporting
 - Incident categorisation (Premises, Patient Complication)
@@ -100,10 +119,11 @@ Sign up → Select service type → Complete ~60 compliance questions
 - CQC domain and regulation linking
 
 ### Task Management
-- Kanban board and list views
+- Kanban board, list, and "My Tasks" views
 - Auto-generated tasks from compliance gaps
 - Domain-linked tasks with priority levels
-- Assignment and due date tracking
+- Real-time assignee management from live staff data
+- Due date tracking with overdue detection
 
 ### Audit Log
 - Immutable activity trail for all platform actions
@@ -114,8 +134,14 @@ Sign up → Select service type → Complete ~60 compliance questions
 ### Reports & Export
 - Compliance summary reports
 - Domain breakdown reports
-- Inspection preparation (AI-assisted, planned)
+- Inspection preparation (AI-assisted)
 - PDF/CSV export capabilities
+
+### Notifications
+- In-app notification centre
+- Email notifications via Resend (16 transactional templates)
+- Weekly digest and monthly compliance reports
+- Credential expiry and score change alerts
 
 ---
 
@@ -133,31 +159,31 @@ Sign up → Select service type → Complete ~60 compliance questions
 | Untitled UI React | Latest | Component library |
 | Zustand | 5.x | Client-side state management |
 | TanStack Query | 5.x | Server state & caching |
-| React Hook Form + Zod | Latest | Form handling & validation |
+| Zod | Latest | Schema validation |
 | Recharts | 3.x | Data visualisation |
 | Motion (Framer) | 12.x | Animations |
 
-### Backend (Planned)
+### Backend
 
 | Technology | Purpose |
 |---|---|
-| Next.js Route Handlers | API layer (`/app/api/`) |
-| Prisma | ORM (type-safe database access) |
+| Next.js Route Handlers | API layer (`/app/api/` — 24 modules, 55+ endpoints) |
 | Supabase PostgreSQL | Database (`eu-west-2` London, UK data residency) |
 | Supabase Storage | File uploads (evidence, policies, certificates) |
-| Clerk | Authentication (SSO, MFA, session management) |
-| Anthropic Claude | AI services (policy generation, gap analysis) |
-| Resend | Transactional email |
+| Supabase Auth | Authentication (email/password, SSO) |
+| Anthropic Claude | AI policy generation with CQC-specific system prompt |
+| Resend | Transactional email (16 templates) |
+| Stripe | Subscription billing |
 | Sentry | Error tracking & monitoring |
 
 ### Infrastructure
 
 | Component | Service |
 |---|---|
-| Hosting | Vercel (`eu-west-2` London region) |
+| Hosting | Vercel (London region) |
 | Database | Supabase PostgreSQL (`eu-west-2`) |
 | Storage | Supabase Storage (private buckets, encrypted at rest) |
-| CI/CD | GitHub Actions |
+| CI/CD | Vercel Git integration |
 
 ---
 
@@ -165,18 +191,21 @@ Sign up → Select service type → Complete ~60 compliance questions
 
 ### Prerequisites
 
-- Node.js 20+ or Bun
+- Node.js 20+
 - npm, yarn, pnpm, or bun
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/nidrosoft/consentz.git
+git clone https://github.com/daxconsentz/AIConsentzCQC.git
 cd consentz
 
 # Install dependencies
 npm install
+
+# Copy environment variables
+cp .env.example .env.local
 
 # Start the development server
 npm run dev
@@ -184,10 +213,32 @@ npm run dev
 
 The app will be available at **http://localhost:3000**.
 
-To run on a custom port:
+### Environment Variables
 
 ```bash
-PORT=3008 npm run dev
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://[ref].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# AI (Anthropic Claude)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Email (Resend)
+RESEND_API_KEY=re_...
+
+# Billing (Stripe)
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Monitoring (Sentry)
+SENTRY_DSN=https://...@sentry.io/...
+
+# Consentz CRM Integration
+CONSENTZ_API_URL=https://api.consentz.com
 ```
 
 ### Available Scripts
@@ -209,49 +260,64 @@ src/
 │   ├── (onboarding)/               # Welcome + assessment wizard
 │   │   ├── welcome/
 │   │   └── assessment/
-│   │       ├── [step]/             # Dynamic step pages (1–4)
-│   │       └── results/            # Score + gap summary
+│   ├── (assessment)/               # Assessment steps + results
 │   ├── (dashboard)/                # Main authenticated app
 │   │   ├── page.tsx                # Dashboard home
 │   │   ├── domains/                # CQC domain pages
 │   │   │   ├── [domain]/           # Single domain detail
 │   │   │   └── [domain]/[kloe]/    # Single KLOE detail
-│   │   ├── evidence/               # Evidence library
-│   │   ├── policies/               # Policy management
-│   │   ├── staff/                  # Staff directory & training
-│   │   ├── incidents/              # Incident reporting
-│   │   ├── tasks/                  # Task board (kanban + list)
+│   │   ├── evidence/               # Evidence library + upload
+│   │   ├── policies/               # Policy management + AI generation
+│   │   ├── staff/                  # Staff directory + training
+│   │   ├── incidents/              # Incident reporting + investigation
+│   │   ├── tasks/                  # Task board (kanban + list + my tasks)
 │   │   ├── audits/                 # Audit log
 │   │   ├── reports/                # Reports hub
 │   │   ├── notifications/          # Notification centre
-│   │   └── settings/               # Organisation settings
-│   └── api/                        # API route handlers
-│       ├── assessment/
-│       ├── compliance/
-│       ├── evidence/
-│       ├── policies/
-│       ├── staff/
-│       ├── incidents/
-│       ├── tasks/
-│       ├── reports/
-│       ├── ai/
-│       ├── cron/
-│       └── webhooks/
+│   │   ├── reassessment/           # Periodic re-assessment
+│   │   └── settings/               # Organisation settings + integrations
+│   ├── api/                        # API route handlers (24 modules)
+│   │   ├── ai/                     # Chat, evidence summary, gap analysis
+│   │   ├── assessment/             # Assessment CRUD + scoring
+│   │   ├── auth/                   # User provisioning
+│   │   ├── billing/                # Stripe checkout, subscription, portal
+│   │   ├── compliance/             # Score retrieval, gap management
+│   │   ├── consentz/               # CRM integration (7 metric endpoints)
+│   │   ├── cqc/                    # Domains, KLOEs, regulations
+│   │   ├── cron/                   # Scheduled jobs (expiry, sync, digest)
+│   │   ├── dashboard/              # Aggregated overview + activity
+│   │   ├── email/                  # Webhook receiver
+│   │   ├── evidence/               # CRUD + file upload + download
+│   │   ├── incidents/              # CRUD + investigation
+│   │   ├── notifications/          # CRUD + mark-read
+│   │   ├── onboarding/             # Progress, org setup, assessment
+│   │   ├── organization/           # CRUD + user management
+│   │   ├── policies/               # CRUD + AI generation + approval
+│   │   ├── reports/                # Generation + export
+│   │   ├── sdk/                    # API keys + external SDK endpoints
+│   │   ├── staff/                  # CRUD + training + credentials
+│   │   ├── tasks/                  # CRUD + auto-generation from gaps
+│   │   ├── walkthrough/            # First-time walkthrough progress
+│   │   └── webhooks/               # Stripe webhook handler
+│   ├── sitemap.ts                  # Dynamic sitemap for SEO
+│   ├── robots.ts                   # Crawler directives
+│   └── manifest.ts                 # PWA manifest
 ├── components/
 │   ├── base/                       # Core UI primitives (Button, Input, Select, etc.)
 │   ├── application/                # Complex components (Table, Modal, DatePicker, etc.)
 │   ├── foundations/                 # Design tokens, icons, logos
-│   ├── marketing/                  # Marketing-specific components
-│   ├── shared-assets/              # Illustrations, patterns
-│   └── shared/                     # Cross-cutting components (DomainBadge, etc.)
-├── hooks/                          # Custom React hooks
+│   ├── walkthrough/                # Guided tour overlay system
+│   └── shared-assets/              # Illustrations, patterns
+├── hooks/                          # 17 custom React hooks
 ├── lib/
-│   ├── constants/                  # CQC framework data, route constants
-│   ├── mock-data/                  # Development mock data store
-│   ├── services/                   # Business logic layer
-│   └── validations/                # Zod validation schemas
+│   ├── ai/                         # AI chat system prompt
+│   ├── consentz/                   # Consentz CRM client + sync service
+│   ├── constants/                  # CQC framework data, routes, assessment questions
+│   ├── email/                      # 16 Resend email templates
+│   ├── services/                   # 18 business logic services
+│   └── validations/                # Zod schemas for all API endpoints
 ├── providers/                      # React context providers
-├── stores/                         # Zustand state stores
+├── stores/                         # Zustand state stores (UI store)
 ├── styles/                         # Global CSS, theme, typography
 ├── types/                          # TypeScript type definitions
 └── utils/                          # Utility functions
@@ -312,7 +378,7 @@ The platform maps compliance against CQC Regulations 9–20A of the Health and S
 
 | Path | Purpose |
 |---|---|
-| `/sign-in` | Authentication (Clerk) |
+| `/sign-in` | Authentication |
 | `/sign-up` | Registration |
 
 ### Onboarding Routes
@@ -320,29 +386,39 @@ The platform maps compliance against CQC Regulations 9–20A of the Health and S
 | Path | Purpose |
 |---|---|
 | `/welcome` | Welcome screen after first login |
-| `/assessment/[step]` | Assessment wizard (steps 1–4) |
-| `/assessment/results` | Results with score and gaps |
+| `/assessment` | Assessment wizard (domain-by-domain) |
+| `/assessment/results` | Results with score, rating, and gaps |
 
 ### Dashboard Routes
 
 | Path | Purpose |
 |---|---|
-| `/` | Dashboard overview (score, gaps, tasks, activity) |
-| `/domains` | All 5 CQC domains overview |
-| `/domains/[domain]` | Single domain detail (Safe, Effective, etc.) |
-| `/domains/[domain]/[kloe]` | Single KLOE detail with evidence |
+| `/` | Dashboard overview (score, gaps, tasks, activity, AI chat) |
+| `/domains` | All 5 CQC domains overview with score rings |
+| `/domains/[domain]` | Single domain detail (KLOEs, gaps, heatmap) |
+| `/domains/[domain]/[kloe]` | Single KLOE detail with evidence + checklist |
 | `/evidence` | Evidence library (grid/list) |
-| `/evidence/upload` | Upload evidence |
+| `/evidence/upload` | Upload evidence (pre-fillable from KLOE links) |
+| `/evidence/[id]` | Evidence detail |
 | `/policies` | Policy library |
-| `/policies/create` | Create or generate policy |
+| `/policies/create` | Create manually or generate with AI |
+| `/policies/[id]` | Policy detail/editor with version history |
 | `/staff` | Staff directory |
+| `/staff/add` | Add new staff member |
+| `/staff/[id]` | Staff detail with inline editing |
 | `/staff/training` | Training matrix |
 | `/incidents` | Incident log |
 | `/incidents/report` | Report new incident |
-| `/tasks` | Task board |
+| `/incidents/[id]` | Incident detail + investigation |
+| `/tasks` | Task board (kanban + list + my tasks) |
 | `/audits` | Audit log |
 | `/reports` | Reports hub |
-| `/settings` | Organisation settings |
+| `/reports/compliance` | Compliance summary report |
+| `/reports/inspection-prep` | Inspection preparation report |
+| `/reports/export` | Data export |
+| `/reassessment` | Periodic re-assessment |
+| `/notifications` | Notification centre |
+| `/settings` | Organisation profile, users, billing, integrations, notifications |
 
 ---
 
@@ -351,7 +427,7 @@ The platform maps compliance against CQC Regulations 9–20A of the Health and S
 The API follows a layered architecture:
 
 ```
-Request → Clerk Auth → Zod Validation → Rate Limiting → Service Layer → Prisma → Database
+Request → Supabase Auth → Zod Validation → Rate Limiting → Service Layer → Supabase → Database
 ```
 
 ### Key API Modules
@@ -360,15 +436,19 @@ Request → Clerk Auth → Zod Validation → Rate Limiting → Service Layer �
 |---|---|---|
 | Assessment | `/api/assessment/*` | Save answers, run scoring engine |
 | Compliance | `/api/compliance/*` | Score retrieval, gap management |
-| Evidence | `/api/evidence/*` | CRUD + file upload |
-| Policies | `/api/policies/*` | CRUD + AI generation + approval workflow |
-| Staff | `/api/staff/*` | Directory + training records |
+| Consentz | `/api/consentz/*` | CRM integration (7 metric endpoints + sync) |
+| Evidence | `/api/evidence/*` | CRUD + file upload + download |
+| Policies | `/api/policies/*` | CRUD + AI generation + approval + publish |
+| Staff | `/api/staff/*` | Directory + training + credentials |
 | Incidents | `/api/incidents/*` | Reporting + investigation |
 | Tasks | `/api/tasks/*` | CRUD + auto-generation from gaps |
 | Reports | `/api/reports/*` | Generation + PDF/CSV export |
-| AI | `/api/ai/*` | Policy generation, compliance chat |
-| Dashboard | `/api/dashboard/*` | Aggregated overview data |
-| Cron | `/api/cron/*` | Expiry checks, score recalculation |
+| AI | `/api/ai/*` | Policy generation, compliance chat, gap analysis |
+| Dashboard | `/api/dashboard/*` | Aggregated overview data + activity |
+| Onboarding | `/api/onboarding/*` | Progress tracking, org setup, assessment |
+| Billing | `/api/billing/*` | Stripe checkout, subscription, portal |
+| SDK | `/api/sdk/*` | API key management + external SDK endpoints |
+| Cron | `/api/cron/*` | Expiry checks, score recalculation, sync, digest |
 
 ### Response Contract
 
@@ -390,24 +470,25 @@ All API responses follow a standardised envelope:
 
 ## Database Schema
 
-### 20 Prisma Models
+### Core Models
 
 | Category | Models |
 |---|---|
 | Core | Organisation, User |
-| Assessment | Assessment, AssessmentAnswer |
+| Assessment | Assessment, AssessmentResponse |
 | Compliance | ComplianceScore, DomainScore, ComplianceGap |
 | Documents | Evidence, Policy, PolicyVersion |
-| Staff | StaffMember, TrainingRecord |
+| Staff | StaffMember, TrainingRecord, StaffCredential |
 | Operations | Incident, Task |
-| System | Notification, ActivityLog |
-| CQC Reference (seed) | CqcDomain, CqcKloe, CqcRegulation, KloeRegulationMap |
+| System | Notification, AuditLog, OnboardingProgress, WalkthroughProgress |
+| Integration | ConsentzConnection, SdkKey |
+| CQC Reference | CqcDomain, CqcKloe, CqcRegulation, KloeRegulationMap |
 
 ### Key Design Principles
 
-- **Organisation-scoped**: Every user-created record belongs to an `organizationId`
-- **Soft deletes**: Critical entities use `deletedAt` timestamps
-- **Audit everything**: Every mutation writes to `ActivityLog` (7-year retention)
+- **Organisation-scoped**: Every user-created record belongs to an `organization_id`
+- **Soft deletes**: Critical entities use `deleted_at` timestamps
+- **Audit everything**: Every mutation writes to the audit log (7-year retention)
 - **Seed vs. user data**: CQC framework data is seeded; user data is runtime
 - **UK data residency**: All data stored in `eu-west-2` (London)
 
@@ -417,10 +498,10 @@ All API responses follow a standardised envelope:
 
 ### Authentication
 
-- **Provider**: Clerk (email, Google, Microsoft SSO)
-- **MFA**: Supported and recommended
+- **Provider**: Supabase Auth (email/password, magic link, SSO)
+- **MFA**: Supported via Supabase
 - **Session**: JWT-based with secure cookie management
-- **Webhook sync**: User data synced from Clerk to database
+- **Middleware**: Server-side session validation on all protected routes
 
 ### Authorisation — 5-Tier RBAC
 
@@ -440,9 +521,9 @@ All API responses follow a standardised envelope:
 | Encryption at rest | AES-256 (Supabase + S3) |
 | Encryption in transit | TLS 1.2+ on all connections |
 | Input validation | Zod schemas on every mutation |
-| SQL injection | Prevented by Prisma parameterised queries |
+| SQL injection | Prevented by Supabase parameterised queries |
 | XSS prevention | React auto-escaping + CSP headers |
-| Rate limiting | Per-user API throttling |
+| Rate limiting | Per-user API throttling (in-memory + AI-specific limits) |
 | Audit trail | Immutable activity log, 7-year retention |
 | UK GDPR | DPA with Supabase, DSAR handling, right to erasure |
 
@@ -458,6 +539,8 @@ The assessment engine is the core intelligence of the platform:
 - **4 gap severities**: Critical, High, Medium, Low
 - **Weighted scoring** with evidence quality and timeliness factors
 - **Rating limiters**: Critical gap caps domain at Requires Improvement
+- **Auto-gap generation**: Automatically creates compliance gaps from assessment answers
+- **Auto-task creation**: Generates remediation tasks for each identified gap
 
 ### Scoring Pipeline
 
@@ -480,6 +563,32 @@ Answers → Per-KLOE scoring → Evidence quality factor → Domain aggregation
 - Critical gap → domain capped at Requires Improvement
 - Any Inadequate domain → overall capped at Requires Improvement
 - 2+ domains at Requires Improvement → overall Requires Improvement
+
+---
+
+## Consentz Integration
+
+The platform integrates with the [Consentz CRM](https://consentz.com) to automatically import compliance-relevant data:
+
+### Imported Metrics
+
+| Metric | Endpoint | Domain |
+|---|---|---|
+| Consent completion rate | `/api/consentz/consent-completion` | Safe |
+| Consent decay tracking | `/api/consentz/consent-decay` | Safe |
+| Safety checklist compliance | `/api/consentz/safety-checklist` | Safe |
+| Treatment risk heatmap | `/api/consentz/treatment-risk-heatmap` | Safe |
+| Staff competency scores | `/api/consentz/staff-competency` | Effective, Well-Led |
+| Patient feedback / satisfaction | `/api/consentz/patient-feedback` | Caring, Responsive |
+| Policy acknowledgement rates | `/api/consentz/policy-acknowledgement` | Well-Led |
+| Incident data | `/api/consentz/incidents` | Safe |
+
+### Integration Features
+
+- Credential-based connection via Settings → Integrations
+- Manual and automatic sync (cron-based)
+- Last sync timestamp tracking
+- Disconnect with confirmation
 
 ---
 
@@ -514,20 +623,10 @@ The platform uses semantic colour tokens (not raw values):
 | Domain | Colour | Icon |
 |---|---|---|
 | Safe | Blue (`#3B82F6`) | Shield |
-| Effective | Violet (`#8B5CF6`) | Target |
-| Caring | Pink (`#EC4899`) | Heart |
+| Effective | Violet (`#7C3AED`) | Target |
+| Caring | Rose (`#F43F5E`) | Heart |
 | Responsive | Amber (`#F59E0B`) | Zap |
 | Well-Led | Emerald (`#10B981`) | Trophy |
-
-### Filter Pattern
-
-All list pages use a consistent filter UX:
-
-1. Search input (full width, left)
-2. "Filters" button with active count badge (right)
-3. Collapsible panel with labelled `Select` dropdowns in a responsive grid
-4. Active filter chips with category labels and dismiss buttons
-5. Sort toggle (where applicable) and "Clear all" link
 
 ---
 
@@ -535,41 +634,13 @@ All list pages use a consistent filter UX:
 
 ### Hosting
 
-The application is designed to deploy on **Vercel** with UK data residency:
+The application is deployed on **Vercel** with UK data residency:
 
-- **Region**: `eu-west-2` (London)
+- **Region**: London
 - **Database**: Supabase PostgreSQL (London)
 - **Storage**: Supabase Storage (encrypted at rest)
 - **SSL**: Automatic via Vercel
-
-### Environment Variables
-
-```bash
-# App
-NEXT_PUBLIC_APP_URL=https://your-domain.com
-
-# Clerk Authentication
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
-CLERK_SECRET_KEY=sk_...
-CLERK_WEBHOOK_SECRET=whsec_...
-
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://[ref].supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-
-# Database (Prisma → Supabase PostgreSQL)
-DATABASE_URL=postgresql://...
-DIRECT_URL=postgresql://...
-
-# AI
-OPENAI_API_KEY=sk_...
-
-# Email
-RESEND_API_KEY=re_...
-
-# Monitoring
-SENTRY_DSN=https://...@sentry.io/...
-```
+- **Build**: Turbopack (Next.js 16)
 
 ### Build & Deploy
 
@@ -578,60 +649,61 @@ npm run build     # TypeScript compilation + Next.js build
 npm run start     # Start production server
 ```
 
+Deploys automatically via Vercel Git integration on push to `main`.
+
 ---
 
 ## Specification Documents
 
-The platform is defined across 7 comprehensive specification documents totalling ~17,300 lines:
+The platform is defined across comprehensive specification documents:
 
-| File | Lines | Contents |
-|---|---|---|
-| `00-CURSOR-INSTRUCTIONS.md` | ~390 | Master build instructions, phase order, cross-references |
-| `01-ARCHITECTURE.md` | ~980 | Tech stack, file structure, route map, deployment config |
-| `02-DATABASE.md` | ~1,830 | 20 Prisma models, enums, relationships, seed data, queries |
-| `03-UI-UX.md` | ~2,340 | Design system, 30+ page wireframes, component specs |
-| `04-CQC-FRAMEWORK.md` | ~3,500 | 5 domains, 25 KLOEs, 14 regulations, policy templates, scoring |
-| `05-API-SERVICES.md` | ~4,950 | 55 API routes, Zod schemas, service layer, AI integration |
-| `06-AUTH-SECURITY.md` | ~1,530 | Clerk auth, RBAC, multi-tenancy, GDPR, security controls |
-| `07-ASSESSMENT-ENGINE.md` | ~2,150 | 121 questions, scoring pipeline, rating prediction, gap engine |
+| File | Contents |
+|---|---|
+| `00-CURSOR-INSTRUCTIONS.md` | Master build instructions, phase order, cross-references |
+| `01-ARCHITECTURE.md` | Tech stack, file structure, route map, deployment config |
+| `02-DATABASE.md` | Database models, enums, relationships, seed data, queries |
+| `03-UI-UX.md` | Design system, 30+ page wireframes, component specs |
+| `04-CQC-FRAMEWORK.md` | 5 domains, 25 KLOEs, 14 regulations, policy templates, scoring |
+| `05-API-SERVICES.md` | 55 API routes, Zod schemas, service layer, AI integration |
+| `06-AUTH-SECURITY.md` | Auth, RBAC, multi-tenancy, GDPR, security controls |
+| `07-ASSESSMENT-ENGINE.md` | 121 questions, scoring pipeline, rating prediction, gap engine |
+| `PRD_First_Time_User_Walkthrough_CQC.md` | First-time user walkthrough and onboarding flow |
 
 ---
 
 ## Current Status
 
-The platform is currently in **active development** with a functional frontend:
+The platform is **fully functional** with both frontend and backend wired end-to-end:
 
 **Implemented:**
-- Full dashboard with compliance scoring and CQC domain overview
-- Staff directory with DBS, GMC, and aesthetic qualification tracking
-- Evidence library with grid/list views and domain linking
-- Policy management with category filtering
-- Incident reporting with premises/patient complication types
-- Task management (kanban board + list view)
-- Audit log with expandable entries
-- CQC domain detail pages with gap analysis
-- Assessment wizard (onboarding flow)
-- Consistent filter UI across all pages
-- Mock data layer for development
-
-**Pending:**
-- Backend API integration (Prisma + Supabase)
-- Clerk authentication integration
-- AI policy generation (Anthropic Claude)
-- Real-time compliance recalculation
-- Email notifications (Resend)
-- SSO/session sharing with Consentz CRM
-- Branding alignment with Consentz CRM (fonts, logos, button styles)
+- Full dashboard with live compliance scoring, CQC domain overview, and AI chat
+- Guided onboarding with spotlight walkthrough and 5-step account setup checklist
+- Assessment engine with gap generation and auto-remediation task creation
+- CQC domain management with per-KLOE scoring, evidence mapping, and regulation linking
+- Evidence library with upload, KLOE linking, and expiry tracking
+- Policy management with AI-powered generation (Anthropic Claude), versioning, and approval workflow
+- Staff directory with DBS, GMC, training tracking, and inline editing
+- Incident reporting with investigation workflow
+- Task management (kanban board, list view, my tasks) with live staff data
+- Audit log with 7-year retention
+- Reports hub with compliance summary and inspection prep
+- Notification centre with email alerts (16 Resend templates)
+- Consentz CRM integration (8 metric endpoints + sync)
+- Stripe billing integration
+- Settings with org profile, user management, integrations, and notifications
+- SEO metadata, sitemap, robots.txt, and PWA manifest
+- Rate limiting and retry mechanisms for AI operations
 
 ---
 
 ## Relationship to Consentz
 
-This platform is built as a **standalone product**. It will later integrate into [Consentz](https://consentz.com) — a UK clinic management system — via SDK, webhooks, and API. The future integration will:
+This platform is built as a **standalone product** that integrates with [Consentz](https://consentz.com) — a UK clinic management system — via API. The integration:
 
-- Pull consent forms, appointment data, staff rotas, and stock usage from Consentz
-- Transform existing CRM data into CQC compliance evidence (~70% of required evidence already exists)
-- Enable SSO/session sharing between the platforms
+- Pulls consent forms, patient feedback, safety checklists, staff competency, and treatment risk data
+- Transforms existing CRM data into CQC compliance evidence
+- Displays Consentz metrics directly on relevant domain pages
+- Supports credential-based connection with manual and automated sync
 
 ---
 
