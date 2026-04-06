@@ -189,6 +189,8 @@ export interface Organization {
   id: string;
   name: string;
   serviceType: ServiceType;
+  /** Present when API returns snake_case row */
+  service_type?: ServiceType;
   postcode: string;
   cqcProviderId: string;
   cqcLocationId: string;
@@ -196,6 +198,10 @@ export interface Organization {
   bedCount: number;
   currentRating: CqcRating;
   lastInspection: string;
+  /** Aesthetic clinic: E3 nutrition marked N/A; excluded from evidence-status scoring */
+  e3_nutrition_na_aesthetic?: boolean;
+  /** PATCH body (camelCase); persisted as e3_nutrition_na_aesthetic */
+  e3NutritionNaAesthetic?: boolean;
 }
 
 export interface AppUser {
@@ -204,6 +210,23 @@ export interface AppUser {
   email: string;
   role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'STAFF' | 'VIEWER';
   avatar: string | null;
+}
+
+export type KloeEvidenceStatusValue = 'not_started' | 'in_progress' | 'complete';
+
+export interface KloeEvidenceStatus {
+  id: string;
+  organizationId: string;
+  kloeCode: string;
+  evidenceItemId: string;
+  status: KloeEvidenceStatusValue;
+  evidenceType: 'POLICY' | 'MANUAL_UPLOAD' | 'CONSENTZ' | 'CONSENTZ_MANUAL';
+  linkedPolicyId: string | null;
+  linkedEvidenceId: string | null;
+  consentzSyncedAt: string | null;
+  notes: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 
 export interface UpcomingDeadline {

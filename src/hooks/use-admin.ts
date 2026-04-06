@@ -87,6 +87,8 @@ export interface AdminOrgDetail {
         policies: number;
         tasks: number;
         openGaps: number;
+        evidenceItems?: number;
+        evidenceComplete?: number;
     };
     compliance: {
         overall_score: number;

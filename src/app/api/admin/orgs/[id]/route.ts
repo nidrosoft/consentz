@@ -24,6 +24,8 @@ export const GET = withAdmin(async (_req, { params }) => {
         { count: gapCount },
         { data: scores },
         { data: subscription },
+        { count: evidenceStatusTotal },
+        { count: evidenceStatusComplete },
     ] = await Promise.all([
         db.from("users").select("id, email, first_name, last_name, role, created_at, last_login_at").eq("organization_id", id).order("created_at", { ascending: false }),
         db.from("staff_members").select("*", { count: "exact", head: true }).eq("organization_id", id).then((r) => ({ count: r.count ?? 0 })),
@@ -32,6 +34,8 @@ export const GET = withAdmin(async (_req, { params }) => {
         db.from("compliance_gaps").select("*", { count: "exact", head: true }).eq("organization_id", id).eq("status", "OPEN").then((r) => ({ count: r.count ?? 0 })),
         db.from("compliance_scores").select("domain_code, score, calculated_at").eq("organization_id", id),
         db.from("subscriptions").select("id, status, plan_id, current_period_start, current_period_end, cancel_at, created_at").eq("organization_id", id).maybeSingle(),
+        db.from("kloe_evidence_status").select("*", { count: "exact", head: true }).eq("organization_id", id).then((r) => ({ count: r.count ?? 0 })),
+        db.from("kloe_evidence_status").select("*", { count: "exact", head: true }).eq("organization_id", id).eq("status", "complete").then((r) => ({ count: r.count ?? 0 })),
     ]);
 
     // Map users to expected shape
@@ -76,7 +80,14 @@ export const GET = withAdmin(async (_req, { params }) => {
     return apiSuccess({
         organization: org,
         users,
-        counts: { staff: staffCount, policies: policyCount, tasks: taskCount, openGaps: gapCount },
+        counts: {
+            staff: staffCount,
+            policies: policyCount,
+            tasks: taskCount,
+            openGaps: gapCount,
+            evidenceItems: evidenceStatusTotal,
+            evidenceComplete: evidenceStatusComplete,
+        },
         compliance,
         subscription,
         recentActivity: activity ?? [],

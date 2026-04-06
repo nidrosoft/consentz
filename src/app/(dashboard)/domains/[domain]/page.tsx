@@ -11,9 +11,11 @@ import { cx } from "@/utils/cx";
 import { useComplianceScore, useComplianceGaps, useUpdateGap, useTreatmentRiskHeatmap } from "@/hooks/use-compliance";
 import { useEvidence } from "@/hooks/use-evidence";
 import { useConsentzMetricsForDomain, type ConsentzMetricEntry } from "@/hooks/use-dashboard";
-import { RATING_LABELS, KLOES, REGULATIONS, POLICY_TEMPLATES } from "@/lib/constants/cqc-framework";
+import { RATING_LABELS, KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
+import { getKloeDefinition } from "@/lib/constants/cqc-evidence-requirements";
+import { useOrganization } from "@/hooks/use-organization";
 import { TreatmentRiskHeatmap, TreatmentRiskHeatmapSkeleton, TreatmentRiskHeatmapEmpty } from "@/components/application/treatment-risk-heatmap";
-import type { DomainSlug } from "@/types";
+import type { DomainSlug, ServiceType } from "@/types";
 import type { FC } from "react";
 
 type ViewMode = "card" | "list";
@@ -31,18 +33,6 @@ const DOMAIN_DESCRIPTIONS: Record<string, string> = {
     responsive: "Are services organised to meet people's needs?",
     "well-led": "Does leadership ensure high-quality care and promote improvement?",
 };
-
-// Build KLOE → Regulations lookup from POLICY_TEMPLATES (accurate per-KLOE mapping)
-const KLOE_REGULATIONS: Record<string, string[]> = {};
-KLOES.forEach((k) => {
-    const regs = new Set<string>();
-    POLICY_TEMPLATES.forEach((pt) => {
-        if ((pt.linkedKloes as readonly string[]).includes(k.code)) {
-            pt.linkedRegulations.forEach((r) => regs.add(r.replace("REG", "Reg ")));
-        }
-    });
-    KLOE_REGULATIONS[k.code] = [...regs];
-});
 
 const SEVERITY_DOT: Record<string, string> = {
     CRITICAL: "bg-error-solid", HIGH: "bg-warning-solid", MEDIUM: "bg-brand-solid", LOW: "bg-quaternary",
@@ -360,6 +350,9 @@ export default function DomainDetailPage() {
     const [kloeView, setKloeView] = useState<ViewMode>("card");
     const [gapsView, setGapsView] = useState<ViewMode>("card");
 
+    const { data: org } = useOrganization();
+    const serviceType: ServiceType = org?.serviceType === "CARE_HOME" ? "CARE_HOME" : "AESTHETIC_CLINIC";
+
     const { data: score, isLoading: scoreLoading, error: scoreError } = useComplianceScore();
     const { data: gapsResponse, isLoading: gapsLoading } = useComplianceGaps({ domain: slug, pageSize: 100 });
     const { data: evidenceResponse } = useEvidence({ domain: slug, pageSize: 200 });
@@ -378,7 +371,11 @@ export default function DomainDetailPage() {
 
     const gaps = gapsResponse?.data ?? [];
     const domainScore = score?.domains.find((d) => d.slug === slug);
-    const domainKloes = KLOES.filter((k) => k.domain === slug);
+    const domainKloes = KLOES.filter((k) => {
+        if (k.domain !== slug) return false;
+        const def = getKloeDefinition(serviceType, k.code);
+        return def !== undefined;
+    });
     const domainGaps = gaps.filter((g) => g.domain === slug && g.status !== "RESOLVED");
     const Icon = DOMAIN_ICONS[slug];
     const color = DOMAIN_COLORS[slug];
@@ -485,6 +482,12 @@ export default function DomainDetailPage() {
                             ];
                             const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
 
+                            const kloeDef = getKloeDefinition(serviceType, kloe.code);
+                            const displayTitle = kloeDef?.title ?? kloe.title;
+                            const displayQuestion = kloeDef?.keyQuestion ?? kloe.keyQuestion;
+                            const evidenceCount = kloeDef?.evidenceItems.length ?? 0;
+                            const kloeRegs = (kloeDef?.regulations ?? kloe.regulations).map((r) => r.replace("REG", "Reg "));
+
                             return (
                                 <button
                                     key={kloe.code}
@@ -495,15 +498,17 @@ export default function DomainDetailPage() {
                                         <Badge size="sm" color="gray" type="pill-color">{kloe.code}</Badge>
                                         <MiniScoreRing score={kloeScore} />
                                     </div>
-                                    <p className="mt-3 text-sm font-semibold text-primary line-clamp-2">{kloe.title}</p>
+                                    <p className="mt-3 text-sm font-semibold text-primary line-clamp-2">{displayTitle}</p>
+                                    <p className="mt-1 text-xs text-tertiary line-clamp-2">{displayQuestion}</p>
                                     <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {KLOE_REGULATIONS[kloe.code]?.map((r) => (
+                                        {kloeRegs.map((r) => (
                                             <span key={r} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-tertiary">{r}</span>
                                         ))}
                                     </div>
                                     <div className="mt-auto flex items-center justify-between pt-3">
                                         <div className="flex items-center gap-3 text-xs text-tertiary">
                                             <span>{kloeEvidenceList.length} doc{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
+                                            {evidenceCount > 0 && <span>{evidenceCount} required</span>}
                                             {kloeGaps.length > 0 && (
                                                 <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
                                             )}
@@ -529,22 +534,30 @@ export default function DomainDetailPage() {
                             ];
                             const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
 
+                            const kloeDef = getKloeDefinition(serviceType, kloe.code);
+                            const displayTitle = kloeDef?.title ?? kloe.title;
+                            const displayQuestion = kloeDef?.keyQuestion ?? kloe.keyQuestion;
+                            const evidenceCount = kloeDef?.evidenceItems.length ?? 0;
+                            const kloeRegs = (kloeDef?.regulations ?? kloe.regulations).map((r) => r.replace("REG", "Reg "));
+
                             return (
                                 <button
                                     key={kloe.code}
                                     onClick={() => router.push(`/domains/${slug}/${kloe.code.toLowerCase()}`)}
-                                    className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 sm:flex-row sm:items-center sm:gap-4"
+                                    className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand sm:flex-row sm:items-center sm:gap-4"
                                 >
-                                    <div className="flex-1">
+                                    <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-bold text-tertiary">{kloe.code}</span>
-                                            <span className="text-sm font-medium text-primary">{kloe.title}</span>
+                                            <span className="text-sm font-medium text-primary">{displayTitle}</span>
                                         </div>
-                                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-tertiary">
-                                            {KLOE_REGULATIONS[kloe.code]?.length > 0 && (
-                                                <span>Linked: {KLOE_REGULATIONS[kloe.code].join(", ")}</span>
+                                        <p className="mt-0.5 text-xs text-tertiary line-clamp-1">{displayQuestion}</p>
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-tertiary">
+                                            {kloeRegs.length > 0 && (
+                                                <span>Linked: {kloeRegs.join(", ")}</span>
                                             )}
                                             <span>Evidence: {kloeEvidenceList.length} document{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
+                                            {evidenceCount > 0 && <span>{evidenceCount} required</span>}
                                             {kloeGaps.length > 0 && (
                                                 <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
                                             )}

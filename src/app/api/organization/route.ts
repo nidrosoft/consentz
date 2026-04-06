@@ -2,6 +2,7 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { requireMinRole } from '@/lib/auth';
 import { AuditService } from '@/lib/services/audit-service';
+import { recalculateComplianceScores } from '@/lib/services/score-engine';
 import { updateOrganizationSchema } from '@/lib/validations/organization';
 import { getDb } from '@/lib/db';
 
@@ -68,6 +69,12 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
   if (validated.registeredManager !== undefined) dbUpdate.registered_manager = validated.registeredManager;
   if (validated.bedCount !== undefined) dbUpdate.bed_count = validated.bedCount;
   if (validated.staffCount !== undefined) dbUpdate.staff_count = validated.staffCount;
+  if (validated.e3NutritionNaAesthetic !== undefined) {
+    if (existing.service_type !== 'AESTHETIC_CLINIC' && validated.e3NutritionNaAesthetic) {
+      return ApiErrors.badRequest('E3 not-applicable flag applies to aesthetic clinics only.');
+    }
+    dbUpdate.e3_nutrition_na_aesthetic = validated.e3NutritionNaAesthetic;
+  }
 
   const { data: updated } = await client.from('organizations')
     .update(dbUpdate)
@@ -83,6 +90,14 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
     entityId: auth.organizationId,
     description: 'Updated organization settings',
   });
+
+  if (validated.e3NutritionNaAesthetic !== undefined) {
+    try {
+      await recalculateComplianceScores(auth.organizationId);
+    } catch {
+      // Settings are saved; scores will refresh on next recalculation run if this fails.
+    }
+  }
 
   return apiSuccess(updated);
 });
@@ -123,6 +138,7 @@ export const DELETE = withAuth(async (req, { auth }) => {
     client.from('walkthrough_progress').delete().eq('organization_id', orgId),
     client.from('notifications').delete().eq('organization_id', orgId),
     client.from('sdk_keys').delete().eq('organization_id', orgId),
+    client.from('kloe_evidence_status').delete().eq('organization_id', orgId),
   ]);
 
   await Promise.all([

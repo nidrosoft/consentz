@@ -17,8 +17,11 @@ export function useUpdateOrganization() {
   return useMutation({
     mutationFn: (data: Partial<Organization>) =>
       apiPatch<Organization>('/api/organization', data).then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['organization'] });
+      if (variables?.e3NutritionNaAesthetic !== undefined) {
+        queryClient.invalidateQueries({ queryKey: ['compliance'] });
+      }
       toast.success('Organisation updated', 'Your changes have been saved.');
     },
     onError: () => toast.error('Update failed', 'Could not update the organisation.'),

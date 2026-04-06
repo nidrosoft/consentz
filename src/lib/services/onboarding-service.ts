@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { stableAssessmentQuestionUuid } from "@/lib/assessment-question-stable-id";
 import { getQuestionsForServiceType, type ServiceType } from "@/lib/constants/assessment-questions";
 import { AuditService } from "@/lib/services/audit-service";
+import { EvidenceStatusService } from "@/lib/services/evidence-status-service";
 import {
     generateGapsFromAssessment,
     generateRemediationTasks,
@@ -52,6 +53,7 @@ export class OnboardingService {
                 description: `Updated service type during onboarding: ${params.serviceType}`,
                 actorName: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email,
             });
+            EvidenceStatusService.seedForOrganization(user.organization_id, params.serviceType as ServiceType).catch(() => {});
             return { organizationId: user.organization_id };
         }
 
@@ -79,6 +81,8 @@ export class OnboardingService {
             description: "Organisation created at onboarding (service type)",
             actorName: [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email,
         });
+
+        EvidenceStatusService.seedForOrganization(orgId, params.serviceType as ServiceType).catch(() => {});
 
         return { organizationId: orgId };
     }

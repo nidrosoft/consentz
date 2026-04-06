@@ -5,6 +5,8 @@ import {
   type AssessmentQuestion,
   type ServiceType,
 } from '@/lib/constants/assessment-questions';
+import { getKloesForDomain } from '@/lib/constants/cqc-evidence-requirements';
+import type { DomainSlug } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,6 +120,46 @@ function calculateEvidenceQuality(
   }
 
   return Math.max(0.5, Math.min(1.0, qualitySum / totalItems));
+}
+
+async function getEvidenceStatusFactor(
+  organizationId: string,
+  domain: string,
+  serviceType: ServiceType,
+): Promise<number> {
+  try {
+    const client = await getDb();
+    const domainSlug = domain as DomainSlug;
+    const kloeDefs = getKloesForDomain(serviceType, domainSlug);
+    let kloeCodes = kloeDefs.map((d) => d.code);
+
+    if (domainSlug === 'effective' && serviceType === 'AESTHETIC_CLINIC') {
+      const { data: orgRow } = await client
+        .from('organizations')
+        .select('e3_nutrition_na_aesthetic')
+        .eq('id', organizationId)
+        .maybeSingle();
+      if (orgRow?.e3_nutrition_na_aesthetic) {
+        kloeCodes = kloeCodes.filter((c) => c !== 'E3');
+      }
+    }
+
+    if (kloeCodes.length === 0) return 0.5;
+
+    const { data } = await client
+      .from('kloe_evidence_status')
+      .select('status')
+      .eq('organization_id', organizationId)
+      .in('kloe_code', kloeCodes);
+
+    if (!data?.length) return 0.5;
+
+    const total = data.length;
+    const complete = data.filter((r) => r.status === 'complete').length;
+    return Math.max(0.5, Math.min(1.0, 0.5 + (complete / total) * 0.5));
+  } catch {
+    return 0.5;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -581,8 +623,10 @@ export async function recalculateComplianceScores(organizationId: string) {
       (domainEvidence.length / Math.max(kloeCount * 2, 1)) * 100,
     );
 
-    // Evidence quality factor (0.5–1.0)
-    const evidenceQuality = calculateEvidenceQuality(domain, allEvidence, policies);
+    // Evidence quality factor (0.5–1.0), blended with evidence status completion
+    const rawQuality = calculateEvidenceQuality(domain, allEvidence, policies);
+    const statusFactor = await getEvidenceStatusFactor(organizationId, domain, serviceType);
+    const evidenceQuality = rawQuality * 0.5 + statusFactor * 0.5;
 
     // Timeliness factor (0.5–1.0)
     const timeliness = calculateTimeliness(domain, allEvidence, trainingRecords, staff);

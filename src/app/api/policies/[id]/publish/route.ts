@@ -4,6 +4,7 @@ import { requireMinRole } from '@/lib/auth';
 import { PolicyService } from '@/lib/services/policy-service';
 import { ComplianceService } from '@/lib/services/compliance-service';
 import { AuditService } from '@/lib/services/audit-service';
+import { EvidenceStatusService } from '@/lib/services/evidence-status-service';
 
 export const POST = withAuth(async (req, { params, auth }) => {
   requireMinRole(auth, 'ADMIN');
@@ -33,7 +34,12 @@ export const POST = withAuth(async (req, { params, auth }) => {
     description: `Published policy: ${existing.title}`,
   });
 
-  // Trigger compliance recalculation after publishing
+  // Mark POLICY-type evidence items as complete for linked domains
+  const domains = published.domains ?? existing.domains ?? [];
+  if (domains.length > 0) {
+    EvidenceStatusService.markPolicyItemsComplete(auth.organizationId, params.id, domains).catch(() => {});
+  }
+
   ComplianceService.queueRecalculation(auth.organizationId);
 
   return apiSuccess(published);

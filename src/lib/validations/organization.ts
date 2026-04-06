@@ -17,6 +17,8 @@ export const updateOrganizationSchema = z.object({
   registeredManager: z.string().max(255).optional(),
   bedCount: z.number().int().positive().max(1000).optional(),
   staffCount: z.number().int().positive().max(5000).optional(),
+  /** Aesthetic clinic: exclude E3 nutrition from evidence completion scoring when true */
+  e3NutritionNaAesthetic: z.boolean().optional(),
 });
 
 export const inviteUserSchema = z.object({

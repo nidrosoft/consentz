@@ -38,33 +38,41 @@ export const SEVERITY_COLORS = {
   LOW: '#6B7280',
 } as const;
 
-export const KLOES = [
-  { code: 'S1', title: 'Safeguarding', domain: 'safe' as DomainSlug },
-  { code: 'S2', title: 'Risk Assessment & Management', domain: 'safe' as DomainSlug },
-  { code: 'S3', title: 'Staffing Levels & Recruitment', domain: 'safe' as DomainSlug },
-  { code: 'S4', title: 'Medicines Management', domain: 'safe' as DomainSlug },
-  { code: 'S5', title: 'Infection Prevention & Control', domain: 'safe' as DomainSlug },
-  { code: 'S6', title: 'Safety of Premises & Equipment', domain: 'safe' as DomainSlug },
-  { code: 'E1', title: 'Assessment of Needs', domain: 'effective' as DomainSlug },
-  { code: 'E2', title: 'Delivery of Evidence-Based Care', domain: 'effective' as DomainSlug },
-  { code: 'E3', title: 'Nutrition & Hydration', domain: 'effective' as DomainSlug },
-  { code: 'E4', title: 'Pain Management', domain: 'effective' as DomainSlug },
-  { code: 'E5', title: 'Staff Training & Competence', domain: 'effective' as DomainSlug },
-  { code: 'E6', title: 'Multi-Disciplinary Working', domain: 'effective' as DomainSlug },
-  { code: 'E7', title: 'Consent to Care', domain: 'effective' as DomainSlug },
-  { code: 'C1', title: 'Kindness, Respect & Compassion', domain: 'caring' as DomainSlug },
-  { code: 'C2', title: 'Involvement in Care Planning', domain: 'caring' as DomainSlug },
-  { code: 'C3', title: 'Privacy & Dignity', domain: 'caring' as DomainSlug },
-  { code: 'R1', title: 'Person-Centred Care', domain: 'responsive' as DomainSlug },
-  { code: 'R2', title: 'Complaints Handling', domain: 'responsive' as DomainSlug },
-  { code: 'R3', title: 'End of Life Care', domain: 'responsive' as DomainSlug },
-  { code: 'W1', title: 'Vision & Strategy', domain: 'well-led' as DomainSlug },
-  { code: 'W2', title: 'Governance & Management', domain: 'well-led' as DomainSlug },
-  { code: 'W3', title: 'Engagement & Involvement', domain: 'well-led' as DomainSlug },
-  { code: 'W4', title: 'Continuous Improvement', domain: 'well-led' as DomainSlug },
-  { code: 'W5', title: 'Partnerships & Communities', domain: 'well-led' as DomainSlug },
-  { code: 'W6', title: 'Duty of Candour', domain: 'well-led' as DomainSlug },
-] as const;
+export interface KloeBase {
+  code: string;
+  title: string;
+  domain: DomainSlug;
+  keyQuestion: string;
+  regulations: string[];
+}
+
+export const KLOES: readonly KloeBase[] = [
+  { code: 'S1', title: 'Safeguarding', domain: 'safe', keyQuestion: 'How do systems, processes and practices keep people safe and safeguarded from abuse?', regulations: ['REG13', 'REG12', 'REG19', 'REG10'] },
+  { code: 'S2', title: 'Risk assessment and management', domain: 'safe', keyQuestion: 'How are risks assessed and managed so people stay safe?', regulations: ['REG12', 'REG15', 'REG17', 'REG20'] },
+  { code: 'S3', title: 'Staffing', domain: 'safe', keyQuestion: 'Are there sufficient suitable staff to keep people safe?', regulations: ['REG18', 'REG12', 'REG19'] },
+  { code: 'S4', title: 'Medicines management', domain: 'safe', keyQuestion: 'How does the provider ensure proper and safe use of medicines?', regulations: ['REG12', 'REG17'] },
+  { code: 'S5', title: 'Infection prevention and control', domain: 'safe', keyQuestion: 'How well are people protected by infection prevention and control?', regulations: ['REG12', 'REG15'] },
+  { code: 'S6', title: 'Learning when things go wrong', domain: 'safe', keyQuestion: 'Are lessons learned when things go wrong?', regulations: ['REG17', 'REG20'] },
+  { code: 'E1', title: 'Needs assessment and evidence-based care', domain: 'effective', keyQuestion: 'Are needs assessed and care delivered in line with evidence-based guidance?', regulations: ['REG9', 'REG12', 'REG10'] },
+  { code: 'E2', title: 'Staff skills and experience', domain: 'effective', keyQuestion: 'Do staff have skills, knowledge and experience to deliver effective care?', regulations: ['REG18', 'REG19', 'REG12'] },
+  { code: 'E3', title: 'Nutrition and hydration', domain: 'effective', keyQuestion: 'How are people supported with nutrition and hydration?', regulations: ['REG14', 'REG9'] },
+  { code: 'E4', title: 'Working together', domain: 'effective', keyQuestion: 'How do staff, teams and services work together?', regulations: ['REG9', 'REG12'] },
+  { code: 'E5', title: 'Healthier lives', domain: 'effective', keyQuestion: 'How are people supported to live healthier lives?', regulations: ['REG9', 'REG12'] },
+  { code: 'E6', title: 'Consent', domain: 'effective', keyQuestion: 'Is consent sought in line with legislation and guidance?', regulations: ['REG11', 'REG9', 'REG10'] },
+  { code: 'E7', title: 'Consent to care (additional)', domain: 'effective', keyQuestion: 'Is consent sought in line with legislation and guidance? (Extended assessment items)', regulations: ['REG11'] },
+  { code: 'C1', title: 'Kindness, respect and compassion', domain: 'caring', keyQuestion: 'Are people treated with kindness, respect, compassion and given emotional support?', regulations: ['REG10', 'REG9'] },
+  { code: 'C2', title: 'Involvement in decisions', domain: 'caring', keyQuestion: 'Are people supported to express views and be involved in decisions?', regulations: ['REG9', 'REG10', 'REG11'] },
+  { code: 'C3', title: 'Privacy and dignity', domain: 'caring', keyQuestion: 'How are privacy and dignity respected?', regulations: ['REG10', 'REG15'] },
+  { code: 'R1', title: 'Personalised responsive care', domain: 'responsive', keyQuestion: 'How do people receive personalised care responsive to their needs?', regulations: ['REG9', 'REG10', 'REG11'] },
+  { code: 'R2', title: 'Concerns and complaints', domain: 'responsive', keyQuestion: 'How are concerns and complaints gathered and acted upon?', regulations: ['REG16', 'REG17', 'REG20'] },
+  { code: 'R3', title: 'End of life care / Timely access', domain: 'responsive', keyQuestion: 'How are people supported at end of life? / How do people access care in a timely way?', regulations: ['REG9', 'REG10', 'REG11'] },
+  { code: 'W1', title: 'Leadership capacity and capability', domain: 'well-led', keyQuestion: 'Is there leadership capacity and capability to deliver high-quality care?', regulations: ['REG7', 'REG17', 'REG5'] },
+  { code: 'W2', title: 'Vision and strategy', domain: 'well-led', keyQuestion: 'Is there a clear vision and strategy?', regulations: ['REG17'] },
+  { code: 'W3', title: 'Culture of person-centred care', domain: 'well-led', keyQuestion: 'Is there a culture of high-quality, person-centred care?', regulations: ['REG17', 'REG20', 'REG10'] },
+  { code: 'W4', title: 'Responsibilities and accountability', domain: 'well-led', keyQuestion: 'Are there clear responsibilities and systems for accountability?', regulations: ['REG17', 'REG20A'] },
+  { code: 'W5', title: 'Risks and performance', domain: 'well-led', keyQuestion: 'Are there clear processes for managing risks and performance?', regulations: ['REG17', 'REG12', 'REG20'] },
+  { code: 'W6', title: 'Information management / Partnership working', domain: 'well-led', keyQuestion: 'Is information effectively managed? / Partnership working with other agencies', regulations: ['REG17'] },
+];
 
 export function getRatingFromScore(score: number): CqcRating {
   if (score >= RATING_THRESHOLDS.OUTSTANDING) return 'OUTSTANDING';
@@ -78,6 +86,8 @@ export function getRatingFromScore(score: number): CqcRating {
 // =============================================================================
 
 export const REGULATIONS = [
+  { code: 'REG5', title: 'Fit and proper persons: directors', domains: ['well-led'] as DomainSlug[] },
+  { code: 'REG7', title: 'Requirements relating to registered managers', domains: ['well-led'] as DomainSlug[] },
   { code: 'REG9', title: 'Person-centred care', domains: ['responsive'] as DomainSlug[] },
   { code: 'REG10', title: 'Dignity and respect', domains: ['caring'] as DomainSlug[] },
   { code: 'REG11', title: 'Need for consent', domains: ['effective'] as DomainSlug[] },

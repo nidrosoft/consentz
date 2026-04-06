@@ -167,6 +167,8 @@ export function AdminOrgDetailPanel({ orgId, onClose }: Props) {
                                         ["Policies", data.counts.policies],
                                         ["Tasks", data.counts.tasks],
                                         ["Open Gaps", data.counts.openGaps],
+                                        ["Evidence Items", data.counts.evidenceItems ?? 0],
+                                        ["Completed", data.counts.evidenceComplete ?? 0],
                                     ] as [string, number][]
                                 ).map(([label, val]) => (
                                     <div key={label} className="flex flex-col rounded-lg border border-secondary bg-primary p-3">
@@ -183,6 +185,7 @@ export function AdminOrgDetailPanel({ orgId, onClose }: Props) {
                             <dl className="divide-y divide-secondary rounded-lg border border-secondary">
                                 {([
                                     ["Service Type", org?.service_type?.replace(/_/g, " ") ?? "—"],
+                                    ...(org?.service_type === "AESTHETIC_CLINIC" ? [["E3 Nutrition N/A", org?.e3_nutrition_na_aesthetic ? "Yes" : "No"]] : []),
                                     ["CQC Rating", org?.cqc_current_rating ?? "—"],
                                     ["CQC Provider ID", org?.cqc_provider_id ?? "—"],
                                     ["Registered Manager", org?.registered_manager ?? "—"],
