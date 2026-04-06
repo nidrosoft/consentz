@@ -171,7 +171,7 @@ export default function DashboardPage() {
                             size="sm"
                             color={score.predictedRating === "OUTSTANDING" ? "success" : score.predictedRating === "GOOD" ? "blue" : score.predictedRating === "INADEQUATE" ? "error" : "warning"}
                             type="pill-color"
-                            className="absolute top-4 right-4"
+                            className="absolute top-3 right-10 sm:top-4 sm:right-12"
                         >
                             {RATING_LABELS[score.predictedRating]}
                         </Badge>

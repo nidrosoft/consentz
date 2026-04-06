@@ -132,7 +132,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     }
 
     return (
-        <div className="flex min-h-screen bg-primary">
+        <div className="flex min-h-screen flex-col bg-primary lg:flex-row">
             <SidebarNavigationSectionsSubheadings
                 activeUrl={pathname}
                 items={adminNavItems}
@@ -140,10 +140,27 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     name: adminRole === "super_admin" ? "Super Admin" : "Support Admin",
                     email: adminEmail || "admin@consentz.com",
                 }}
+                mobileHeaderActions={
+                    <>
+                        <button
+                            onClick={() => router.push("/admin/settings")}
+                            className="flex size-9 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover"
+                            aria-label="Settings"
+                        >
+                            <Settings01 className="size-4 text-fg-secondary" />
+                        </button>
+                        <button
+                            onClick={() => router.push("/")}
+                            className="rounded-lg border border-secondary px-2 py-1 text-xs font-medium text-secondary shadow-xs transition duration-100 hover:bg-primary_hover"
+                        >
+                            Back to App
+                        </button>
+                    </>
+                }
             />
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-secondary bg-primary px-4 md:px-6">
+                <header className="sticky top-0 z-30 hidden h-16 items-center justify-between border-b border-secondary bg-primary px-4 lg:flex lg:px-6">
                     <nav className="flex items-center gap-1 text-sm">
                         {breadcrumbs.map((crumb, i) => (
                             <span key={crumb.href} className="flex items-center gap-1">

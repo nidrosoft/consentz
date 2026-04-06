@@ -26,6 +26,8 @@ interface SidebarNavigationSectionsSubheadingsProps {
     user?: { name: string; email: string; avatar?: string };
     /** Optional content rendered above the footer (collapse toggle + account). */
     footerContent?: React.ReactNode;
+    /** Optional actions rendered in the mobile header bar (right side). */
+    mobileHeaderActions?: React.ReactNode;
 }
 
 const EXPANDED_WIDTH = 292;
@@ -39,7 +41,7 @@ function isActive(href: string | undefined, activeUrl: string): boolean {
     return activeUrl === href || activeUrl.startsWith(href + "/");
 }
 
-export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, user, footerContent }: SidebarNavigationSectionsSubheadingsProps) => {
+export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, user, footerContent, mobileHeaderActions }: SidebarNavigationSectionsSubheadingsProps) => {
     const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
     const toggleSidebar = useUiStore((s) => s.toggleSidebar);
     const sidebarWidth = sidebarCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
@@ -206,7 +208,7 @@ export const SidebarNavigationSectionsSubheadings = ({ activeUrl = "/", items, u
     return (
         <>
             {/* Mobile header navigation */}
-            <MobileNavigationHeader>{mobileContent}</MobileNavigationHeader>
+            <MobileNavigationHeader headerActions={mobileHeaderActions}>{mobileContent}</MobileNavigationHeader>
 
             {/* Desktop sidebar navigation */}
             <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:py-1 lg:pl-1" data-tour="sidebar-nav">{desktopContent}</div>

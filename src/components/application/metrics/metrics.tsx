@@ -108,7 +108,7 @@ export const MetricsSimple = ({
                     <MetricChangeIndicator type={type} trend={trend} value={change} />
                 </div>
 
-                <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                     <ActionsDropdown />
                 </div>
             </div>
@@ -143,7 +143,7 @@ export const MetricsIcon01 = ({
                     </div>
                 </div>
 
-                <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                     <ActionsDropdown />
                 </div>
             </div>
@@ -180,7 +180,7 @@ export const MetricsIcon02 = ({
                     </div>
                 </div>
 
-                <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                     <ActionsDropdown />
                 </div>
             </div>
@@ -227,7 +227,7 @@ export const MetricsIcon03 = ({
                 </div>
 
                 {actions && (
-                    <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                    <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                         <ActionsDropdown />
                     </div>
                 )}
@@ -273,7 +273,7 @@ export const MetricsIcon04 = ({
                 </div>
 
                 {actions && (
-                    <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                    <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                         <ActionsDropdown />
                     </div>
                 )}
@@ -397,7 +397,7 @@ export const MetricsChart01 = ({
                 </div>
 
                 {actions && (
-                    <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                    <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                         <ActionsDropdown />
                     </div>
                 )}
@@ -480,7 +480,7 @@ export const MetricsChart02 = ({
                     </AreaChart>
                 </div>
 
-                <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                     <ActionsDropdown />
                 </div>
             </div>
@@ -568,7 +568,7 @@ export const MetricsChart03 = ({
                     </AreaChart>
                 </ResponsiveContainer>
 
-                <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                     <ActionsDropdown />
                 </div>
             </div>
@@ -611,16 +611,16 @@ export const MetricsChart04 = ({
 
     return (
         <div className={cx("flex flex-col overflow-hidden rounded-xl bg-secondary_subtle shadow-xs ring-1 ring-secondary ring-inset", className)}>
-            <div className="mb-0.5 px-4 pt-3 pb-2 md:px-5">
-                <h3 className="text-sm font-semibold text-primary">{subtitle}</h3>
+            <div className="mb-0.5 px-3 pt-3 pb-2 pr-10 sm:px-4 md:px-5">
+                <h3 className="truncate text-sm font-semibold text-primary">{subtitle}</h3>
             </div>
-            <div className="relative flex flex-col gap-4 rounded-xl bg-primary px-4 py-5 shadow-xs ring-1 ring-secondary ring-inset md:gap-5 md:px-5">
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-3">
-                        <p className="text-display-sm font-semibold text-primary">{title}</p>
-                        <div className="flex gap-2">
+            <div className="relative flex flex-col gap-4 rounded-xl bg-primary px-3 py-4 shadow-xs ring-1 ring-secondary ring-inset sm:px-4 sm:py-5 md:gap-5 md:px-5">
+                <div className="flex flex-col gap-1.5 sm:gap-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 sm:gap-x-3">
+                        <p className="text-display-xs font-semibold text-primary sm:text-display-sm">{title}</p>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
                             <MetricChangeIndicator type={type} trend={changeTrend} value={change} />
-                            {changeDescription && <span className="text-sm font-medium text-tertiary">{changeDescription}</span>}
+                            {changeDescription && <span className="text-xs font-medium text-tertiary sm:text-sm">{changeDescription}</span>}
                         </div>
                     </div>
                 </div>
@@ -656,7 +656,7 @@ export const MetricsChart04 = ({
                     </AreaChart>
                 </ResponsiveContainer>
 
-                <div className="absolute top-4 right-4 md:top-5 md:right-5">
+                <div className="absolute top-3 right-3 sm:top-4 sm:right-4 md:top-5 md:right-5">
                     <ActionsDropdown />
                 </div>
             </div>

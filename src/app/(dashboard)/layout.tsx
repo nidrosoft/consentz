@@ -158,17 +158,41 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
     return (
         <WalkthroughProvider>
-        <div className="flex min-h-screen bg-primary">
+        <div className="flex min-h-screen flex-col bg-primary lg:flex-row">
             <SidebarNavigationSectionsSubheadings
                 activeUrl={pathname}
                 items={navItems}
                 user={me ? { name: me.fullName, email: me.email } : undefined}
                 footerContent={<SidebarOnboarding />}
+                mobileHeaderActions={
+                    <>
+                        <button
+                            onClick={() => router.push("/settings")}
+                            className="flex size-9 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover"
+                            aria-label="Settings"
+                        >
+                            <Settings01 className="size-4 text-fg-secondary" />
+                        </button>
+                        <button
+                            onClick={() => setNotifOpen(true)}
+                            className="relative flex size-9 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover"
+                            aria-label="Notifications"
+                        >
+                            <Bell01 className="size-4 text-fg-secondary" />
+                            {unreadCount > 0 && (
+                                <span className="absolute top-1 right-1 flex size-3.5 items-center justify-center rounded-full bg-error-solid text-[9px] font-bold text-white">
+                                    {unreadCount}
+                                </span>
+                            )}
+                        </button>
+                        <DashboardUserMenu />
+                    </>
+                }
             />
 
             <div className="flex min-w-0 flex-1 flex-col">
-                <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-secondary bg-primary px-3 sm:h-16 sm:px-4 md:px-6">
-                    <nav className="hidden items-center gap-1 text-sm sm:flex">
+                <header className="sticky top-0 z-30 hidden h-16 items-center justify-between border-b border-secondary bg-primary px-4 lg:flex lg:px-6">
+                    <nav className="flex items-center gap-1 text-sm">
                         {breadcrumbs.map((crumb, i) => (
                             <span key={crumb.href} className="flex items-center gap-1">
                                 {i > 0 && <span className="text-quaternary">/</span>}
@@ -185,26 +209,23 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                             </span>
                         ))}
                     </nav>
-                    <span className="truncate text-sm font-medium text-primary sm:hidden">
-                        {breadcrumbs[breadcrumbs.length - 1]?.label}
-                    </span>
 
-                    <div className="flex items-center gap-1 sm:gap-3">
+                    <div className="flex items-center gap-3">
                         <button
                             onClick={() => router.push("/settings")}
-                            className="flex size-9 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover sm:size-10"
+                            className="flex size-10 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover"
                             aria-label="Settings"
                         >
                             <Settings01 className="size-5 text-fg-secondary" />
                         </button>
                         <button
                             onClick={() => setNotifOpen(true)}
-                            className="relative flex size-9 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover sm:size-10"
+                            className="relative flex size-10 items-center justify-center rounded-lg transition duration-100 hover:bg-primary_hover"
                             aria-label="Notifications"
                         >
                             <Bell01 className="size-5 text-fg-secondary" />
                             {unreadCount > 0 && (
-                                <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-error-solid text-[10px] font-bold text-white sm:top-1.5 sm:right-1.5">
+                                <span className="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-error-solid text-[10px] font-bold text-white">
                                     {unreadCount}
                                 </span>
                             )}
@@ -213,7 +234,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto">
                     <div className="px-4 py-5 sm:px-6 md:py-8 lg:px-[5%]">{children}</div>
                 </main>
             </div>

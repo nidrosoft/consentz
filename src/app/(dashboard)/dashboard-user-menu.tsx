@@ -45,14 +45,14 @@ export function DashboardUserMenu() {
                 type="button"
                 data-testid="dashboard-user-menu-trigger"
                 onClick={() => setOpen((o) => !o)}
-                className="flex items-center gap-2 rounded-lg py-1.5 pl-1 pr-2 transition duration-100 hover:bg-primary_hover"
+                className="flex items-center gap-1.5 rounded-lg py-1 pl-1 pr-1.5 transition duration-100 hover:bg-primary_hover sm:gap-2 sm:py-1.5 sm:pr-2"
                 aria-expanded={open}
                 aria-haspopup="menu"
             >
-                <span className="flex size-9 items-center justify-center rounded-lg bg-brand-secondary text-sm font-semibold text-brand-primary">
+                <span className="flex size-7 items-center justify-center rounded-md bg-brand-secondary text-xs font-semibold text-brand-primary sm:size-9 sm:rounded-lg sm:text-sm">
                     {initial}
                 </span>
-                <ChevronDown className={cx("size-4 text-fg-tertiary transition", open && "rotate-180")} />
+                <ChevronDown className={cx("hidden size-4 text-fg-tertiary transition sm:block", open && "rotate-180")} />
             </button>
             {open && (
                 <div
