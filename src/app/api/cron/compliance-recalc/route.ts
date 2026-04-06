@@ -1,15 +1,14 @@
-import { withPublic } from '@/lib/api-handler';
-import { apiSuccess, ApiErrors } from '@/lib/api-response';
-import { checkRateLimit } from '@/lib/rate-limiter';
+import { NextRequest } from 'next/server';
+import { apiSuccess } from '@/lib/api-response';
+import { verifyCronSecret } from '@/lib/cron-auth';
 import { ComplianceService } from '@/lib/services/compliance-service';
 import { getDb } from '@/lib/db';
 
-export const GET = withPublic(async (req, { params }) => {
+export async function GET(req: NextRequest) {
+  const authError = verifyCronSecret(req);
+  if (authError) return authError;
+
   const client = await getDb();
-  const rateCheck = checkRateLimit('cron', 'cron');
-  if (!rateCheck.allowed) {
-    return ApiErrors.tooManyRequests();
-  }
 
   const { data: orgs } = await client.from('organizations').select('id');
   const results: Record<string, unknown>[] = [];
@@ -27,4 +26,4 @@ export const GET = withPublic(async (req, { params }) => {
     recalculated: true,
     organizations: results,
   });
-});
+}

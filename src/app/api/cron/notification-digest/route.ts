@@ -1,15 +1,14 @@
-import { withPublic } from '@/lib/api-handler';
-import { apiSuccess, ApiErrors } from '@/lib/api-response';
+import { NextRequest } from 'next/server';
+import { apiSuccess } from '@/lib/api-response';
+import { verifyCronSecret } from '@/lib/cron-auth';
 import { sendNotificationDigest } from '@/lib/email';
-import { checkRateLimit } from '@/lib/rate-limiter';
 import { getDb } from '@/lib/db';
 
-export const GET = withPublic(async (req, { params }) => {
+export async function GET(req: NextRequest) {
+  const authError = verifyCronSecret(req);
+  if (authError) return authError;
+
   const client = await getDb();
-  const rateCheck = checkRateLimit('cron', 'cron');
-  if (!rateCheck.allowed) {
-    return ApiErrors.tooManyRequests();
-  }
 
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const digests: { organizationId: string; unreadCount: number; emailsSent: number }[] = [];
@@ -67,4 +66,4 @@ export const GET = withPublic(async (req, { params }) => {
     emailsSent: totalEmailsSent,
     digests,
   });
-});
+}

@@ -42,7 +42,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const { messages }: { messages: UIMessage[] } = await req.json();
+  const body = await req.json();
+  const messages: UIMessage[] = body?.messages;
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 100) {
+    return new Response(JSON.stringify({ error: 'Invalid messages' }), { status: 400 });
+  }
   const supabase = getDb();
 
   let orgContext = '';

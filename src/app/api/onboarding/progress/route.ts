@@ -12,10 +12,17 @@ export const GET = withAuth(async (_req, { auth }) => {
   return apiSuccess({ steps: steps ?? [] });
 });
 
+const VALID_STEP_KEYS = [
+  'configure_organisation', 'connect_consentz', 'upload_evidence',
+  'add_staff', 'review_domains', 'complete_assessment',
+] as const;
+
 export const POST = withAuth(async (req, { auth }) => {
   const body = await req.json();
   const { stepKey } = body as { stepKey: string };
-  if (!stepKey) return apiSuccess({ ok: false });
+  if (!stepKey || !VALID_STEP_KEYS.includes(stepKey as typeof VALID_STEP_KEYS[number])) {
+    return apiSuccess({ ok: false });
+  }
 
   const client = await getDb();
   await client.from('onboarding_progress')

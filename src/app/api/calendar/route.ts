@@ -1,6 +1,15 @@
+import { z } from 'zod';
 import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, ApiErrors } from '@/lib/api-response';
 import { CalendarService } from '@/lib/services/calendar-service';
+
+const calendarSyncSchema = z.object({
+  taskId: z.string().uuid(),
+  title: z.string().min(1).max(500),
+  dueDate: z.string().datetime(),
+  assigneeName: z.string().max(200).optional(),
+  assigneeEmail: z.string().email().optional(),
+});
 
 export const GET = withAuth(async (_req, { auth }) => {
   if (!CalendarService.isConfigured()) {
@@ -41,17 +50,8 @@ export const POST = withAuth(async (req, { auth }) => {
   }
 
   const body = await req.json();
-  const { taskId, title, dueDate, assigneeName, assigneeEmail } = body as {
-    taskId: string;
-    title: string;
-    dueDate: string;
-    assigneeName?: string;
-    assigneeEmail?: string;
-  };
-
-  if (!taskId || !title || !dueDate) {
-    return ApiErrors.badRequest('taskId, title, and dueDate are required.');
-  }
+  const validated = calendarSyncSchema.parse(body);
+  const { taskId, title, dueDate, assigneeName, assigneeEmail } = validated;
 
   try {
     const result = await CalendarService.syncTaskToCalendar({

@@ -1,17 +1,15 @@
-import { withPublic } from '@/lib/api-handler';
+import { NextRequest } from 'next/server';
 import { apiSuccess } from '@/lib/api-response';
-import { checkRateLimit } from '@/lib/rate-limiter';
-import { ApiErrors } from '@/lib/api-response';
+import { verifyCronSecret } from '@/lib/cron-auth';
 import { syncConsentzData } from '@/lib/consentz/sync-service';
 import { recalculateComplianceScores } from '@/lib/services/score-engine';
 import { getDb } from '@/lib/db';
 
-export const GET = withPublic(async () => {
+export async function GET(req: NextRequest) {
+  const authError = verifyCronSecret(req);
+  if (authError) return authError;
+
   const client = await getDb();
-  const rateCheck = checkRateLimit('cron', 'cron');
-  if (!rateCheck.allowed) {
-    return ApiErrors.tooManyRequests();
-  }
 
   const { data: orgs } = await client.from('organizations')
     .select('id, name, consentz_clinic_id')
@@ -27,7 +25,7 @@ export const GET = withPublic(async () => {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`[CRON] Consentz sync failed for org ${org.id}:`, message);
-      results.push({ organizationId: org.id, name: org.name, status: 'error', error: message });
+      results.push({ organizationId: org.id, name: org.name, status: 'error' });
     }
   }
 
@@ -36,4 +34,4 @@ export const GET = withPublic(async () => {
     totalOrganizations: (orgs ?? []).length,
     results,
   });
-});
+}

@@ -1,14 +1,15 @@
+import { z } from 'zod';
 import { withAuth } from '@/lib/api-handler';
-import { apiSuccess, ApiErrors } from '@/lib/api-response';
+import { apiSuccess } from '@/lib/api-response';
 import { StripeService } from '@/lib/services/stripe-service';
+
+const checkoutSchema = z.object({
+  priceId: z.string().min(1).max(200),
+});
 
 export const POST = withAuth(async (req, { auth }) => {
   const body = await req.json();
-  const { priceId } = body as { priceId?: string };
-
-  if (!priceId) {
-    return ApiErrors.badRequest('priceId is required');
-  }
+  const { priceId } = checkoutSchema.parse(body);
 
   const origin = new URL(req.url).origin;
 

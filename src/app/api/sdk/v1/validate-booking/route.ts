@@ -3,10 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 
 function getSdkDb() {
-    return createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for SDK routes');
+    return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
 }
 
 export async function POST(req: NextRequest) {
@@ -49,10 +48,15 @@ export async function POST(req: NextRequest) {
         practitionerId?: string;
         treatmentId?: string;
     };
-    const orgId = body.orgId || resolvedOrgId;
 
+    // DB-scoped keys must use their bound org; master env key requires explicit orgId
+    const orgId = resolvedOrgId ?? body.orgId;
     if (!orgId) {
         return Response.json({ error: "orgId required" }, { status: 400 });
+    }
+    // Prevent DB-keyed callers from querying other orgs
+    if (resolvedOrgId && body.orgId && body.orgId !== resolvedOrgId) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const warnings: string[] = [];

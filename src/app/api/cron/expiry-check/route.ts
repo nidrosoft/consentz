@@ -1,16 +1,15 @@
-import { withPublic } from '@/lib/api-handler';
-import { apiSuccess, ApiErrors } from '@/lib/api-response';
-import { checkRateLimit } from '@/lib/rate-limiter';
+import { NextRequest } from 'next/server';
+import { apiSuccess } from '@/lib/api-response';
+import { verifyCronSecret } from '@/lib/cron-auth';
 import { NotificationService } from '@/lib/services/notification-service';
 import { detectEvidenceGaps } from '@/lib/services/gap-generator';
 import { getDb } from '@/lib/db';
 
-export const GET = withPublic(async (req, { params }) => {
+export async function GET(req: NextRequest) {
+  const authError = verifyCronSecret(req);
+  if (authError) return authError;
+
   const client = await getDb();
-  const rateCheck = checkRateLimit('cron', 'cron');
-  if (!rateCheck.allowed) {
-    return ApiErrors.tooManyRequests();
-  }
 
   const now = new Date();
   const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -113,6 +112,5 @@ export const GET = withPublic(async (req, { params }) => {
     checked: true,
     notificationsCreated: notifications.length,
     gapsCreated,
-    items: notifications,
   });
-});
+}

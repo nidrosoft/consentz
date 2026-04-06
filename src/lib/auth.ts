@@ -70,7 +70,7 @@ const DEV_FALLBACK: AuthContext = {
  * Set AUTH_DEV_BYPASS=true only for local tooling without Supabase cookies.
  */
 export async function resolveSessionAuth(): Promise<SessionAuth> {
-    if (process.env.AUTH_DEV_BYPASS === "true") {
+    if (process.env.AUTH_DEV_BYPASS === "true" && process.env.NODE_ENV !== "production") {
         return {
             userId: DEV_FALLBACK.userId,
             dbUserId: DEV_FALLBACK.dbUserId,

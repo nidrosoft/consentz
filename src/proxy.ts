@@ -31,7 +31,7 @@ function bypassesOnboardingGate(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
-    if (process.env.AUTH_DEV_BYPASS === "true") {
+    if (process.env.AUTH_DEV_BYPASS === "true" && process.env.NODE_ENV !== "production") {
         return NextResponse.next({ request });
     }
 
@@ -53,7 +53,7 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(url);
     }
 
-    if (bypassesOnboardingGate(pathname)) {
+    if (bypassesOnboardingGate(pathname) || pathname.startsWith("/admin")) {
         return supabaseResponse;
     }
 

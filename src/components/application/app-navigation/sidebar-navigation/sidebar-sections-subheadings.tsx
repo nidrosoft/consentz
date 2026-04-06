@@ -31,7 +31,7 @@ interface SidebarNavigationSectionsSubheadingsProps {
 const EXPANDED_WIDTH = 292;
 const COLLAPSED_WIDTH = 68;
 
-const EXACT_MATCH_ROUTES = new Set(["/", "/domains"]);
+const EXACT_MATCH_ROUTES = new Set(["/", "/domains", "/admin", "/admin/compliance"]);
 
 function isActive(href: string | undefined, activeUrl: string): boolean {
     if (!href) return false;

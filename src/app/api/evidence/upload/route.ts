@@ -28,7 +28,9 @@ export const POST = withAuth(async (req, { params, auth }) => {
 
   const formData = await req.formData();
   const file = formData.get('file');
-  const bucket = (formData.get('bucket') as string) || 'evidence';
+  const ALLOWED_BUCKETS = new Set(['evidence', 'policies', 'training']);
+  const rawBucket = (formData.get('bucket') as string) || 'evidence';
+  const bucket = ALLOWED_BUCKETS.has(rawBucket) ? rawBucket : 'evidence';
 
   if (!file || !(file instanceof File)) {
     return ApiErrors.badRequest('No file provided');
@@ -56,7 +58,8 @@ export const POST = withAuth(async (req, { params, auth }) => {
     });
 
   if (error) {
-    return ApiErrors.internal(`Upload failed: ${error.message}`);
+    console.error('[UPLOAD] Storage error:', error.message);
+    return ApiErrors.internal('File upload failed. Please try again.');
   }
 
   const { data: urlData } = client.storage

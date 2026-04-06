@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Settings01, User01, Bell01, LogOut01, Users01 } from "@untitledui/icons";
+import { ChevronDown, Settings01, User01, Bell01, LogOut01, Users01, Shield01 } from "@untitledui/icons";
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { useSignOutConfirm } from "@/providers/sign-out-confirm-provider";
@@ -13,6 +13,7 @@ export function DashboardUserMenu() {
     const router = useRouter();
     const [email, setEmail] = useState<string | null>(null);
     const [open, setOpen] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -20,6 +21,7 @@ export function DashboardUserMenu() {
         void supabase.auth.getUser().then(({ data: { user } }) => {
             setEmail(user?.email ?? null);
         });
+        void fetch("/api/admin/check").then((r) => r.json()).then((d) => setIsAdmin(d.isAdmin === true)).catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -69,6 +71,11 @@ export function DashboardUserMenu() {
                         <HeaderMenuItem icon={Bell01} label="Notifications" onClick={() => navigate("/settings?tab=notifications")} />
                         <HeaderMenuItem icon={Users01} label="Invite a Team Member" onClick={() => navigate("/settings?tab=users")} />
                     </div>
+                    {isAdmin && (
+                        <div className="border-t border-secondary py-1">
+                            <HeaderMenuItem icon={Shield01} label="Admin Panel" onClick={() => navigate("/admin")} />
+                        </div>
+                    )}
                     <div className="border-t border-secondary py-1">
                         <HeaderMenuItem
                             icon={LogOut01}

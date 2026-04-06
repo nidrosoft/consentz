@@ -34,8 +34,8 @@ export const POST = withAuth(async (req, { auth }) => {
   });
 
   if (!loginRes.ok) {
-    const errorText = await loginRes.text().catch(() => '');
-    return ApiErrors.badRequest(`Consentz login failed: ${errorText || loginRes.statusText}`);
+    console.error('[CONSENTZ_CONNECT] Login failed:', loginRes.status);
+    return ApiErrors.badRequest('Consentz login failed. Please check your credentials.');
   }
 
   const data = await loginRes.json();
@@ -52,7 +52,8 @@ export const POST = withAuth(async (req, { auth }) => {
     .update({
       consentz_clinic_id: clinicId,
       consentz_username: username,
-      consentz_password: password,
+      consentz_session_token: sessionToken,
+      consentz_password: null,
     })
     .eq('id', auth.organizationId);
 
@@ -69,6 +70,7 @@ export const DELETE = withAuth(async (_req, { auth }) => {
     .update({
       consentz_clinic_id: null,
       consentz_username: null,
+      consentz_session_token: null,
       consentz_password: null,
     })
     .eq('id', auth.organizationId);

@@ -23,8 +23,8 @@ export const POST = withAuth(async (req) => {
   });
 
   if (!response.ok) {
-    const errorBody = await response.text().catch(() => '');
-    return ApiErrors.badRequest(`Consentz authentication failed: ${response.status}${errorBody ? ` — ${errorBody}` : ''}`);
+    console.error('[CONSENTZ_AUTH] Login failed:', response.status);
+    return ApiErrors.badRequest('Consentz authentication failed. Please check your credentials.');
   }
 
   const data = await response.json();

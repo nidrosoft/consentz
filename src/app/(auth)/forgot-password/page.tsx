@@ -25,15 +25,15 @@ export default function ForgotPasswordPage() {
             });
 
             if (resetErr) {
-                console.error("[ForgotPassword] Supabase error:", resetErr);
+                if (process.env.NODE_ENV === "development") console.error("[ForgotPassword]", resetErr);
                 setError(resetErr.message || "Could not send reset email.");
                 return;
             }
 
             setSent(true);
         } catch (err) {
-            console.error("[ForgotPassword] Unexpected error:", err);
-            setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+            if (process.env.NODE_ENV === "development") console.error("[ForgotPassword]", err);
+            setError("Something went wrong. Try again.");
         } finally {
             setLoading(false);
         }

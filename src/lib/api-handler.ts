@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { ApiErrors } from '@/lib/api-response';
 import { AuthContext, AuthError, getAuthContext, resolveSessionAuth, type SessionAuth } from '@/lib/auth';
+import { type AdminAuth, getAdminAuth } from '@/lib/admin-auth';
 
 // =============================================================================
 // API Route Handler Wrappers
@@ -20,6 +21,11 @@ type AuthenticatedHandler = (
 type SessionHandler = (
   req: NextRequest,
   context: { params: Record<string, string>; auth: SessionAuth },
+) => Promise<NextResponse>;
+
+type AdminHandler = (
+  req: NextRequest,
+  context: { params: Record<string, string>; admin: AdminAuth },
 ) => Promise<NextResponse>;
 
 type PublicHandler = (
@@ -49,6 +55,19 @@ export function withSession(handler: SessionHandler) {
       const auth = await resolveSessionAuth();
       const params = await context.params;
       return await handler(req, { params, auth });
+    } catch (error) {
+      return handleError(error);
+    }
+  };
+}
+
+/** Platform admin handler — requires platform_admins membership. */
+export function withAdmin(handler: AdminHandler) {
+  return async (req: NextRequest, context: RouteContext) => {
+    try {
+      const admin = await getAdminAuth();
+      const params = await context.params;
+      return await handler(req, { params, admin });
     } catch (error) {
       return handleError(error);
     }

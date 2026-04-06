@@ -42,15 +42,14 @@ export function SignInClient() {
                 password,
             });
             if (signErr) {
-                console.error("[SignIn] Supabase auth error:", signErr);
+                if (process.env.NODE_ENV === "development") console.error("[SignIn]", signErr);
                 setError(signErr.message || "Invalid email or password.");
                 return;
             }
 
             const ensure = await fetch("/api/auth/ensure-user", { method: "POST" });
             if (!ensure.ok) {
-                const body = await ensure.json().catch(() => null);
-                console.error("[SignIn] ensure-user failed:", ensure.status, body);
+                if (process.env.NODE_ENV === "development") console.error("[SignIn] ensure-user:", ensure.status);
                 setError("Signed in but profile sync failed. Try again or contact support.");
                 return;
             }
@@ -58,8 +57,8 @@ export function SignInClient() {
             router.refresh();
             router.push(redirectTo.startsWith("/") ? redirectTo : "/");
         } catch (err) {
-            console.error("[SignIn] Unexpected error:", err);
-            setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+            if (process.env.NODE_ENV === "development") console.error("[SignIn]", err);
+            setError("Something went wrong. Try again.");
         } finally {
             setLoading(false);
         }

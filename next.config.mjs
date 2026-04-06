@@ -25,26 +25,33 @@ const securityHeaders = [
     },
     {
         key: 'Permissions-Policy',
-        value: 'camera=(), microphone=(), geolocation=(), payment=()',
+        value: 'camera=(), microphone=(), geolocation=(), payment=(), browsing-topics=()',
+    },
+    {
+        key: 'Cross-Origin-Opener-Policy',
+        value: 'same-origin',
     },
     {
         key: 'Content-Security-Policy',
         value: [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+            "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com",
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob: https://*.supabase.co",
             "font-src 'self'",
-            "connect-src 'self' https://*.supabase.co https://*.sentry.io wss://*.supabase.co",
-            "frame-src 'none'",
+            "connect-src 'self' https://*.supabase.co https://*.sentry.io wss://*.supabase.co https://api.stripe.com",
+            "frame-src https://js.stripe.com",
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",
+            "frame-ancestors 'none'",
+            "upgrade-insecure-requests",
         ].join('; '),
     },
 ];
 
 const nextConfig = {
+    poweredByHeader: false,
     experimental: {
         optimizePackageImports: ["@untitledui/icons"],
     },

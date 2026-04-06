@@ -53,8 +53,8 @@ export default function UpdatePasswordPage() {
                 router.push("/");
             }, 2000);
         } catch (err) {
-            console.error("[UpdatePassword] Error:", err);
-            setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+            if (process.env.NODE_ENV === "development") console.error("[UpdatePassword]", err);
+            setError("Something went wrong. Try again.");
         } finally {
             setLoading(false);
         }
