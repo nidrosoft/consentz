@@ -61,8 +61,8 @@ This applies to all file types including:
 
 ```bash
 # Development
-npm run dev               # Start Vite development server (http://localhost:5173)
-npm run build            # Build for production (TypeScript compilation + Vite build)
+npm run dev               # Start Next.js dev server with Turbopack
+npm run build            # Build for production (Next.js build)
 ```
 
 ## Project Structure

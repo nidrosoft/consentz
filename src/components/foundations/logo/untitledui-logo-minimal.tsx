@@ -121,8 +121,8 @@ export const UntitledLogoMinimal = (props: SVGProps<SVGSVGElement>) => {
                     <stop offset="1" stopColor="#0A0D12" />
                 </linearGradient>
                 <linearGradient id={`paint1_linear-${id}`} x1="15" y1="26" x2="23" y2="10" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="#53389E" />
-                    <stop offset="1" stopColor="#6941C6" />
+                    <stop stopColor="#1A1A1F" />
+                    <stop offset="1" stopColor="#2D2D34" />
                 </linearGradient>
                 <radialGradient
                     id={`paint2_radial-${id}`}

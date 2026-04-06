@@ -6,9 +6,6 @@
         "dev": "next dev --turbopack",
         "build": "next build",
         "start": "next start",
-        "test:e2e": "playwright test",
-        "test:e2e:headed": "playwright test --headed",
-        "test:e2e:ui": "playwright test --ui",
         "setup:buckets": "npx tsx scripts/setup-storage-buckets.ts",
         "test": "vitest run",
         "test:watch": "vitest",
@@ -20,6 +17,7 @@
         "@anthropic-ai/sdk": "^0.78.0",
         "@hookform/resolvers": "^5.2.2",
         "@internationalized/date": "^3.12.0",
+        "@react-aria/utils": "^3.33.1",
         "@react-stately/utils": "^3.11.0",
         "@sentry/nextjs": "^10.45.0",
         "@supabase/ssr": "^0.9.0",
@@ -30,7 +28,6 @@
         "@untitledui/file-icons": "^0.0.8",
         "@untitledui/icons": "^0.0.22",
         "ai": "^6.0.142",
-        "date-fns": "^4.1.0",
         "input-otp": "^1.4.2",
         "jspdf": "^4.2.1",
         "jspdf-autotable": "^5.0.7",
@@ -58,24 +55,17 @@
         "zustand": "^5.0.11"
     },
     "devDependencies": {
-        "@playwright/test": "^1.58.2",
         "@testing-library/jest-dom": "^6.9.1",
-        "@testing-library/react": "^16.3.0",
         "@trivago/prettier-plugin-sort-imports": "^5.2.2",
         "@types/node": "^24.10.9",
         "@types/react": "^19.2.9",
         "@types/react-dom": "^19.2.3",
         "jsdom": "^26.1.0",
-        "pg": "^8.20.0",
         "postcss": "^8.5.6",
-        "postcss-loader": "^8.2.0",
         "prettier": "^3.8.1",
         "prettier-plugin-tailwindcss": "^0.6.14",
         "tsx": "^4.19.0",
         "typescript": "^5.9.3",
         "vitest": "^3.2.4"
-    },
-    "prisma": {
-        "seed": "npx tsx prisma/seed.ts"
     }
 }

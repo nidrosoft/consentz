@@ -29,21 +29,6 @@
     transition-timing-function: inherit;
 }
 
-/*
- * TODO [BRANDING — Pending from Tobe]:
- *   1. Replace --font-body with Consentz CRM font once received
- *   2. Update brand button styles to match Consentz CRM buttons
- *   3. Add Consentz logo to sidebar/header (asset pending)
- *   See: Meeting notes re: "change the font to consents font" and "button styles"
- *
- * TODO [BACKEND — When API endpoints are ready]:
- *   - Wire assessment, compliance, evidence, policy, staff, incident, task data to real APIs
- *   - Replace mock data store with Prisma/Supabase queries
- *   - Integrate Clerk authentication (replace mocked getAuthContext)
- *   - Set up SSO/session sharing with Consentz CRM ("if a user is already in session")
- *   - Host on Vercel (eu-west-2 London region for UK data residency)
- */
-
 html,
 body {
     font-family: var(--font-body);

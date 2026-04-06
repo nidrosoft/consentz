@@ -121,19 +121,19 @@
     --color-alpha-white: rgb(255 255 255);
     --color-alpha-black: rgb(0 0 0);
 
-    /* ZeroDenial Healthcare Teal Brand Colors */
-    --color-brand-25: rgb(247 254 253);
-    --color-brand-50: rgb(240 253 250);
-    --color-brand-100: rgb(215 248 232);
-    --color-brand-200: rgb(130 208 142);
-    --color-brand-300: rgb(89 178 159);
-    --color-brand-400: rgb(89 178 159);
-    --color-brand-500: rgb(43 127 117);
-    --color-brand-600: rgb(31 96 104);
-    --color-brand-700: rgb(21 88 88);
-    --color-brand-800: rgb(13 64 73);
-    --color-brand-900: rgb(8 47 60);
-    --color-brand-950: rgb(5 32 41);
+    /* Consentz Brand Colors — Black / Charcoal */
+    --color-brand-25: rgb(252 252 252);
+    --color-brand-50: rgb(247 247 247);
+    --color-brand-100: rgb(240 240 241);
+    --color-brand-200: rgb(220 220 222);
+    --color-brand-300: rgb(180 180 184);
+    --color-brand-400: rgb(130 130 136);
+    --color-brand-500: rgb(82 82 91);
+    --color-brand-600: rgb(45 45 52);
+    --color-brand-700: rgb(30 30 36);
+    --color-brand-800: rgb(20 20 24);
+    --color-brand-900: rgb(14 14 17);
+    --color-brand-950: rgb(8 8 10);
 
     /* Error Colors - #CE2C6B from style guide */
     --color-error-25: rgb(255 247 250);

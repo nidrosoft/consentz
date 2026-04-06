@@ -8,7 +8,6 @@ const PUBLIC_PREFIXES = [
     "/forgot-password",
     "/auth/callback",
     "/auth/auth-code-error",
-    "/sso-callback",
 ];
 const PUBLIC_API_PREFIXES = ["/api/webhooks", "/api/cron"];
 

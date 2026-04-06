@@ -10,7 +10,7 @@ import {
     Lock01, AlertTriangle, Plus, ChevronLeft, DotsVertical, X,
     CheckCircle, Zap, ArrowUpRight, Check,
     Copy01, Key01, RefreshCw01, Trash01, AlertCircle, Link01, LinkBroken01,
-    Rocket01,
+    Rocket01, Calendar as CalendarIcon, MessageChatSquare,
 } from "@untitledui/icons";
 import { useWalkthrough } from "@/components/walkthrough/walkthrough-provider";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -149,16 +149,87 @@ function OrganisationPanel() {
 
             <RestartTourCard />
 
-            <div className="rounded-xl border border-error-primary bg-primary p-6">
-                <div className="flex items-start gap-3">
-                    <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error-primary" />
-                    <div className="flex-1">
-                        <h2 className="text-sm font-semibold text-error-primary">Danger Zone</h2>
-                        <p className="mt-1 text-sm text-tertiary">Permanently delete this organisation and all its data. This action cannot be undone.</p>
-                    </div>
-                    <Button color="primary-destructive" size="sm">Delete Organisation</Button>
+            <DeleteOrganisationSection orgName={org.name ?? ""} />
+        </div>
+    );
+}
+
+function DeleteOrganisationSection({ orgName }: { orgName: string }) {
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [confirmInput, setConfirmInput] = useState("");
+    const [deleting, setDeleting] = useState(false);
+
+    const handleDelete = useCallback(async () => {
+        if (confirmInput !== orgName) return;
+        setDeleting(true);
+        try {
+            const res = await fetch("/api/organization", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ confirmName: confirmInput }),
+            });
+            const json = await res.json();
+            if (json.success) {
+                const { signOutEverywhere } = await import("@/lib/supabase/client-sign-out");
+                await signOutEverywhere();
+            } else {
+                toast.error("Deletion failed", json.error?.message ?? "Could not delete the organisation.");
+                setDeleting(false);
+            }
+        } catch {
+            toast.error("Deletion failed", "Something went wrong. Please try again.");
+            setDeleting(false);
+        }
+    }, [confirmInput, orgName]);
+
+    return (
+        <div className="rounded-xl border border-error-primary bg-primary p-6">
+            <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error-primary" />
+                <div className="flex-1">
+                    <h2 className="text-sm font-semibold text-error-primary">Danger Zone</h2>
+                    <p className="mt-1 text-sm text-tertiary">Permanently delete this organisation and all its data. This action cannot be undone.</p>
                 </div>
+                <Button color="primary-destructive" size="sm" onClick={() => setShowConfirm(true)}>Delete Organisation</Button>
             </div>
+
+            {showConfirm && (
+                <div className="mt-5 rounded-lg border border-error bg-error-secondary p-4">
+                    <p className="text-sm font-medium text-error-primary">
+                        This will permanently delete all data including staff, policies, evidence, tasks, incidents, compliance scores, and audit logs.
+                    </p>
+                    <p className="mt-3 text-sm text-secondary">
+                        Type <span className="font-semibold text-primary">{orgName}</span> to confirm:
+                    </p>
+                    <input
+                        type="text"
+                        value={confirmInput}
+                        onChange={(e) => setConfirmInput(e.target.value)}
+                        placeholder={orgName}
+                        className="mt-2 w-full rounded-lg border border-error bg-primary px-3 py-2 text-sm text-primary outline-none transition duration-100 focus:ring-2 focus:ring-error"
+                        autoFocus
+                    />
+                    <div className="mt-3 flex items-center gap-2">
+                        <Button
+                            color="primary-destructive"
+                            size="sm"
+                            isDisabled={confirmInput !== orgName}
+                            isLoading={deleting}
+                            onClick={handleDelete}
+                        >
+                            Permanently delete
+                        </Button>
+                        <Button
+                            color="secondary"
+                            size="sm"
+                            isDisabled={deleting}
+                            onClick={() => { setShowConfirm(false); setConfirmInput(""); }}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -768,15 +839,103 @@ interface SdkKey {
     status: "ACTIVE" | "REVOKED"; created_at: string; last_used_at: string | null;
 }
 
-const INTEGRATIONS = [
-    { id: "cqc", name: "CQC API", description: "Automatically sync your CQC profile and inspection data", connected: true },
-    { id: "nhs", name: "NHS DSPT", description: "Data Security and Protection Toolkit compliance sync", connected: false },
-    { id: "google", name: "Google Workspace", description: "Import documents and share reports via Google Drive", connected: true },
-    { id: "ms365", name: "Microsoft 365", description: "OneDrive document storage and Teams notifications", connected: false },
-    { id: "slack", name: "Slack", description: "Receive compliance alerts and task notifications", connected: false },
-];
-
 const MOCK_WEBHOOK_URL = "https://api.consentz.com/webhooks/cqc-compliance";
+
+// ---------------------------------------------------------------------------
+// Third-Party Integration Cards
+// ---------------------------------------------------------------------------
+
+function CqcIntegrationCard() {
+    return (
+        <div className="flex flex-col justify-between rounded-xl border border-secondary bg-primary p-5">
+            <div>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-success-secondary">
+                    <CheckCircle className="size-5 text-fg-success-primary" />
+                </div>
+                <div className="mt-4">
+                    <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-primary">CQC API</p>
+                        <Badge size="sm" color="success" type="pill-color">Connected</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-tertiary">Automatically sync your CQC profile and inspection data with the compliance module.</p>
+                </div>
+            </div>
+            <div className="mt-5">
+                <Button color="secondary" size="sm" className="w-full">Configure</Button>
+            </div>
+        </div>
+    );
+}
+
+function CalendarIntegrationCard() {
+    const { data: calStatus, isLoading } = useQuery({
+        queryKey: ["calendar-status"],
+        queryFn: () => apiGet<{ connected: boolean; configured: boolean; calendars: { id: string; name: string; provider: string; primary: boolean }[] }>("/api/calendar").then((r) => r.data),
+    });
+
+    const isConnected = calStatus?.connected ?? false;
+    const calCount = calStatus?.calendars?.length ?? 0;
+    const primaryCal = calStatus?.calendars?.find((c) => c.primary);
+
+    return (
+        <div className="flex flex-col justify-between rounded-xl border border-secondary bg-primary p-5">
+            <div>
+                <div className={cx("flex size-10 items-center justify-center rounded-lg", isConnected ? "bg-brand-secondary" : "bg-secondary")}>
+                    <CalendarIcon className={cx("size-5", isConnected ? "text-fg-brand-primary" : "text-fg-quaternary")} />
+                </div>
+                <div className="mt-4">
+                    <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-primary">Calendar</p>
+                        {isLoading ? (
+                            <Badge size="sm" color="gray" type="pill-color">Checking…</Badge>
+                        ) : isConnected ? (
+                            <Badge size="sm" color="success" type="pill-color">Connected</Badge>
+                        ) : (
+                            <Badge size="sm" color="warning" type="pill-color">Not Connected</Badge>
+                        )}
+                    </div>
+                    <p className="mt-1 text-xs text-tertiary">
+                        {isConnected
+                            ? `${calCount} calendar${calCount !== 1 ? "s" : ""} synced${primaryCal ? ` — ${primaryCal.provider}` : ""} via Cal.com. Tasks with due dates are pushed to your calendar.`
+                            : "Connect Google Calendar, Microsoft 365, or any calendar via Cal.com to sync tasks and deadlines."}
+                    </p>
+                </div>
+            </div>
+            <div className="mt-5">
+                <Button
+                    color={isConnected ? "secondary" : "primary"}
+                    size="sm"
+                    className="w-full"
+                    href="https://app.cal.com/settings/my-account/calendars"
+                >
+                    {isConnected ? "Manage Calendars" : "Connect Calendar"}
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+function SlackIntegrationCard() {
+    return (
+        <div className="flex flex-col justify-between rounded-xl border border-secondary bg-primary p-5">
+            <div>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-secondary">
+                    <MessageChatSquare className="size-5 text-fg-quaternary" />
+                </div>
+                <div className="mt-4">
+                    <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-primary">Slack</p>
+                        <Badge size="sm" color="gray" type="pill-color">Coming Soon</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-tertiary">Receive compliance alerts, task notifications, and gap reminders directly in your Slack workspace channels.</p>
+                </div>
+            </div>
+            <div className="mt-5">
+                <Button color="secondary" size="sm" className="w-full" isDisabled>Coming Soon</Button>
+            </div>
+        </div>
+    );
+}
 
 function IntegrationsPanel() {
     const queryClient = useQueryClient();
@@ -1066,23 +1225,13 @@ function IntegrationsPanel() {
                 </div>
             </div>
 
-            {/* Third-party integrations */}
+            {/* Third-party integrations — 3-column card grid */}
             <div>
                 <h3 className="mb-4 text-lg font-semibold text-primary">Third-Party Services</h3>
-                <div className="flex flex-col gap-4">
-                    {INTEGRATIONS.map((int) => (
-                        <div key={int.id} className="flex items-center gap-4 rounded-xl border border-secondary bg-primary p-5">
-                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-secondary font-mono text-xs font-bold text-tertiary">{int.name.slice(0, 2).toUpperCase()}</div>
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-sm font-semibold text-primary">{int.name}</p>
-                                    {int.connected && <Badge size="sm" color="success" type="pill-color">Connected</Badge>}
-                                </div>
-                                <p className="mt-0.5 text-xs text-tertiary">{int.description}</p>
-                            </div>
-                            <Button color={int.connected ? "secondary" : "primary"} size="sm">{int.connected ? "Configure" : "Connect"}</Button>
-                        </div>
-                    ))}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <CqcIntegrationCard />
+                    <CalendarIntegrationCard />
+                    <SlackIntegrationCard />
                 </div>
             </div>
         </div>

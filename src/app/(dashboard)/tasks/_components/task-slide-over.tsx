@@ -1,12 +1,16 @@
 "use client";
 
-import { File06, CheckSquare, Stars01 } from "@untitledui/icons";
+import { useState } from "react";
+import { File06, CheckSquare, Stars01, Calendar as CalendarIcon } from "@untitledui/icons";
+import { useMutation } from "@tanstack/react-query";
 import { BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Select } from "@/components/base/select/select";
 import { SlideoutMenu } from "@/components/application/slideout-menus/slideout-menu";
 import { DomainBadge, getDomainConfig } from "@/components/shared/domain-badge";
 import { cx } from "@/utils/cx";
+import { apiPost } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 import type { Task, TaskStatus, TaskPriority } from "@/types";
 import { useStaff } from "@/hooks/use-staff";
 import { PRIORITY_BADGE, STATUS_OPTIONS, PRIORITY_OPTIONS } from "./task-constants";
@@ -25,12 +29,30 @@ interface TaskSlideOverProps {
 
 export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOverProps) {
     const { data: staffData } = useStaff({ pageSize: 100 });
-    const staffList = (staffData?.data ?? []) as { id: string; first_name?: string; last_name?: string; firstName?: string; lastName?: string; name?: string }[];
+    const staffList = (staffData?.data ?? []) as { id: string; first_name?: string; last_name?: string; firstName?: string; lastName?: string; name?: string; email?: string }[];
 
     const assigneeOptions = staffList.map((s) => {
         const fullName = s.name ?? `${s.first_name ?? s.firstName ?? ""} ${s.last_name ?? s.lastName ?? ""}`.trim();
         const label = fullName || "Unknown";
         return { id: label, label };
+    });
+
+    const [calSynced, setCalSynced] = useState(false);
+    const calSyncMutation = useMutation({
+        mutationFn: (t: Task) => {
+            const staff = staffList.find(
+                (s) => (s.name ?? `${s.first_name ?? ""} ${s.last_name ?? ""}`.trim()) === t.assignee,
+            );
+            return apiPost("/api/calendar", {
+                taskId: t.id,
+                title: t.title,
+                dueDate: t.dueDate,
+                assigneeName: t.assignee || undefined,
+                assigneeEmail: staff?.email || undefined,
+            });
+        },
+        onSuccess: () => { setCalSynced(true); toast.success("Synced to calendar", "This task has been added to your connected calendar."); },
+        onError: () => toast.error("Sync failed", "Could not sync task to calendar. Check your calendar connection in Settings."),
     });
 
     if (!task) return null;
@@ -131,6 +153,19 @@ export function TaskSlideOver({ task, isOpen, onClose, onUpdate }: TaskSlideOver
                         <Button color="secondary" size="sm" iconLeading={File06} className="w-full justify-start">
                             Upload Evidence
                         </Button>
+                        {task.dueDate && (
+                            <Button
+                                color="secondary"
+                                size="sm"
+                                iconLeading={CalendarIcon}
+                                className="w-full justify-start"
+                                isLoading={calSyncMutation.isPending}
+                                isDisabled={calSynced}
+                                onClick={() => calSyncMutation.mutate(task)}
+                            >
+                                {calSynced ? "Synced to Calendar" : "Sync to Calendar"}
+                            </Button>
+                        )}
                         <Button
                             color="secondary"
                             size="sm"

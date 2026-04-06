@@ -43,11 +43,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# clerk configuration (can include secrets)
-/.clerk/
-
-# playwright MCP logs
-.playwright-mcp/
-
-# firebase debug
-firebase-debug.log
+# supabase local CLI cache
+supabase/.temp/

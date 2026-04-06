@@ -86,3 +86,85 @@ export const PATCH = withAuth(async (req, { params, auth }) => {
 
   return apiSuccess(updated);
 });
+
+export const DELETE = withAuth(async (req, { auth }) => {
+  requireMinRole(auth, 'OWNER');
+
+  const client = await getDb();
+
+  const { data: org } = await client.from('organizations')
+    .select('name')
+    .eq('id', auth.organizationId)
+    .single();
+
+  if (!org) {
+    return ApiErrors.notFound('Organization');
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const confirmName = (body as { confirmName?: string }).confirmName;
+  if (!confirmName || confirmName !== org.name) {
+    return ApiErrors.badRequest('Organisation name does not match. Deletion cancelled.');
+  }
+
+  await AuditService.log({
+    organizationId: auth.organizationId,
+    userId: auth.dbUserId,
+    action: 'ORGANIZATION_DELETED',
+    entityType: 'ORGANIZATION',
+    entityId: auth.organizationId,
+    description: `Organisation "${org.name}" permanently deleted`,
+  });
+
+  const orgId = auth.organizationId;
+
+  await Promise.all([
+    client.from('onboarding_progress').delete().eq('organization_id', orgId),
+    client.from('walkthrough_progress').delete().eq('organization_id', orgId),
+    client.from('notifications').delete().eq('organization_id', orgId),
+    client.from('sdk_keys').delete().eq('organization_id', orgId),
+  ]);
+
+  await Promise.all([
+    client.from('training_records').delete().eq('organization_id', orgId),
+    client.from('assessment_responses').delete().in(
+      'assessment_id',
+      (await client.from('assessments').select('id').eq('organization_id', orgId)).data?.map((a: { id: string }) => a.id) ?? [],
+    ),
+  ]);
+
+  await Promise.all([
+    client.from('tasks').delete().eq('organization_id', orgId),
+    client.from('incidents').delete().eq('organization_id', orgId),
+    client.from('evidence_items').delete().eq('organization_id', orgId),
+    client.from('policy_versions').delete().in(
+      'policy_id',
+      (await client.from('policies').select('id').eq('organization_id', orgId)).data?.map((p: { id: string }) => p.id) ?? [],
+    ),
+  ]);
+
+  await Promise.all([
+    client.from('policies').delete().eq('organization_id', orgId),
+    client.from('staff_members').delete().eq('organization_id', orgId),
+    client.from('compliance_gaps').delete().eq('organization_id', orgId),
+    client.from('assessments').delete().eq('organization_id', orgId),
+  ]);
+
+  await Promise.all([
+    client.from('domain_scores').delete().in(
+      'compliance_score_id',
+      (await client.from('compliance_scores').select('id').eq('organization_id', orgId)).data?.map((c: { id: string }) => c.id) ?? [],
+    ),
+  ]);
+
+  await Promise.all([
+    client.from('compliance_scores').delete().eq('organization_id', orgId),
+    client.from('audit_logs').delete().eq('organization_id', orgId),
+    client.from('consentz_connections').delete().eq('organization_id', orgId),
+  ]);
+
+  await client.from('users').update({ organization_id: null }).eq('organization_id', orgId);
+  await client.from('organizations').delete().eq('id', orgId);
+
+  return apiSuccess({ deleted: true });
+});

@@ -10,11 +10,12 @@ import { useTasks, useUpdateTask } from "@/hooks/use-tasks";
 import { useMe } from "@/hooks/use-me";
 import type { Task, TaskStatus, TaskPriority, DomainSlug } from "@/types";
 import { TaskBoard } from "./_components/task-board";
+import { TaskCalendarView } from "./_components/task-calendar-view";
 import { TaskListView } from "./_components/task-list-view";
 import { TaskSlideOver } from "./_components/task-slide-over";
 import { AddTaskModal } from "./_components/add-task-modal";
 
-type ViewMode = "board" | "list" | "my";
+type ViewMode = "board" | "list" | "my" | "calendar";
 
 interface ApiTaskRow {
     id: string;
@@ -126,6 +127,7 @@ export default function TasksPage() {
         { id: "board", label: "Board" },
         { id: "list", label: "List" },
         { id: "my", label: "My Tasks" },
+        { id: "calendar", label: "Calendar" },
     ];
 
     if (isLoading) return <PageSkeleton variant="list" />;
@@ -243,6 +245,8 @@ export default function TasksPage() {
                         <AddTaskModal onAdd={handleAddTask} />
                     </EmptyState.Footer>
                 </EmptyState>
+            ) : view === "calendar" ? (
+                <TaskCalendarView tasks={filtered} onSelectTask={handleSelectTask} />
             ) : view === "list" || view === "my" ? (
                 <TaskListView tasks={filtered} onSelectTask={handleSelectTask} />
             ) : (

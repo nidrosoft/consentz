@@ -1,6 +1,6 @@
 import type { Evidence, EvidenceType, EvidenceStatus, DomainSlug } from '@/types';
 
-/** Normalize API/Prisma response to Evidence shape (handles both title/name, category/type, etc.) */
+/** Normalize API response to Evidence shape (handles both title/name, category/type, etc.) */
 export function toEvidence(item: Record<string, unknown>): Evidence {
   const linkedKloes = Array.isArray(item.linkedKloes)
     ? (item.linkedKloes as string[])
