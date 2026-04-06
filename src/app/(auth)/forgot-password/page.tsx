@@ -25,13 +25,15 @@ export default function ForgotPasswordPage() {
             });
 
             if (resetErr) {
+                console.error("[ForgotPassword] Supabase error:", resetErr);
                 setError(resetErr.message || "Could not send reset email.");
                 return;
             }
 
             setSent(true);
-        } catch {
-            setError("Something went wrong. Try again.");
+        } catch (err) {
+            console.error("[ForgotPassword] Unexpected error:", err);
+            setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
         } finally {
             setLoading(false);
         }

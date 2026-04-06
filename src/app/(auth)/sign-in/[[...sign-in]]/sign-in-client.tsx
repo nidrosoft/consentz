@@ -37,22 +37,29 @@ export function SignInClient() {
 
         try {
             const supabase = createBrowserSupabaseClient();
-            const { error: signErr } = await supabase.auth.signInWithPassword({ email, password });
+            const { error: signErr } = await supabase.auth.signInWithPassword({
+                email: email.trim(),
+                password,
+            });
             if (signErr) {
+                console.error("[SignIn] Supabase auth error:", signErr);
                 setError(signErr.message || "Invalid email or password.");
                 return;
             }
 
             const ensure = await fetch("/api/auth/ensure-user", { method: "POST" });
             if (!ensure.ok) {
+                const body = await ensure.json().catch(() => null);
+                console.error("[SignIn] ensure-user failed:", ensure.status, body);
                 setError("Signed in but profile sync failed. Try again or contact support.");
                 return;
             }
 
             router.refresh();
             router.push(redirectTo.startsWith("/") ? redirectTo : "/");
-        } catch {
-            setError("Something went wrong. Try again.");
+        } catch (err) {
+            console.error("[SignIn] Unexpected error:", err);
+            setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
         } finally {
             setLoading(false);
         }
