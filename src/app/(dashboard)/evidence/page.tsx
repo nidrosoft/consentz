@@ -61,7 +61,7 @@ export default function EvidencePage() {
 
     if (error) {
         return (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
                 <div className="rounded-xl border border-error bg-error-secondary p-6">
                     <p className="text-sm font-medium text-error-primary">Failed to load evidence</p>
                     <p className="mt-1 text-sm text-tertiary">{error instanceof Error ? error.message : "An error occurred"}</p>
@@ -72,7 +72,7 @@ export default function EvidencePage() {
 
     if (isLoading) {
         return (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="h-8 w-48 animate-pulse rounded-lg bg-secondary" />
@@ -103,7 +103,7 @@ export default function EvidencePage() {
     const documentCount = data?.meta?.total ?? evidenceList.length;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Evidence Library</h1>
@@ -117,7 +117,7 @@ export default function EvidencePage() {
                 <div className="flex-1">
                     <Input size="sm" placeholder="Search evidence..." icon={SearchLg} value={search} onChange={(v) => setSearch(v)} />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <Button
                         color={showFilters || hasFilters ? "secondary" : "tertiary"}
                         size="sm"
@@ -273,11 +273,11 @@ export default function EvidencePage() {
                     <Table aria-label="Evidence documents" selectionMode="none">
                         <Table.Header>
                             <Table.Head id="name" label="Name" isRowHeader />
-                            <Table.Head id="type" label="Category" />
+                            <Table.Head id="type" label="Category" className="hidden sm:table-cell" />
                             <Table.Head id="domains" label="Domain" />
-                            <Table.Head id="kloes" label="KLOEs" />
+                            <Table.Head id="kloes" label="KLOEs" className="hidden sm:table-cell" />
                             <Table.Head id="status" label="Status" />
-                            <Table.Head id="uploaded" label="Uploaded" />
+                            <Table.Head id="uploaded" label="Uploaded" className="hidden sm:table-cell" />
                         </Table.Header>
                         <Table.Body items={filtered}>
                             {(ev) => (
@@ -287,16 +287,16 @@ export default function EvidencePage() {
                                             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-secondary">
                                                 <File06 className="size-4 text-fg-quaternary" />
                                             </div>
-                                            <p className="text-sm font-medium text-primary whitespace-nowrap">{ev.name}</p>
+                                            <p className="text-sm font-medium text-primary">{ev.name}</p>
                                         </div>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden sm:table-cell">
                                         <Badge size="sm" color="gray" type="modern">{ev.type.replace("_", " ")}</Badge>
                                     </Table.Cell>
                                     <Table.Cell>
                                         <DomainBadgeList domains={ev.linkedDomains} size="sm" showIcon={false} />
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden sm:table-cell">
                                         <span className="text-sm text-tertiary">{ev.linkedKloes.join(", ")}</span>
                                     </Table.Cell>
                                     <Table.Cell>
@@ -304,7 +304,7 @@ export default function EvidencePage() {
                                             {ev.status.replace("_", " ")}
                                         </BadgeWithDot>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden sm:table-cell">
                                         <span className="text-sm text-tertiary whitespace-nowrap">{ev.uploadedAt}</span>
                                     </Table.Cell>
                                 </Table.Row>

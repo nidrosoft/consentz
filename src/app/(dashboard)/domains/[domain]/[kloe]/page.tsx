@@ -38,7 +38,7 @@ interface EvidenceRow {
 
 function KloeDetailSkeleton() {
     return (
-        <div className="flex flex-col gap-6 animate-pulse">
+        <div className="flex flex-col gap-4 sm:gap-6 animate-pulse">
             <div className="h-8 w-40 rounded bg-quaternary" />
             <div className="flex items-center gap-2">
                 <div className="h-6 w-12 rounded bg-quaternary" />
@@ -121,7 +121,7 @@ export default function KloeDetailPage() {
     if (isLoading) return <KloeDetailSkeleton />;
     if (error) {
         return (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
                 <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push(`/domains/${domainSlug}`)}>
                     Back to {domainSlug.charAt(0).toUpperCase() + domainSlug.slice(1)}
                 </Button>
@@ -135,13 +135,13 @@ export default function KloeDetailPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push(`/domains/${domainSlug}`)}>
                 Back to {domainSlug.charAt(0).toUpperCase() + domainSlug.slice(1)}
             </Button>
 
             <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <Badge size="md" color="gray" type="pill-color">{kloe.code}</Badge>
                     <h1 className="text-display-xs font-semibold text-primary">{kloe.title}</h1>
                 </div>
@@ -149,10 +149,10 @@ export default function KloeDetailPage() {
             </div>
 
             {/* Score */}
-            <div className="rounded-xl border border-secondary bg-primary p-5">
-                <div className="flex items-center gap-4">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                     <span className="font-mono text-2xl font-bold text-primary">{kloeScore}%</span>
-                    <div className="flex-1"><ProgressBarBase value={kloeScore} min={0} max={100} /></div>
+                    <div className="order-last w-full sm:order-none sm:w-auto sm:flex-1"><ProgressBarBase value={kloeScore} min={0} max={100} /></div>
                     <Badge size="sm" color={openGaps.length === 0 ? "success" : "warning"} type="pill-color">
                         {openGaps.length === 0 ? "Compliant" : "Gaps Found"}
                     </Badge>
@@ -185,7 +185,7 @@ export default function KloeDetailPage() {
                         { label: "Staff training completed", done: hasTraining, action: `/evidence/upload?category=TRAINING_RECORD&kloe=${kloeCode}&domain=${domainSlug}`, actionLabel: "Upload training record" },
                         { label: "Last audit within 12 months", done: hasAudit, action: `/evidence/upload?category=AUDIT_REPORT&kloe=${kloeCode}&domain=${domainSlug}`, actionLabel: "Upload audit report" },
                     ].map((item, i) => (
-                        <div key={item.label} className={cx("flex items-center justify-between gap-3 px-4 py-3", i > 0 && "border-t border-secondary")}>
+                        <div key={item.label} className={cx("flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 sm:py-3", i > 0 && "border-t border-secondary")}>
                             <div className="flex items-center gap-3">
                                 {item.done ? (
                                     <CheckCircle className="size-5 shrink-0 text-success-primary" />
@@ -207,7 +207,7 @@ export default function KloeDetailPage() {
 
             {/* Linked Evidence */}
             <div>
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-semibold text-primary">Linked Evidence ({kloeEvidence.length})</h2>
                     <Button color="secondary" size="sm" onClick={() => router.push("/evidence/upload")}>Upload Evidence</Button>
                 </div>
@@ -224,7 +224,7 @@ export default function KloeDetailPage() {
                                 <button
                                     key={ev.id}
                                     onClick={() => router.push(`/evidence/${ev.id}`)}
-                                    className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300"
+                                    className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 text-left transition duration-100 hover:border-brand-300 sm:p-4"
                                 >
                                     <File06 className="size-5 text-fg-quaternary" />
                                     <div className="flex-1">
@@ -271,7 +271,7 @@ export default function KloeDetailPage() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mt-3 flex gap-2">
+                                    <div className="mt-3 flex flex-wrap gap-2">
                                         <Button
                                             color="secondary"
                                             size="sm"

@@ -128,7 +128,7 @@ function MiniScoreRing({ score }: { score: number }) {
 
 function DomainDetailSkeleton() {
     return (
-        <div className="flex flex-col gap-6 animate-pulse">
+        <div className="flex flex-col gap-4 sm:gap-6 animate-pulse">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                     <div className="size-6 rounded bg-quaternary" />
@@ -169,7 +169,7 @@ function GapCard({ gap, onResolve, isResolving }: { gap: GapItem; onResolve: (id
                 <Badge size="sm" color={SEVERITY_BADGE[gap.severity]} type="pill-color">{gap.severity}</Badge>
                 <span className="text-xs text-tertiary">{gap.kloe} &middot; {gap.regulation}</span>
             </div>
-            <div className="mt-auto pt-3 flex gap-2">
+            <div className="mt-auto pt-3 flex flex-wrap gap-2">
                 <Button color="secondary" size="sm" iconTrailing={expanded ? ChevronUp : ChevronDown} onClick={() => setExpanded(!expanded)}>
                     {expanded ? "Hide" : "Remediation"}
                 </Button>
@@ -208,7 +208,7 @@ function GapListRow({ gap, onResolve, isResolving }: { gap: GapItem; onResolve: 
                     </div>
                 </div>
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
                 <Button color="secondary" size="sm" iconTrailing={expanded ? ChevronUp : ChevronDown} onClick={() => setExpanded(!expanded)}>
                     {expanded ? "Hide Remediation" : "View Remediation"}
                 </Button>
@@ -277,7 +277,7 @@ function ConsentzDomainMetrics({ domain }: { domain: string }) {
     if (!metrics) return null;
 
     return (
-        <div className="rounded-xl border border-secondary bg-primary p-5">
+        <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
             <div className="flex items-center justify-between">
                 <div>
                     <h3 className="text-lg font-semibold text-primary">Consentz Metrics</h3>
@@ -333,8 +333,8 @@ function SafeTreatmentRiskSection() {
     const { data, isLoading, error } = useTreatmentRiskHeatmap();
 
     return (
-        <div className="rounded-xl border border-secondary bg-primary p-6">
-            <div className="flex items-center justify-between">
+        <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h3 className="text-lg font-semibold text-primary">Treatment Risk Heatmap</h3>
                     <p className="mt-1 text-sm text-tertiary">Visual analysis of treatment risks across procedures.</p>
@@ -343,7 +343,7 @@ function SafeTreatmentRiskSection() {
                     <Badge color="brand" size="sm" type="pill-color">S2 · Reg 12</Badge>
                 </div>
             </div>
-            <div className="mt-5">
+            <div className="mt-5 overflow-x-auto">
                 {isLoading && <TreatmentRiskHeatmapSkeleton />}
                 {error && <TreatmentRiskHeatmapEmpty />}
                 {data && <TreatmentRiskHeatmap data={data} />}
@@ -399,7 +399,7 @@ export default function DomainDetailPage() {
         const domainNames: Record<string, string> = { safe: 'Safe', effective: 'Effective', caring: 'Caring', responsive: 'Responsive', 'well-led': 'Well-Led' };
         const placeholderName = domainNames[slug] ?? slug.charAt(0).toUpperCase() + slug.slice(1);
         return (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
                 <div className="flex items-center gap-3">
                     {Icon && <Icon className={cx("size-6", color)} />}
                     <div>
@@ -422,7 +422,7 @@ export default function DomainDetailPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             {/* Header */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
@@ -436,14 +436,14 @@ export default function DomainDetailPage() {
             </div>
 
             {/* Score bar */}
-            <div className="rounded-xl border border-secondary bg-primary p-5">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
                 <div className="flex items-center gap-4">
                     <div className="flex-1">
                         <ProgressBarBase value={domainScore.score} min={0} max={100} />
                     </div>
                     <span className="font-mono text-lg font-bold text-primary">{domainScore.score}%</span>
                 </div>
-                <div className="mt-2 flex items-center gap-4 text-sm">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm sm:gap-4">
                     <Badge
                         size="sm"
                         color={domainScore.rating === "GOOD" || domainScore.rating === "OUTSTANDING" ? "success" : domainScore.rating === "INADEQUATE" ? "error" : "warning"}
@@ -465,7 +465,7 @@ export default function DomainDetailPage() {
 
             {/* KLOEs */}
             <div>
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-semibold text-primary">Key Lines of Enquiry</h2>
                     <ViewToggle mode={kloeView} onChange={setKloeView} />
                 </div>
@@ -533,7 +533,7 @@ export default function DomainDetailPage() {
                                 <button
                                     key={kloe.code}
                                     onClick={() => router.push(`/domains/${slug}/${kloe.code.toLowerCase()}`)}
-                                    className="flex items-center gap-4 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300"
+                                    className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 sm:flex-row sm:items-center sm:gap-4"
                                 >
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2">
@@ -566,7 +566,7 @@ export default function DomainDetailPage() {
 
             {/* Gaps in this domain */}
             <div>
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-semibold text-primary">Gaps in This Domain</h2>
                     {domainGaps.length > 0 && <ViewToggle mode={gapsView} onChange={setGapsView} />}
                 </div>

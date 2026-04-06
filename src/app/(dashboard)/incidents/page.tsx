@@ -113,7 +113,7 @@ export default function IncidentsPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -259,12 +259,12 @@ export default function IncidentsPage() {
                 <Table aria-label="Incidents" selectionMode="none">
                     <Table.Header>
                         <Table.Head id="title" label="Incident" isRowHeader />
-                        <Table.Head id="type" label="Type" />
-                        <Table.Head id="category" label="Category" />
+                        <Table.Head id="type" label="Type" className="hidden sm:table-cell" />
+                        <Table.Head id="category" label="Category" className="hidden sm:table-cell" />
                         <Table.Head id="severity" label="Severity" />
                         <Table.Head id="status" label="Status" />
-                        <Table.Head id="reporter" label="Reported by" />
-                        <Table.Head id="date" label="Date" />
+                        <Table.Head id="reporter" label="Reported by" className="hidden sm:table-cell" />
+                        <Table.Head id="date" label="Date" className="hidden sm:table-cell" />
                     </Table.Header>
                     <Table.Body items={filtered}>
                         {(inc) => (
@@ -275,15 +275,15 @@ export default function IncidentsPage() {
                                             <AlertTriangle className="size-4 text-error-primary" />
                                         </div>
                                         <div>
-                                            <p className="text-sm font-medium text-primary whitespace-nowrap">{inc.title}</p>
+                                            <p className="text-sm font-medium text-primary">{inc.title}</p>
                                             <p className="text-xs text-tertiary line-clamp-1">{inc.description}</p>
                                         </div>
                                     </div>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <Badge size="sm" color={TYPE_BADGE[inc.incidentType] ?? "gray"} type="pill-color">{TYPE_LABELS[inc.incidentType] ?? inc.incidentType}</Badge>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <Badge size="sm" color="gray" type="modern">{inc.category}</Badge>
                                 </Table.Cell>
                                 <Table.Cell>
@@ -292,10 +292,10 @@ export default function IncidentsPage() {
                                 <Table.Cell>
                                     <BadgeWithDot size="sm" color={STATUS_BADGE[inc.status]}>{inc.status}</BadgeWithDot>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <span className="text-sm text-tertiary whitespace-nowrap">{inc.reportedBy}</span>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <span className="text-sm text-tertiary whitespace-nowrap">{formatDate(inc.reportedAt)}</span>
                                 </Table.Cell>
                             </Table.Row>
@@ -353,7 +353,7 @@ export default function IncidentsPage() {
                     ) : selectedIncident ? (
                         <div className="flex flex-col gap-6">
                             {/* Detail grid */}
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="flex items-start gap-3 rounded-lg border border-secondary bg-primary p-3">
                                     <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-secondary">
                                         <File06 className="size-4 text-fg-quaternary" />
@@ -518,7 +518,7 @@ export default function IncidentsPage() {
                 {selectedIncident && (
                     <SlideoutMenu.Footer className="flex w-full items-center justify-between">
                         <p className="text-xs text-tertiary">ID: {selectedIncident.id?.slice(0, 8) ?? "—"}</p>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             {((selectedIncident.status as string) === "REPORTED" || (selectedIncident.status as string) === "OPEN") && <Button color="primary" size="sm" iconLeading={ShieldTick}>Begin Investigation</Button>}
                             {((selectedIncident.status as string) === "INVESTIGATING" || (selectedIncident.status as string) === "ACTIONED") && <Button color="primary" size="sm">Mark Resolved</Button>}
                             {selectedIncident.status === "RESOLVED" && <Button color="secondary" size="sm">Close Incident</Button>}

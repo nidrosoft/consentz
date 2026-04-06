@@ -15,7 +15,7 @@ export default function ReportIncidentPage() {
     const router = useRouter();
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/incidents")}>Back to Incidents</Button>
 
             <div>
@@ -23,7 +23,7 @@ export default function ReportIncidentPage() {
                 <p className="mt-1 text-sm text-tertiary">Record a new incident or near miss for investigation and tracking.</p>
             </div>
 
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <Input label="Incident title" placeholder="Brief description of the incident" isRequired />
                 <div>
                     <label className="mb-1.5 block text-sm font-medium text-secondary">Description</label>
@@ -55,7 +55,7 @@ export default function ReportIncidentPage() {
                 <Input label="Immediate action taken" placeholder="What steps were taken immediately?" />
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button color="secondary" size="lg" onClick={() => router.push("/incidents")}>Cancel</Button>
                 <Button color="primary" size="lg" onClick={() => router.push("/incidents")}>Submit Report</Button>
             </div>

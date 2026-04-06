@@ -20,7 +20,7 @@ export default function PolicyTemplatesPage() {
     const router = useRouter();
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/policies")}>Back to Policies</Button>
 
             <div>
@@ -30,7 +30,7 @@ export default function PolicyTemplatesPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {TEMPLATES.map((t) => (
-                    <div key={t.id} className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-5">
+                    <div key={t.id} className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-4 sm:p-5">
                         <div className="flex items-center gap-2">
                             <FileCheck02 className="size-5 text-fg-quaternary" />
                             <Badge size="sm" color="gray" type="pill-color">{t.domain}</Badge>

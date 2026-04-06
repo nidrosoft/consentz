@@ -35,10 +35,10 @@ export default function InspectionPrepPage() {
     const doneCount = CHECKLIST.filter((c) => c.status === "done").length;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/reports")}>Back to Reports</Button>
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Inspection Preparation</h1>
                     <p className="mt-1 text-sm text-tertiary">{doneCount} of {CHECKLIST.length} items ready</p>
@@ -52,7 +52,7 @@ export default function InspectionPrepPage() {
                     return (
                         <div
                             key={item.id}
-                            className={cx("flex items-start gap-4 px-5 py-4", i < CHECKLIST.length - 1 && "border-b border-secondary")}
+                            className={cx("flex items-start gap-3 sm:gap-4 px-4 sm:px-5 py-3 sm:py-4", i < CHECKLIST.length - 1 && "border-b border-secondary")}
                         >
                             <Icon className={cx("mt-0.5 size-5 shrink-0", COLOR_MAP[item.status])} />
                             <div className="flex-1">

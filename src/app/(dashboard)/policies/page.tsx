@@ -111,7 +111,7 @@ export default function PoliciesPage() {
 
     if (error) {
         return (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
                 <h1 className="text-display-xs font-semibold text-primary">Policies</h1>
                 <div className="rounded-xl border border-error bg-error-secondary/20 p-6">
                     <p className="text-sm font-medium text-error-primary">Failed to load policies</p>
@@ -123,13 +123,13 @@ export default function PoliciesPage() {
 
     if (isLoading) {
         return (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="h-8 w-32 animate-pulse rounded bg-secondary" />
                         <div className="mt-2 h-4 w-24 animate-pulse rounded bg-secondary" />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <div className="h-10 w-24 animate-pulse rounded-lg bg-secondary" />
                         <div className="h-10 w-32 animate-pulse rounded-lg bg-secondary" />
                     </div>
@@ -153,16 +153,16 @@ export default function PoliciesPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Policies</h1>
                     <p className="mt-1 text-sm text-tertiary">{filtered.length} policies</p>
                 </div>
-                <div className="flex gap-2">
-                    <Button color="secondary" size="lg" onClick={() => router.push("/policies/templates")}>Templates</Button>
-                    <Button color="primary" size="lg" iconLeading={Plus} onClick={() => router.push("/policies/create")}>Create Policy</Button>
+                <div className="flex flex-wrap gap-2">
+                    <Button color="secondary" size="md" onClick={() => router.push("/policies/templates")}>Templates</Button>
+                    <Button color="primary" size="md" iconLeading={Plus} onClick={() => router.push("/policies/create")}>Create Policy</Button>
                 </div>
             </div>
 
@@ -268,12 +268,12 @@ export default function PoliciesPage() {
                 <Table aria-label="Policies" selectionMode="none">
                     <Table.Header>
                         <Table.Head id="title" label="Policy" isRowHeader />
-                        <Table.Head id="category" label="Category" />
-                        <Table.Head id="version" label="Version" />
-                        <Table.Head id="author" label="Author" />
+                        <Table.Head id="category" label="Category" className="hidden sm:table-cell" />
+                        <Table.Head id="version" label="Version" className="hidden sm:table-cell" />
+                        <Table.Head id="author" label="Author" className="hidden sm:table-cell" />
                         <Table.Head id="status" label="Status" />
                         <Table.Head id="updated" label="Last Updated" />
-                        <Table.Head id="review" label="Next Review" />
+                        <Table.Head id="review" label="Next Review" className="hidden sm:table-cell" />
                     </Table.Header>
                     <Table.Body items={filtered}>
                         {(policy) => (
@@ -284,18 +284,18 @@ export default function PoliciesPage() {
                                             <FileCheck02 className="size-4 text-fg-quaternary" />
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <p className="text-sm font-medium text-primary whitespace-nowrap">{policy.title}</p>
+                                            <p className="text-sm font-medium text-primary">{policy.title}</p>
                                             {policy.isAiGenerated && <Stars01 className="size-3.5 text-fg-brand-secondary" aria-label="AI generated" />}
                                         </div>
                                     </div>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <Badge size="sm" color="gray" type="modern">{policy.category}</Badge>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <span className="font-mono text-sm text-tertiary">{policy.version}</span>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <span className="text-sm text-tertiary whitespace-nowrap">{policy.createdBy}</span>
                                 </Table.Cell>
                                 <Table.Cell>
@@ -304,7 +304,7 @@ export default function PoliciesPage() {
                                 <Table.Cell>
                                     <span className="text-sm text-tertiary whitespace-nowrap">{formatDate(policy.updatedAt)}</span>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <span className="text-sm text-tertiary whitespace-nowrap">{formatDate(policy.reviewDate)}</span>
                                 </Table.Cell>
                             </Table.Row>

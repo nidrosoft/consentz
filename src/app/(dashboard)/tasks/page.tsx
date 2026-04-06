@@ -142,7 +142,7 @@ export default function TasksPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -156,13 +156,13 @@ export default function TasksPage() {
 
             {/* View toggle + Filter/Sort */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-1 rounded-lg border border-secondary bg-secondary p-0.5">
+                <div className="flex overflow-x-auto gap-1 rounded-lg border border-secondary bg-secondary p-0.5">
                     {views.map((v) => (
                         <button
                             key={v.id}
                             onClick={() => setView(v.id)}
                             className={cx(
-                                "rounded-md px-3 py-1.5 text-xs font-medium transition duration-100",
+                                "rounded-md whitespace-nowrap px-3 py-1.5 text-xs font-medium transition duration-100",
                                 view === v.id ? "bg-primary text-primary shadow-xs" : "text-tertiary hover:text-secondary",
                             )}
                         >
@@ -170,7 +170,7 @@ export default function TasksPage() {
                         </button>
                     ))}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <button
                         onClick={() => setShowFilters(!showFilters)}
                         className={cx(

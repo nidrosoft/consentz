@@ -127,7 +127,7 @@ export default function CreatePolicyPage() {
     const isSaving = createPolicy.isPending || updatePolicy.isPending;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/policies")}>
                 Back to Policies
             </Button>
@@ -138,7 +138,7 @@ export default function CreatePolicyPage() {
             </div>
 
             {/* AI generate card */}
-            <div className="rounded-xl border border-brand-200 bg-brand-primary p-6">
+            <div className="rounded-xl border border-brand-200 bg-brand-primary p-4 sm:p-6">
                 <div className="flex items-start gap-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-solid">
                         <Stars01 className="size-5 text-white" />
@@ -235,7 +235,7 @@ export default function CreatePolicyPage() {
             </div>
 
             {/* Manual form */}
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <h2 className="text-lg font-semibold text-primary">Or write manually</h2>
 
                 <Input
@@ -272,7 +272,7 @@ export default function CreatePolicyPage() {
                 />
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
                 <Button color="secondary" size="lg" onClick={() => router.push("/policies")}>
                     Cancel
                 </Button>

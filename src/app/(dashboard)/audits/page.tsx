@@ -108,7 +108,7 @@ export function AuditLogPanel() {
 
     if (error) {
         return (
-            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-4 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <p className="text-sm text-error-primary">Failed to load audit log.</p>
                 <Button color="secondary" size="sm" onClick={() => refetch()}>Retry</Button>
             </div>
@@ -116,8 +116,8 @@ export function AuditLogPanel() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-4 sm:gap-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Audit Log</h1>
                     <p className="mt-1 text-sm text-tertiary">Immutable record of all platform activity.</p>
@@ -154,8 +154,8 @@ export function AuditLogPanel() {
 
             {/* Collapsible Filter Panel */}
             {showFilters && (
-                <div className="rounded-xl border border-secondary bg-primary p-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="rounded-xl border border-secondary bg-primary p-3 sm:p-4">
+                    <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-3">
                         <Select
                             label="User"
                             placeholder="All users"
@@ -222,9 +222,9 @@ export function AuditLogPanel() {
                 <Table aria-label="Audit log entries" selectionMode="none">
                     <Table.Header>
                         <Table.Head id="description" label="Activity" isRowHeader />
-                        <Table.Head id="user" label="User" />
-                        <Table.Head id="entity" label="Entity" />
-                        <Table.Head id="action" label="Action" />
+                        <Table.Head id="user" label="User" className="hidden sm:table-cell" />
+                        <Table.Head id="entity" label="Entity" className="hidden md:table-cell" />
+                        <Table.Head id="action" label="Action" className="hidden lg:table-cell" />
                         <Table.Head id="date" label="Date" />
                     </Table.Header>
                     <Table.Body items={paged}>
@@ -246,13 +246,13 @@ export function AuditLogPanel() {
                                             </div>
                                         </div>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden sm:table-cell">
                                         <div className="flex items-center gap-2.5">
                                             <Avatar initials={getInitials(entry.user)} size="sm" />
                                             <span className="whitespace-nowrap text-sm text-secondary">{entry.user.split("@")[0]}</span>
                                         </div>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden md:table-cell">
                                         <Badge size="sm" color={
                                             entry.entityType === "EVIDENCE" ? "success"
                                             : entry.entityType === "TASK" ? "blue"
@@ -268,7 +268,7 @@ export function AuditLogPanel() {
                                             {meta.label}
                                         </Badge>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden lg:table-cell">
                                         {actionMeta ? (
                                             <BadgeWithIcon
                                                 size="sm"
@@ -313,7 +313,7 @@ export function AuditLogPanel() {
                 )}
 
                 {/* Pagination */}
-                <div className="flex items-center justify-between border-t border-secondary px-4 py-3 md:px-6 md:pt-3 md:pb-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-secondary px-4 py-3 md:px-6 md:pt-3 md:pb-4">
                     <span className="text-sm text-tertiary">{filtered.length} entries &middot; Page {page} of {totalPages}</span>
                     <div className="flex gap-2">
                         <Button color="secondary" size="sm" isDisabled={page <= 1} onClick={() => setPage(page - 1)}>&larr; Previous</Button>

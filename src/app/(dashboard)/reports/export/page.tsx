@@ -29,7 +29,7 @@ export default function ExportPage() {
     const selectedCount = Object.values(checked).filter(Boolean).length;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/reports")}>Back to Reports</Button>
 
             <div>
@@ -38,9 +38,9 @@ export default function ExportPage() {
             </div>
 
             {/* Format */}
-            <div className="rounded-xl border border-secondary bg-primary p-5">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
                 <h3 className="mb-3 text-sm font-semibold text-primary">Format</h3>
-                <div className="flex gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                     <button onClick={() => setFormat("pdf")} className={cx("flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition duration-100", format === "pdf" ? "border-brand-600 bg-brand-primary text-brand-secondary" : "border-secondary bg-primary text-secondary hover:bg-primary_hover")}>
                         <span className="size-4 rounded-full border-2 flex items-center justify-center {format === 'pdf' ? 'border-brand-600' : 'border-tertiary'}">
                             {format === "pdf" && <span className="size-2 rounded-full bg-brand-600" />}
@@ -57,7 +57,7 @@ export default function ExportPage() {
             </div>
 
             {/* Include sections */}
-            <div className="rounded-xl border border-secondary bg-primary p-5">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
                 <h3 className="mb-3 text-sm font-semibold text-primary">Include</h3>
                 <div className="flex flex-col gap-2">
                     {SECTIONS.map((s) => (
@@ -75,9 +75,9 @@ export default function ExportPage() {
             </div>
 
             {/* Date range */}
-            <div className="rounded-xl border border-secondary bg-primary p-5">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
                 <h3 className="mb-3 text-sm font-semibold text-primary">Date Range</h3>
-                <div className="flex gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row">
                     <div className="flex-1">
                         <DatePickerField label="From" value={dateFrom} onChange={setDateFrom} size="sm" />
                     </div>
@@ -88,7 +88,7 @@ export default function ExportPage() {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
                 <Button color="secondary" size="lg" onClick={() => router.push("/reports")}>Cancel</Button>
                 <Button color="primary" size="lg" iconLeading={Download01} disabled={selectedCount === 0}>
                     Export {format.toUpperCase()}

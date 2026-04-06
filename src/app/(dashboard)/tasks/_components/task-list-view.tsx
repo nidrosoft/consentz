@@ -28,10 +28,10 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
             <Table aria-label="Tasks" selectionMode="none">
                 <Table.Header>
                     <Table.Head id="title" label="Task" isRowHeader />
-                    <Table.Head id="domain" label="Domain" />
+                    <Table.Head id="domain" label="Domain" className="hidden sm:table-cell" />
                     <Table.Head id="priority" label="Priority" />
                     <Table.Head id="assignee" label="Assigned" />
-                    <Table.Head id="due" label="Due" />
+                    <Table.Head id="due" label="Due" className="hidden sm:table-cell" />
                     <Table.Head id="status" label="Status" />
                 </Table.Header>
                 <Table.Body items={tasks}>
@@ -46,7 +46,7 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
                                         <p className="text-xs text-tertiary line-clamp-1">{task.description}</p>
                                     </div>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <DomainBadge domain={task.domain} size="sm" />
                                 </Table.Cell>
                                 <Table.Cell>
@@ -57,7 +57,7 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
                                 <Table.Cell>
                                     <span className="text-sm text-tertiary whitespace-nowrap">{task.assignee}</span>
                                 </Table.Cell>
-                                <Table.Cell>
+                                <Table.Cell className="hidden sm:table-cell">
                                     <span className={cx(
                                         "text-sm whitespace-nowrap",
                                         days < 0 ? "font-medium text-error-primary" : days <= 3 ? "font-medium text-warning-primary" : "text-tertiary",

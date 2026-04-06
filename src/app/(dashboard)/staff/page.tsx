@@ -136,14 +136,14 @@ export default function StaffPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-display-xs font-semibold text-primary">Staff Directory</h1>
                     <p className="mt-1 text-sm text-tertiary">{staffList.length} staff members</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Button color="secondary" size="lg" onClick={() => router.push("/staff/training")}>Training Matrix</Button>
                     <Button color="primary" size="lg" iconLeading={Plus} onClick={() => router.push("/staff/add")}>Add Staff</Button>
                 </div>
@@ -151,59 +151,59 @@ export default function StaffPage() {
 
             {/* Compliance Summary Cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-success-primary">
                         <ShieldTick className="size-5 text-success-primary" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{dbsDone} / {staffList.length}</p>
+                        <p className="text-lg sm:text-xl font-semibold text-primary">{dbsDone} / {staffList.length}</p>
                         <p className="text-xs text-tertiary">DBS cleared</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary">
                         <BookOpen02 className="size-5 text-brand-secondary" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{activeCount} / {staffList.length}</p>
+                        <p className="text-lg sm:text-xl font-semibold text-primary">{activeCount} / {staffList.length}</p>
                         <p className="text-xs text-tertiary">Active staff</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-warning-primary">
                         <AlertTriangle className="size-5 text-warning-primary" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{dbsExpiringSoon}</p>
+                        <p className="text-lg sm:text-xl font-semibold text-primary">{dbsExpiringSoon}</p>
                         <p className="text-xs text-tertiary">DBS expiring soon</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-error-primary">
                         <CreditCard02 className="size-5 text-error-primary" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{dbsExpired}</p>
+                        <p className="text-lg sm:text-xl font-semibold text-primary">{dbsExpired}</p>
                         <p className="text-xs text-tertiary">DBS expired</p>
                     </div>
                 </div>
                 {/* GMC Registration (medical staff) */}
-                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF]">
                         <MedicalCross className="size-5 text-[#3538CD]" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{gmcRegistered}</p>
+                        <p className="text-lg sm:text-xl font-semibold text-primary">{gmcRegistered}</p>
                         <p className="text-xs text-tertiary">GMC registered</p>
                     </div>
                 </div>
                 {/* Aesthetic Qualifications (non-medical) */}
-                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#F4F3FF]">
                         <Award02 className="size-5 text-[#6938EF]" />
                     </div>
                     <div>
-                        <p className="text-xl font-semibold text-primary">{aestheticQualified}</p>
+                        <p className="text-lg sm:text-xl font-semibold text-primary">{aestheticQualified}</p>
                         <p className="text-xs text-tertiary">Aesthetic qualified</p>
                     </div>
                 </div>
@@ -350,10 +350,10 @@ export default function StaffPage() {
                     <Table.Header>
                         <Table.Head id="name" label="Name" isRowHeader />
                         <Table.Head id="role" label="Role" />
-                        <Table.Head id="type" label="Type" />
-                        <Table.Head id="dbs" label="DBS" />
-                        <Table.Head id="gmc" label="GMC" />
-                        <Table.Head id="aesthetic" label="Aesthetic Qual." />
+                        <Table.Head id="type" label="Type" className="hidden md:table-cell" />
+                        <Table.Head id="dbs" label="DBS" className="hidden md:table-cell" />
+                        <Table.Head id="gmc" label="GMC" className="hidden md:table-cell" />
+                        <Table.Head id="aesthetic" label="Aesthetic Qual." className="hidden md:table-cell" />
                         <Table.Head id="status" label="Status" />
                     </Table.Header>
                     <Table.Body items={filtered}>
@@ -367,20 +367,20 @@ export default function StaffPage() {
                                         <div className="flex items-center gap-3">
                                             <Avatar size="sm" initials={staff.name.split(" ").map((n) => n[0]).join("")} />
                                             <div>
-                                                <p className="text-sm font-medium text-primary whitespace-nowrap">{staff.name}</p>
-                                                <p className="text-xs text-tertiary">{staff.email}</p>
+                                                <p className="text-sm font-medium text-primary">{staff.name}</p>
+                                                <p className="hidden sm:block text-xs text-tertiary">{staff.email}</p>
                                             </div>
                                         </div>
                                     </Table.Cell>
                                     <Table.Cell>
                                         <span className="text-sm text-tertiary whitespace-nowrap">{staff.role}</span>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden md:table-cell">
                                         <Badge size="sm" color={staff.staffType === "MEDICAL" ? "blue" : staff.staffType === "NON_MEDICAL" ? "purple" : "gray"} type="pill-color">
                                             {staff.staffType === "MEDICAL" ? "Medical" : staff.staffType === "NON_MEDICAL" ? "Non-Medical" : "Admin"}
                                         </Badge>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden md:table-cell">
                                         <div>
                                             <BadgeWithDot size="sm" color={DBS_BADGE[staff.dbsStatus]}>
                                                 {staff.dbsStatus}
@@ -391,7 +391,7 @@ export default function StaffPage() {
                                             </p>
                                         </div>
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden md:table-cell">
                                         {/* GMC Registration — medical doctors registered with the General Medical Council (UK) */}
                                         {staff.gmcStatus === "NOT_APPLICABLE" ? (
                                             <span className="text-xs text-quaternary">N/A</span>
@@ -409,7 +409,7 @@ export default function StaffPage() {
                                             </div>
                                         )}
                                     </Table.Cell>
-                                    <Table.Cell>
+                                    <Table.Cell className="hidden md:table-cell">
                                         {/* Aesthetic Qualification — Level 7 Diploma or equivalent for non-medical aesthetic practitioners */}
                                         {staff.aestheticQualificationStatus === "NOT_APPLICABLE" ? (
                                             <span className="text-xs text-quaternary">N/A</span>

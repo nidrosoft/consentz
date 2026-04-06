@@ -93,7 +93,7 @@ function daysUntil(dateStr: string): number {
 function DashboardSkeleton() {
     return (
         <div className="flex flex-col gap-6 animate-pulse">
-            <div className="h-10 w-72 rounded-lg bg-quaternary" />
+            <div className="h-10 w-48 sm:w-72 rounded-lg bg-quaternary" />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {[1, 2, 3, 4].map((i) => <div key={i} className="h-36 rounded-xl bg-quaternary" />)}
             </div>
@@ -131,7 +131,7 @@ export default function DashboardPage() {
     const pendingCount = overview.tasks?.totalActive ?? 0;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             {/* Header */}
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">
@@ -342,7 +342,7 @@ export default function DashboardPage() {
             {/* Priority Gaps + Recent Activity */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
                 <div className="lg:col-span-3 rounded-xl border border-secondary bg-primary" data-tour="priority-gaps">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-secondary">
+                    <div className="flex items-center justify-between px-3 sm:px-5 py-4 border-b border-secondary">
                         <h2 className="text-lg font-semibold text-primary">Priority Gaps</h2>
                         <Button color="link-color" size="sm" onClick={() => router.push("/domains")}>View all gaps &rarr;</Button>
                     </div>
@@ -375,7 +375,7 @@ export default function DashboardPage() {
                                         <button
                                             key={gap.id}
                                             type="button"
-                                            className="flex items-center gap-3 px-5 py-3 text-left transition duration-100 hover:bg-secondary"
+                                            className="flex items-center gap-3 px-3 py-2.5 sm:px-5 sm:py-3 text-left transition duration-100 hover:bg-secondary"
                                             onClick={() => router.push(`/domains/${gap.domain}`)}
                                         >
                                             <span className={cx("flex size-8 shrink-0 items-center justify-center rounded-full", domainColor.bg)}>
@@ -414,11 +414,11 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="lg:col-span-2 rounded-xl border border-secondary bg-primary">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-secondary">
+                    <div className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4 border-b border-secondary">
                         <h2 className="text-lg font-semibold text-primary">Recent Activity</h2>
                         <Button color="link-color" size="sm" onClick={() => router.push("/audits")}>View all &rarr;</Button>
                     </div>
-                    <div className="flex flex-col gap-3 p-4">
+                    <div className="flex flex-col gap-3 p-3 sm:p-4">
                         {activity.length === 0 ? (
                             <EmptyState size="sm">
                                 <EmptyState.Header pattern="none">
@@ -484,7 +484,7 @@ export default function DashboardPage() {
                                                     <span className={cx("relative size-2 rounded-full", SEVERITY_DOT[dl.severity])} />
                                                 </span>
                                                 <div>
-                                                    <p className="text-sm font-medium text-primary whitespace-nowrap">{dl.title}</p>
+                                                    <p className="text-sm font-medium text-primary">{dl.title}</p>
                                                     <p className="text-xs text-tertiary">{new Date(dl.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</p>
                                                 </div>
                                             </div>

@@ -162,7 +162,7 @@ export default function EvidenceUploadPage() {
     const canSubmit = !!file && !!name.trim() && !!category && !uploadMutation.isPending;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/evidence")}>Back to Evidence</Button>
 
             <div>
@@ -208,7 +208,7 @@ export default function EvidenceUploadPage() {
                     onDragLeave={() => setDragOver(false)}
                     onDrop={handleDrop}
                     className={cx(
-                        "flex flex-col items-center gap-4 rounded-xl border-2 border-dashed p-12 text-center transition duration-100 cursor-pointer",
+                        "flex flex-col items-center gap-4 rounded-xl border-2 border-dashed p-6 sm:p-12 text-center transition duration-100 cursor-pointer",
                         dragOver ? "border-brand bg-secondary" : "border-secondary bg-secondary hover:border-brand",
                     )}
                 >
@@ -231,7 +231,7 @@ export default function EvidenceUploadPage() {
             )}
 
             {/* Meta form */}
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <Input
                     label="Document name"
                     placeholder="Fire Safety Certificate 2026"
@@ -272,7 +272,7 @@ export default function EvidenceUploadPage() {
                 />
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button color="secondary" size="lg" onClick={() => router.push("/evidence")}>Cancel</Button>
                 <Button
                     color="primary"

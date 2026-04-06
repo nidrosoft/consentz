@@ -54,7 +54,7 @@ export function TaskBoard({ tasks, onMoveTask, onSelectTask }: TaskBoardProps) {
     }
 
     return (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 xl:grid-cols-4">
             {STATUS_COLUMNS.map((col) => {
                 const colTasks = tasks.filter((t) => t.status === col.id);
                 const isOver = dragOverCol === col.id;
@@ -63,7 +63,7 @@ export function TaskBoard({ tasks, onMoveTask, onSelectTask }: TaskBoardProps) {
                     <div
                         key={col.id}
                         className={cx(
-                            "flex flex-col gap-3 rounded-xl p-3 transition-colors duration-150",
+                            "flex min-w-[280px] shrink-0 flex-col gap-3 rounded-xl p-3 transition-colors duration-150 sm:min-w-0",
                             isOver && "bg-brand-primary/30 ring-2 ring-brand-300 ring-inset",
                         )}
                         onDragOver={(e) => handleDragOver(e, col.id)}

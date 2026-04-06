@@ -87,7 +87,7 @@ export default function AddStaffPage() {
     ]);
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/staff")}>Back to Staff</Button>
 
             <div>
@@ -96,7 +96,7 @@ export default function AddStaffPage() {
             </div>
 
             {/* Personal details */}
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <h2 className="text-sm font-semibold text-secondary">Personal Details</h2>
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <Input label="First name" placeholder="Jane" isRequired value={firstName} onChange={setFirstName} />
@@ -129,7 +129,7 @@ export default function AddStaffPage() {
             </div>
 
             {/* DBS Check */}
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <h2 className="text-sm font-semibold text-secondary">DBS Check</h2>
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <Input label="DBS certificate number" placeholder="e.g. 001234567890" value={dbsNumber} onChange={setDbsNumber} />
@@ -146,9 +146,9 @@ export default function AddStaffPage() {
             </div>
 
             {/* Professional Registration */}
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <h2 className="text-sm font-semibold text-secondary">Professional Registration (optional)</h2>
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     <Select
                         label="Registration body"
                         placeholder="Select..."
@@ -162,7 +162,7 @@ export default function AddStaffPage() {
                 </div>
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                 <Button color="secondary" size="lg" onClick={() => router.push("/staff")} isDisabled={createStaff.isPending}>Cancel</Button>
                 <Button
                     color="primary"

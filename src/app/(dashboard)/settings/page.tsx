@@ -91,7 +91,7 @@ function OrganisationPanel() {
 
     if (isLoading) {
         return (
-            <div className="flex flex-col gap-6 animate-pulse">
+            <div className="flex flex-col gap-4 sm:gap-6 animate-pulse">
                 <div className="h-8 w-48 rounded-lg bg-quaternary" />
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="h-10 w-full rounded-lg bg-quaternary" />
@@ -113,7 +113,7 @@ function OrganisationPanel() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-lg font-semibold text-primary">Organisation Details</h2>
@@ -122,7 +122,7 @@ function OrganisationPanel() {
                 <Button color="primary" size="lg" isLoading={updateOrg.isPending} onClick={handleSaveOrg}>Save</Button>
             </div>
 
-            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-6">
+            <div className="flex flex-col gap-5 rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <Input label="Organisation name *" value={name} onChange={(v) => setName(v)} isRequired />
 
                 <div>
@@ -183,8 +183,8 @@ function DeleteOrganisationSection({ orgName }: { orgName: string }) {
     }, [confirmInput, orgName]);
 
     return (
-        <div className="rounded-xl border border-error-primary bg-primary p-6">
-            <div className="flex items-start gap-3">
+        <div className="rounded-xl border border-error-primary bg-primary p-4 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error-primary" />
                 <div className="flex-1">
                     <h2 className="text-sm font-semibold text-error-primary">Danger Zone</h2>
@@ -209,7 +209,7 @@ function DeleteOrganisationSection({ orgName }: { orgName: string }) {
                         className="mt-2 w-full rounded-lg border border-error bg-primary px-3 py-2 text-sm text-primary outline-none transition duration-100 focus:ring-2 focus:ring-error"
                         autoFocus
                     />
-                    <div className="mt-3 flex items-center gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Button
                             color="primary-destructive"
                             size="sm"
@@ -240,8 +240,8 @@ function RestartTourCard() {
     const isCompleted = progress.phase1Status === "COMPLETED" || progress.phase1Status === "SKIPPED";
 
     return (
-        <div className="rounded-xl border border-secondary bg-primary p-6">
-            <div className="flex items-start gap-3">
+        <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-secondary">
                     <Rocket01 className="size-5 text-fg-brand-primary" />
                 </div>
@@ -431,7 +431,7 @@ function UsersPanel() {
     }, [actionFeedback]);
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-lg font-semibold text-primary">Team Members</h2>
@@ -455,33 +455,39 @@ function UsersPanel() {
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-secondary bg-secondary">
-                            <th className="px-4 py-3 text-left text-xs font-medium text-tertiary">User</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-tertiary">Role</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-tertiary">Status</th>
-                            <th className="px-4 py-3 text-right text-xs font-medium text-tertiary"></th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-tertiary">User</th>
+                            <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-tertiary">Role</th>
+                            <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-tertiary">Status</th>
+                            <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-tertiary"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {users.map((user, i) => (
                             <tr key={user.id} className={i < users.length - 1 ? "border-b border-secondary" : ""}>
-                                <td className="px-4 py-3">
+                                <td className="px-3 sm:px-4 py-3">
                                     <div className="flex items-center gap-3">
                                         <Avatar size="sm" initials={user.name.split(" ").map((n) => n[0]).join("")} />
                                         <div>
                                             <p className="text-sm font-medium text-primary">{user.name}</p>
                                             <p className="text-xs text-tertiary">{user.email}</p>
+                                            <div className="mt-1 flex flex-wrap gap-1 sm:hidden">
+                                                <Badge size="sm" color={ROLE_BADGE[user.role] ?? "gray"} type="pill-color">
+                                                    {ROLE_DISPLAY[user.role] ?? user.role}
+                                                </Badge>
+                                                <Badge size="sm" color={user.status === "Active" ? "success" : "warning"} type="pill-color">{user.status}</Badge>
+                                            </div>
                                         </div>
                                     </div>
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="hidden sm:table-cell px-4 py-3">
                                     <Badge size="sm" color={ROLE_BADGE[user.role] ?? "gray"} type="pill-color">
                                         {ROLE_DISPLAY[user.role] ?? user.role}
                                     </Badge>
                                 </td>
-                                <td className="px-4 py-3">
+                                <td className="hidden sm:table-cell px-4 py-3">
                                     <Badge size="sm" color={user.status === "Active" ? "success" : "warning"} type="pill-color">{user.status}</Badge>
                                 </td>
-                                <td className="px-4 py-3 text-right">
+                                <td className="px-3 sm:px-4 py-3 text-right">
                                     <div className="relative inline-block">
                                         <button onClick={() => setMenuOpen(menuOpen === user.id ? null : user.id)} className="rounded-lg p-1 hover:bg-primary_hover">
                                             <DotsVertical className="size-4 text-fg-quaternary" />
@@ -541,7 +547,7 @@ function UsersPanel() {
                                 </p>
                             </div>
                         </div>
-                        <div className="mt-5 flex justify-end gap-3">
+                        <div className="mt-5 flex flex-wrap justify-end gap-3">
                             <Button color="secondary" size="sm" onClick={() => setConfirmRemoveId(null)} isDisabled={removeLoading}>Cancel</Button>
                             <Button color="primary-destructive" size="sm" isLoading={removeLoading} onClick={() => handleRemoveUser(confirmRemoveId)}>
                                 {users.find(u => u.id === confirmRemoveId)?.status === "Invited" ? "Revoke invitation" : "Remove user"}
@@ -573,7 +579,7 @@ function UsersPanel() {
                                 </label>
                             ))}
                         </div>
-                        <div className="mt-6 flex justify-end gap-3">
+                        <div className="mt-6 flex flex-wrap justify-end gap-3">
                             <Button color="secondary" size="sm" onClick={() => { setChangeRoleUser(null); setNewRole(""); }}>Cancel</Button>
                             <Button color="primary" size="sm" isLoading={roleLoading} isDisabled={newRole === changeRoleUser.role} onClick={handleChangeRole}>Update Role</Button>
                         </div>
@@ -612,7 +618,7 @@ function UsersPanel() {
                                 </div>
                             </div>
                         </div>
-                        <div className="mt-6 flex justify-end gap-3">
+                        <div className="mt-6 flex flex-wrap justify-end gap-3">
                             <Button color="secondary" size="lg" onClick={() => { setShowInvite(false); setInviteError(null); }}>Cancel</Button>
                             <Button
                                 color="primary"
@@ -726,7 +732,7 @@ function BillingPanel() {
     const formatPrice = (pence: number) => pence === 0 ? "Free" : `£${(pence / 100).toFixed(0)}`;
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div>
                 <h2 className="text-lg font-semibold text-primary">Billing &amp; Plan</h2>
                 <p className="mt-1 text-sm text-tertiary">Manage your subscription, payment method, and invoices.</p>
@@ -746,10 +752,10 @@ function BillingPanel() {
             ) : (
                 <>
                     {subscription && subscription.status !== "cancelled" && (
-                        <div className="rounded-xl border border-secondary bg-primary p-6">
+                        <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="text-lg font-semibold text-primary">{subscription.plan?.name ?? "Current"} Plan</h3>
                                         <Badge size="sm" color={subscription.status === "active" ? "success" : "warning"} type="pill-color">
                                             {subscription.status === "active" ? "Active" : subscription.status === "past_due" ? "Past Due" : subscription.status}
@@ -768,7 +774,7 @@ function BillingPanel() {
                         </div>
                     )}
 
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {plans.map((plan) => {
                             const isCurrent = plan.tier === currentTier;
                             const isPopular = plan.tier === "professional";
@@ -816,7 +822,7 @@ function BillingPanel() {
                     </div>
 
                     {subscription?.stripe_customer_id && (
-                        <div className="rounded-xl border border-secondary bg-primary p-6">
+                        <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                             <h3 className="mb-2 text-lg font-semibold text-primary">Payment &amp; Invoices</h3>
                             <p className="mb-4 text-sm text-tertiary">Update your card, download invoices, or cancel your subscription through the Stripe billing portal.</p>
                             <Button color="secondary" size="sm" iconTrailing={ArrowUpRight} onClick={handlePortal} isLoading={portalLoading}>
@@ -1030,20 +1036,20 @@ function IntegrationsPanel() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div>
                 <h2 className="text-lg font-semibold text-primary">Integrations</h2>
                 <p className="mt-1 text-sm text-tertiary">Connect services, manage API keys, and configure the Consentz SDK.</p>
             </div>
 
             {/* Consentz Platform Connection */}
-            <div className={cx("rounded-xl border bg-primary p-6", consentzStatus?.connected ? "border-secondary" : "border-brand-300")}>
-                <div className="flex items-center gap-3">
+            <div className={cx("rounded-xl border bg-primary p-4 sm:p-6", consentzStatus?.connected ? "border-secondary" : "border-brand-300")}>
+                <div className="flex items-start gap-3">
                     <div className={cx("flex size-10 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold", consentzStatus?.connected ? "bg-success-secondary text-fg-success-primary" : "bg-brand-primary text-brand-secondary")}>
                         {consentzStatus?.connected ? <CheckCircle className="size-5" /> : <Link01 className="size-5" />}
                     </div>
                     <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <h3 className="text-lg font-semibold text-primary">Consentz Platform</h3>
                             {consentzLoading ? <Badge size="sm" color="gray" type="pill-color">Checking...</Badge> : consentzStatus?.connected ? <Badge size="sm" color="success" type="pill-color">Connected</Badge> : <Badge size="sm" color="warning" type="pill-color">Not Connected</Badge>}
                         </div>
@@ -1053,8 +1059,8 @@ function IntegrationsPanel() {
 
                 {consentzStatus?.connected ? (
                     <div className="mt-4 space-y-3">
-                        <div className="rounded-lg border border-secondary bg-secondary px-4 py-3">
-                            <div className="flex items-center justify-between">
+                        <div className="rounded-lg border border-secondary bg-secondary px-3 sm:px-4 py-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
                                     <p className="text-sm font-medium text-primary">Clinic ID: {consentzStatus.clinicId}</p>
                                     <p className="text-xs text-tertiary">Connected as {consentzStatus.username}</p>
@@ -1062,7 +1068,7 @@ function IntegrationsPanel() {
                                         <p className="mt-0.5 text-xs text-tertiary">Last synced {syncTimeAgo(lastSyncData.synced_at)}</p>
                                     )}
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-2">
                                     <Button color="secondary" size="sm" iconLeading={RefreshCw01} isLoading={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
                                         {syncMutation.isSuccess ? "Synced!" : "Sync Now"}
                                     </Button>
@@ -1101,13 +1107,13 @@ function IntegrationsPanel() {
             {/* API Keys */}
             <div>
                 {revealedKey && (
-                    <div className="mb-4 rounded-xl border border-secondary bg-primary p-4">
+                    <div className="mb-4 rounded-xl border border-secondary bg-primary p-3 sm:p-4">
                         <div className="flex items-start gap-3">
                             <AlertCircle className="mt-0.5 size-5 shrink-0 text-fg-warning-primary" />
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-primary">Copy your API key now</p>
                                 <p className="mt-0.5 text-xs text-tertiary">This key will only be shown once.</p>
-                                <div className="mt-3 flex items-center gap-2">
+                                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                                     <code className="flex-1 rounded-md border border-secondary bg-secondary px-3 py-2 font-mono text-xs text-primary break-all">{revealedKey}</code>
                                     <Button color="secondary" size="sm" iconLeading={Copy01} onClick={() => handleCopy(revealedKey, "revealed")}>{copiedId === "revealed" ? "Copied!" : "Copy"}</Button>
                                 </div>
@@ -1196,8 +1202,8 @@ function IntegrationsPanel() {
             </div>
 
             {/* Webhooks */}
-            <div className="rounded-xl border border-secondary bg-primary p-6">
-                <div className="mb-4 flex items-center justify-between">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-6">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h3 className="text-lg font-semibold text-primary">Webhooks</h3>
                         <p className="mt-1 text-sm text-tertiary">Receive real-time notifications when compliance events occur.</p>
@@ -1205,10 +1211,10 @@ function IntegrationsPanel() {
                     <Button color="primary" size="sm">Add Endpoint</Button>
                 </div>
                 <div className="rounded-lg border border-secondary">
-                    <div className="flex items-center justify-between px-4 py-3">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                                <code className="rounded bg-secondary px-2 py-0.5 font-mono text-xs text-primary">{MOCK_WEBHOOK_URL}</code>
+                    <div className="flex flex-col gap-3 px-3 sm:px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <code className="rounded bg-secondary px-2 py-0.5 font-mono text-xs text-primary break-all">{MOCK_WEBHOOK_URL}</code>
                                 <Badge size="sm" color="success" type="pill-color">Active</Badge>
                             </div>
                             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -1217,7 +1223,7 @@ function IntegrationsPanel() {
                                 ))}
                             </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Button color="secondary" size="sm">Edit</Button>
                             <Button color="primary-destructive" size="sm">Delete</Button>
                         </div>
@@ -1299,7 +1305,7 @@ function NotificationsPanel() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-lg font-semibold text-primary">Notification Preferences</h2>
@@ -1329,24 +1335,24 @@ function NotificationsPanel() {
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-secondary bg-secondary">
-                            <th className="px-4 py-3 text-left text-xs font-medium text-tertiary">Notification Type</th>
-                            <th className="px-4 py-3 text-center text-xs font-medium text-tertiary">In-App</th>
-                            <th className="px-4 py-3 text-center text-xs font-medium text-tertiary">Email</th>
+                            <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-tertiary">Notification Type</th>
+                            <th className="px-3 sm:px-4 py-3 text-center text-xs font-medium text-tertiary">In-App</th>
+                            <th className="px-3 sm:px-4 py-3 text-center text-xs font-medium text-tertiary">Email</th>
                         </tr>
                     </thead>
                     <tbody>
                         {NOTIFICATION_PREFS.map((pref, i) => (
                             <tr key={pref.id} className={i < NOTIFICATION_PREFS.length - 1 ? "border-b border-secondary" : ""}>
-                                <td className="px-4 py-3"><p className="text-sm font-medium text-primary">{pref.label}</p></td>
-                                <td className="px-4 py-3 text-center"><span className="text-xs font-medium text-tertiary">Always</span></td>
-                                <td className="px-4 py-3 text-center"><input type="checkbox" defaultChecked={pref.email} className="size-4 rounded border-secondary accent-brand-600" /></td>
+                                <td className="px-3 sm:px-4 py-3"><p className="text-sm font-medium text-primary">{pref.label}</p></td>
+                                <td className="px-3 sm:px-4 py-3 text-center"><span className="text-xs font-medium text-tertiary">Always</span></td>
+                                <td className="px-3 sm:px-4 py-3 text-center"><input type="checkbox" defaultChecked={pref.email} className="size-4 rounded border-secondary accent-brand-600" /></td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
 
-            <div className="rounded-xl border border-secondary bg-primary p-6">
+            <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-6">
                 <h3 className="mb-3 text-sm font-semibold text-primary">Email Digest</h3>
                 <div className="flex flex-col gap-2">
                     {DIGEST_OPTIONS.map((opt) => (
@@ -1396,7 +1402,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">Settings</h1>
                 <p className="mt-1 text-sm text-tertiary">Manage your organisation and platform settings.</p>

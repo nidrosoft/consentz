@@ -64,7 +64,7 @@ function ScoreRing({ score, filledColor, trackColor }: { score: number; filledCo
     const gapLen = circumference - filledLen;
 
     return (
-        <div className="relative size-[104px] shrink-0">
+        <div className="relative size-20 shrink-0 sm:size-[104px]">
             <svg viewBox={`0 0 ${viewBox} ${viewBox}`} className="size-full" style={{ transform: "rotate(-90deg)" }}>
                 {/* Track */}
                 <circle
@@ -129,7 +129,7 @@ export default function DomainsPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:gap-6">
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">CQC Domains</h1>
                 <p className="mt-1 text-sm text-tertiary">Your compliance across all 5 key questions.</p>
@@ -151,7 +151,7 @@ export default function DomainsPage() {
                             className="group flex flex-col rounded-2xl border border-secondary bg-primary text-left transition duration-150 hover:shadow-lg hover:border-brand-300"
                         >
                             {/* Header */}
-                            <div className="flex items-center gap-3 p-5 pb-0">
+                            <div className="flex items-center gap-3 p-4 pb-0 sm:p-5 sm:pb-0">
                                 <div className={cx("flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", theme.iconBg)}>
                                     {Icon && <Icon className={cx("size-[18px]", theme.text)} />}
                                 </div>
@@ -162,7 +162,7 @@ export default function DomainsPage() {
                             </div>
 
                             {/* Score ring + metrics */}
-                            <div className="flex items-center gap-5 p-5">
+                            <div className="flex items-center gap-3 p-4 sm:gap-5 sm:p-5">
                                 <ScoreRing
                                     score={d.score}
                                     filledColor={theme.filledStroke}
@@ -190,7 +190,7 @@ export default function DomainsPage() {
                             </div>
 
                             {/* KLOE status row */}
-                            <div className="border-t border-secondary px-5 py-3.5 flex items-center justify-between">
+                            <div className="border-t border-secondary px-3 py-2.5 sm:px-5 sm:py-3.5 flex items-center justify-between">
                                 <div className="flex flex-wrap gap-1.5">
                                     {domainKloes.map((k) => {
                                         const hasGap = gaps.some((g) => g.kloe === k.code && g.status === "OPEN");
