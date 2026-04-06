@@ -6,7 +6,7 @@ import { ApiErrors } from '@/lib/api-response';
  * Returns an error response if verification fails, or null if the request is authorized.
  */
 export function verifyCronSecret(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.CRON_SECRET?.trim();
   if (!secret) {
     console.error('[CRON_AUTH] CRON_SECRET is not configured');
     return ApiErrors.internal('Cron secret not configured');
