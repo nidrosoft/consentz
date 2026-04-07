@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { apiSuccess } from '@/lib/api-response';
 import { verifyCronSecret } from '@/lib/cron-auth';
 import { NotificationService } from '@/lib/services/notification-service';
-import { detectEvidenceGaps } from '@/lib/services/gap-generator';
+import { detectEvidenceGaps, generateEvidenceStatusGaps } from '@/lib/services/gap-generator';
+import { EvidenceStatusService } from '@/lib/services/evidence-status-service';
 import { getDb } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
@@ -104,13 +105,26 @@ export async function GET(req: NextRequest) {
   }
 
   let gapsCreated = 0;
+  let evidenceStatusGapsCreated = 0;
   for (const org of orgs ?? []) {
+    await EvidenceStatusService.refreshExpiryStatuses(org.id);
+
     gapsCreated += await detectEvidenceGaps(org.id);
+
+    const { data: orgRow } = await client
+      .from('organizations')
+      .select('service_type')
+      .eq('id', org.id)
+      .maybeSingle();
+    const serviceType = orgRow?.service_type ?? 'AESTHETIC_CLINIC';
+    const result = await generateEvidenceStatusGaps({ organizationId: org.id, serviceType });
+    evidenceStatusGapsCreated += result.created;
   }
 
   return apiSuccess({
     checked: true,
     notificationsCreated: notifications.length,
     gapsCreated,
+    evidenceStatusGapsCreated,
   });
 }

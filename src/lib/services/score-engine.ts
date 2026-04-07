@@ -5,7 +5,11 @@ import {
   type AssessmentQuestion,
   type ServiceType,
 } from '@/lib/constants/assessment-questions';
-import { getKloesForDomain } from '@/lib/constants/cqc-evidence-requirements';
+import {
+  getKloesForDomain,
+  getEvidenceItems,
+  CRITICALITY_WEIGHT,
+} from '@/lib/constants/cqc-evidence-requirements';
 import type { DomainSlug } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -28,6 +32,14 @@ interface ScoreInputs {
 }
 
 export type CqcRatingType = 'OUTSTANDING' | 'GOOD' | 'REQUIRES_IMPROVEMENT' | 'INADEQUATE';
+
+export interface KloeScoreResult {
+  kloeCode: string;
+  score: number;
+  criticalGapCount: number;
+  highGapCount: number;
+  isHighRisk: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // scoreAnswer — per-question scoring following the spec
@@ -440,6 +452,90 @@ export function calculateTimeToGood(
 }
 
 // ---------------------------------------------------------------------------
+// Domain slug mapping (internal 'well_led' → DomainSlug 'well-led')
+// ---------------------------------------------------------------------------
+
+function toDomainSlug(domain: string): DomainSlug {
+  return (domain === 'well_led' ? 'well-led' : domain) as DomainSlug;
+}
+
+// ---------------------------------------------------------------------------
+// KLOE-level evidence scoring with hard caps
+// ---------------------------------------------------------------------------
+
+export async function calculateKloeScore(
+  organizationId: string,
+  kloeCode: string,
+  serviceType: ServiceType,
+  prefetchedStatuses?: Array<{ evidence_item_id: string; status: string; expiry_status: string | null }>,
+): Promise<KloeScoreResult> {
+  const items = getEvidenceItems(serviceType, kloeCode);
+
+  if (items.length === 0) {
+    return { kloeCode, score: 0, criticalGapCount: 0, highGapCount: 0, isHighRisk: false };
+  }
+
+  let statusRows = prefetchedStatuses;
+  if (!statusRows) {
+    const client = await getDb();
+    const { data } = await client
+      .from('kloe_evidence_status')
+      .select('evidence_item_id, status, expiry_status')
+      .eq('organization_id', organizationId)
+      .eq('kloe_code', kloeCode);
+    statusRows = data ?? [];
+  }
+
+  const statusMap = new Map(
+    statusRows.map((r) => [r.evidence_item_id, r]),
+  );
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+  let criticalGapCount = 0;
+  let highGapCount = 0;
+  let hasCriticalExpired = false;
+
+  for (const item of items) {
+    const weight = CRITICALITY_WEIGHT[item.criticality];
+    totalWeight += weight;
+
+    const row = statusMap.get(item.id);
+    const isPresent = row?.status === 'complete' && row?.expiry_status !== 'expired';
+
+    if (isPresent) {
+      weightedSum += weight;
+    } else {
+      if (item.criticality === 'critical') {
+        criticalGapCount++;
+        if (row?.expiry_status === 'expired') hasCriticalExpired = true;
+      } else if (item.criticality === 'high') {
+        highGapCount++;
+      }
+    }
+  }
+
+  let score = totalWeight > 0 ? (weightedSum / totalWeight) * 100 : 0;
+
+  if (criticalGapCount > 0) {
+    score = Math.min(score, hasCriticalExpired ? 40 : 50);
+  }
+  if (highGapCount >= 2) {
+    score = Math.min(score, 60);
+  } else if (highGapCount > 0) {
+    score = Math.min(score, 70);
+  }
+
+  return {
+    kloeCode,
+    score: Math.round(score),
+    criticalGapCount,
+    highGapCount,
+    isHighRisk: criticalGapCount >= 2,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main recalculation
 // ---------------------------------------------------------------------------
 
@@ -461,15 +557,10 @@ export async function recalculateComplianceScores(organizationId: string) {
   const [
     assessmentResult,
     responsesResult,
-    evidenceResult,
     allEvidenceResult,
-    policiesResult,
-    staffResult,
-    trainingResult,
-    allTasksResult,
-    overdueCriticalResult,
     openGapsResult,
     orgResult,
+    kloeStatusResult,
   ] = await Promise.all([
     client
       .from('assessments')
@@ -487,35 +578,7 @@ export async function recalculateComplianceScores(organizationId: string) {
     client
       .from('evidence_items')
       .select('*')
-      .eq('organization_id', organizationId)
-      .eq('status', 'VALID'),
-    client
-      .from('evidence_items')
-      .select('*')
       .eq('organization_id', organizationId),
-    client
-      .from('policies')
-      .select('*')
-      .eq('organization_id', organizationId),
-    client
-      .from('staff_members')
-      .select('*')
-      .eq('organization_id', organizationId),
-    client
-      .from('training_records')
-      .select('*')
-      .eq('organization_id', organizationId),
-    client
-      .from('tasks')
-      .select('*')
-      .eq('organization_id', organizationId),
-    client
-      .from('tasks')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', organizationId)
-      .eq('priority', 'CRITICAL')
-      .neq('status', 'COMPLETED')
-      .lt('due_date', new Date().toISOString()),
     client
       .from('compliance_gaps')
       .select('*')
@@ -523,26 +586,28 @@ export async function recalculateComplianceScores(organizationId: string) {
       .in('status', ['OPEN', 'IN_PROGRESS']),
     client
       .from('organizations')
-      .select('service_type')
+      .select('service_type, e3_nutrition_na_aesthetic')
       .eq('id', organizationId)
       .maybeSingle(),
+    client
+      .from('kloe_evidence_status')
+      .select('kloe_code, evidence_item_id, status, expiry_status')
+      .eq('organization_id', organizationId),
   ]);
 
   const assessment = assessmentResult.data;
   const allEvidence = allEvidenceResult.data ?? [];
-  const validEvidence = evidenceResult.data ?? [];
-  const policies = policiesResult.data ?? [];
-  const staff = staffResult.data ?? [];
-  const trainingRecords = trainingResult.data ?? [];
-  const tasks = allTasksResult.data ?? [];
   const openGaps = openGapsResult.data ?? [];
   const hasCriticalGap = openGaps.some((g: any) => g.severity === 'CRITICAL');
 
-  const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED');
-  const taskCompletionRate =
-    tasks.length > 0 ? (completedTasks.length / tasks.length) * 100 : 50;
-
   const serviceType = (orgResult.data?.service_type ?? 'AESTHETIC_CLINIC') as ServiceType;
+  const allKloeStatuses = (kloeStatusResult.data ?? []) as Array<{
+    kloe_code: string;
+    evidence_item_id: string;
+    status: string;
+    expiry_status: string | null;
+  }>;
+  const e3NutritionNa = orgResult.data?.e3_nutrition_na_aesthetic ?? false;
 
   // Build a map of question_id → answer value from the latest completed assessment
   const answerMap = new Map<string, string>();
@@ -559,17 +624,9 @@ export async function recalculateComplianceScores(organizationId: string) {
   // Get questions for this service type
   const allQuestions = getQuestionsForServiceType(serviceType);
 
-  // Build a lookup for quick question access
-  const questionById = new Map<string, AssessmentQuestion>();
-  for (const q of ASSESSMENT_QUESTIONS) {
-    questionById.set(q.id, q);
-  }
+  // --- Per-domain scoring: domain score = average of KLOE evidence scores ---
 
-  // Fetch real Consentz metrics from sync logs
-  const consentzMetrics = await getConsentzMetrics(organizationId);
-
-  // --- Per-domain scoring using scoreAnswer ------------------------------------
-
+  const allKloeScores: KloeScoreResult[] = [];
   const domainScoreData: { domain: string; score: number; rating: CqcRatingType }[] = [];
   let totalAnswered = 0;
   let totalQuestionsCount = 0;
@@ -579,92 +636,69 @@ export async function recalculateComplianceScores(organizationId: string) {
     const domainQuestions = allQuestions.filter((q) => q.domain === upperDomain);
     totalQuestionsCount += domainQuestions.length;
 
-    let totalWeightedScore = 0;
-    let totalWeightedMax = 0;
+    // Count answered questions for confidence score
     let answeredCount = 0;
-
     for (const question of domainQuestions) {
-      const rawAnswer = answerMap.get(question.id);
-      if (rawAnswer === undefined) continue;
-
-      answeredCount++;
-
-      // Parse multi_select answers stored as JSON strings
-      let parsedAnswer: unknown = rawAnswer;
-      if (question.answerType === 'multi_select') {
-        try {
-          parsedAnswer = JSON.parse(rawAnswer);
-        } catch {
-          parsedAnswer = rawAnswer;
-        }
-      }
-
-      const result = scoreAnswer(question, parsedAnswer);
-      totalWeightedScore += result.score;
-      totalWeightedMax += result.maxScore;
+      if (answerMap.has(question.id)) answeredCount++;
     }
-
     totalAnswered += answeredCount;
 
-    // Assessment percentage for this domain
-    const assessmentScore =
-      totalWeightedMax > 0
-        ? (totalWeightedScore / totalWeightedMax) * 100
-        : assessment?.domain_results
-          ? ((assessment.domain_results as Record<string, { score?: number }>)[domain]
-              ?.score ?? 50)
-          : 50;
-
-    // Evidence coverage
-    const domainEvidence = validEvidence.filter((e: any) => e.domains?.includes(domain));
-    const kloeCount = domainQuestions.length;
-    const evidenceCoverage = Math.min(
-      100,
-      (domainEvidence.length / Math.max(kloeCount * 2, 1)) * 100,
-    );
-
-    // Evidence quality factor (0.5–1.0), blended with evidence status completion
-    const rawQuality = calculateEvidenceQuality(domain, allEvidence, policies);
-    const statusFactor = await getEvidenceStatusFactor(organizationId, domain, serviceType);
-    const evidenceQuality = rawQuality * 0.5 + statusFactor * 0.5;
-
-    // Timeliness factor (0.5–1.0)
-    const timeliness = calculateTimeliness(domain, allEvidence, trainingRecords, staff);
-
-    // Domain gaps
     const domainGaps = openGaps.filter((g: any) => g.domain === domain);
 
-    // Base score via the existing weighted formula
-    const baseScore = calculateDomainScore(domain, {
-      assessmentScore,
-      evidenceCoverage,
-      consentzMetrics,
-      taskCompletionRate,
-      overdueCriticalItems: domainGaps.filter((g: any) => g.severity === 'CRITICAL')
-        .length,
-    });
+    // --- KLOE evidence-based scoring (domain score = average of KLOE scores) ---
 
-    // Apply evidence quality & timeliness modifiers
-    const adjustedScore = Math.max(
-      0,
-      Math.min(100, Math.round(baseScore * evidenceQuality * timeliness)),
-    );
+    const slug = toDomainSlug(domain);
+    let kloeDefs = getKloesForDomain(serviceType, slug);
 
-    // Rating with limiters
-    let rating = scoreToRating(adjustedScore);
-    const domainCritical = domainGaps.filter(
-      (g: any) => g.severity === 'CRITICAL',
-    ).length;
-    const domainHigh = domainGaps.filter((g: any) => g.severity === 'HIGH').length;
+    if (slug === 'effective' && serviceType === 'AESTHETIC_CLINIC' && e3NutritionNa) {
+      kloeDefs = kloeDefs.filter((k) => k.code !== 'E3');
+    }
 
-    if (domainCritical > 0 && (rating === 'OUTSTANDING' || rating === 'GOOD')) {
+    let evidenceBasedScore = 0;
+    let domainCriticalGaps = 0;
+    let domainHighGaps = 0;
+
+    if (kloeDefs.length > 0) {
+      const kloeResults: KloeScoreResult[] = [];
+      for (const kloe of kloeDefs) {
+        const kloeStatuses = allKloeStatuses.filter(
+          (s) => s.kloe_code === kloe.code,
+        );
+        const kloeResult = await calculateKloeScore(
+          organizationId,
+          kloe.code,
+          serviceType,
+          kloeStatuses,
+        );
+        kloeResults.push(kloeResult);
+        allKloeScores.push(kloeResult);
+        domainCriticalGaps += kloeResult.criticalGapCount;
+        domainHighGaps += kloeResult.highGapCount;
+      }
+      evidenceBasedScore =
+        kloeResults.reduce((sum, r) => sum + r.score, 0) / kloeResults.length;
+    }
+
+    // Domain score = average of KLOE scores (pure evidence-driven, no defaults)
+    const domainScore = Math.max(0, Math.min(100, Math.round(evidenceBasedScore)));
+
+    // Rating with limiters (combine KLOE gaps + compliance_gaps table)
+    let rating = scoreToRating(domainScore);
+    const gapCritical =
+      domainCriticalGaps +
+      domainGaps.filter((g: any) => g.severity === 'CRITICAL').length;
+    const gapHigh =
+      domainHighGaps +
+      domainGaps.filter((g: any) => g.severity === 'HIGH').length;
+
+    if (gapCritical > 0 && (rating === 'OUTSTANDING' || rating === 'GOOD')) {
       rating = 'REQUIRES_IMPROVEMENT';
     }
-    if (domainHigh > 0 && rating === 'OUTSTANDING') {
+    if (gapHigh > 0 && rating === 'OUTSTANDING') {
       rating = 'GOOD';
     }
 
-    domainScoreData.push({ domain, score: adjustedScore, rating });
+    domainScoreData.push({ domain, score: domainScore, rating });
   }
 
   // --- Overall score & CQC domain-level aggregation ----------------------------
@@ -750,5 +784,5 @@ export async function recalculateComplianceScores(organizationId: string) {
 
   const estimatedTimeToGood = calculateTimeToGood(domainScoreData, openGaps);
 
-  return { overallScore, predictedRating, domainScores: domainScoreData, confidence, estimatedTimeToGood };
+  return { overallScore, predictedRating, domainScores: domainScoreData, confidence, estimatedTimeToGood, kloeScores: allKloeScores };
 }

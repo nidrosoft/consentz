@@ -20,6 +20,9 @@ export type IncidentStatus = 'REPORTED' | 'INVESTIGATING' | 'RESOLVED' | 'CLOSED
 export type EvidenceType = 'POLICY' | 'CERTIFICATE' | 'TRAINING_RECORD' | 'AUDIT_REPORT' | 'RISK_ASSESSMENT' | 'MEETING_MINUTES' | 'PHOTO' | 'OTHER';
 export type EvidenceStatus = 'VALID' | 'EXPIRING_SOON' | 'EXPIRED' | 'PENDING_REVIEW';
 
+export type EvidenceCriticality = 'critical' | 'high' | 'medium';
+export type ExpiryType = 'date' | 'activity' | 'none';
+
 export type DomainSlug = 'safe' | 'effective' | 'caring' | 'responsive' | 'well-led';
 export type NotificationType = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS';
 export type EntityType =
@@ -224,9 +227,25 @@ export interface KloeEvidenceStatus {
   linkedPolicyId: string | null;
   linkedEvidenceId: string | null;
   consentzSyncedAt: string | null;
+  expiresAt: string | null;
+  lastActivityAt: string | null;
+  expiryStatus: 'valid' | 'expiring_soon' | 'expired' | null;
   notes: string | null;
   updatedAt: string;
   createdAt: string;
+}
+
+export interface EvidenceFileVersion {
+  id: string;
+  organizationId: string;
+  evidenceItemId: string;
+  fileUrl: string;
+  fileName: string;
+  fileType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  expiresAt: string | null;
+  isCurrent: boolean;
 }
 
 export interface UpcomingDeadline {

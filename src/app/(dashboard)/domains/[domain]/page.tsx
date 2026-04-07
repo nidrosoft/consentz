@@ -268,12 +268,16 @@ function ConsentzDomainMetrics({ domain }: { domain: string }) {
 
     return (
         <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3">
                 <div>
                     <h3 className="text-lg font-semibold text-primary">Consentz Metrics</h3>
+                    <p className="mt-0.5 text-xs text-tertiary">Auto-synced from Consentz (live data)</p>
                     {freshness && <p className="mt-0.5 text-xs text-tertiary">Synced {timeAgo(freshness)}</p>}
                 </div>
-                <Badge size="sm" color="brand" type="pill-color">Live</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
+                    <span className="text-xs text-tertiary">Live data from Consentz</span>
+                    <Badge size="sm" color="brand" type="pill-color">Live</Badge>
+                </div>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {Object.entries(metrics).map(([key, m]: [string, ConsentzMetricEntry]) => {
@@ -471,6 +475,7 @@ export default function DomainDetailPage() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {domainKloes.map((kloe) => {
                             const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
+                            const criticalCount = kloeGaps.filter((g) => g.severity === "CRITICAL").length;
                             const kloeEvidenceList = evidenceByKloe[kloe.code] ?? [];
                             const hasPolicy = kloeEvidenceList.some((e) => e.category === "POLICY");
                             const hasTraining = kloeEvidenceList.some((e) => e.category === "TRAINING_RECORD");
@@ -494,8 +499,11 @@ export default function DomainDetailPage() {
                                     onClick={() => router.push(`/domains/${slug}/${kloe.code.toLowerCase()}`)}
                                     className="group flex flex-col rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand hover:shadow-xs"
                                 >
-                                    <div className="flex items-start justify-between">
-                                        <Badge size="sm" color="gray" type="pill-color">{kloe.code}</Badge>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                            <Badge size="sm" color="gray" type="pill-color">{kloe.code}</Badge>
+                                            {criticalCount >= 2 && <Badge size="sm" color="error" type="pill-color">High Risk</Badge>}
+                                        </div>
                                         <MiniScoreRing score={kloeScore} />
                                     </div>
                                     <p className="mt-3 text-sm font-semibold text-primary line-clamp-2">{displayTitle}</p>
@@ -523,6 +531,7 @@ export default function DomainDetailPage() {
                     <div className="flex flex-col gap-3">
                         {domainKloes.map((kloe) => {
                             const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
+                            const criticalCount = kloeGaps.filter((g) => g.severity === "CRITICAL").length;
                             const kloeEvidenceList = evidenceByKloe[kloe.code] ?? [];
                             const hasPolicy = kloeEvidenceList.some((e) => e.category === "POLICY");
                             const hasTraining = kloeEvidenceList.some((e) => e.category === "TRAINING_RECORD");
@@ -565,6 +574,7 @@ export default function DomainDetailPage() {
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="font-mono text-sm font-bold text-primary">{kloeScore}%</span>
+                                        {criticalCount >= 2 && <Badge size="sm" color="error" type="pill-color">High Risk</Badge>}
                                         <Badge size="sm" color={kloeGaps.length === 0 ? "success" : "warning"} type="pill-color">
                                             {kloeGaps.length === 0 ? "✓" : "⚠"}
                                         </Badge>

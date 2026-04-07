@@ -6,6 +6,37 @@ const DOMAIN_FROM_PREFIX: Record<string, DomainSlug> = {
   S: 'safe', E: 'effective', C: 'caring', R: 'responsive', W: 'well-led',
 };
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * MS_PER_DAY;
+const SEVEN_DAYS_MS = 7 * MS_PER_DAY;
+
+/** Date-based expiry takes precedence when `expires_at` is set; otherwise activity-based rules use `last_activity_at`. */
+function computeExpiryStatus(
+  expiresAt: string | null | undefined,
+  lastActivityAt: string | null | undefined,
+): 'valid' | 'expiring_soon' | 'expired' | null {
+  const now = Date.now();
+
+  if (expiresAt) {
+    const exp = new Date(expiresAt).getTime();
+    if (!Number.isNaN(exp)) {
+      if (exp <= now) return 'expired';
+      if (exp - now <= THIRTY_DAYS_MS) return 'expiring_soon';
+      return 'valid';
+    }
+  }
+
+  if (lastActivityAt) {
+    const act = new Date(lastActivityAt).getTime();
+    if (!Number.isNaN(act)) {
+      if (now - act > SEVEN_DAYS_MS) return 'expired';
+      return 'valid';
+    }
+  }
+
+  return null;
+}
+
 function mapRow(row: Record<string, unknown>) {
   return {
     id: row.id as string,
@@ -17,6 +48,9 @@ function mapRow(row: Record<string, unknown>) {
     linkedPolicyId: (row.linked_policy_id as string) ?? null,
     linkedEvidenceId: (row.linked_evidence_id as string) ?? null,
     consentzSyncedAt: (row.consentz_synced_at as string) ?? null,
+    expiresAt: (row.expires_at as string) ?? null,
+    lastActivityAt: (row.last_activity_at as string) ?? null,
+    expiryStatus: (row.expiry_status as string) ?? null,
     notes: (row.notes as string) ?? null,
     updatedAt: row.updated_at as string,
     createdAt: row.created_at as string,
@@ -176,6 +210,115 @@ export class EvidenceStatusService {
       .eq('organization_id', organizationId)
       .in('evidence_type', ['CONSENTZ', 'CONSENTZ_MANUAL'])
       .neq('status', 'complete');
+  }
+
+  static async refreshExpiryStatuses(organizationId: string) {
+    const client = await getDb();
+    const { data: rows } = await client
+      .from('kloe_evidence_status')
+      .select('id, expires_at, last_activity_at, expiry_status')
+      .eq('organization_id', organizationId)
+      .eq('status', 'complete');
+
+    if (!rows?.length) return;
+
+    const groups = new Map<'valid' | 'expiring_soon' | 'expired' | null, string[]>();
+    const push = (status: 'valid' | 'expiring_soon' | 'expired' | null, id: string) => {
+      const list = groups.get(status) ?? [];
+      list.push(id);
+      groups.set(status, list);
+    };
+
+    for (const row of rows) {
+      const next = computeExpiryStatus(
+        row.expires_at as string | null,
+        row.last_activity_at as string | null,
+      );
+      const current = (row.expiry_status as string | null) ?? null;
+      if (next === current) continue;
+      push(next, row.id as string);
+    }
+
+    if (groups.size === 0) return;
+
+    const now = new Date().toISOString();
+    const chunkSize = 500;
+
+    for (const [expiryStatus, ids] of groups) {
+      if (ids.length === 0) continue;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        await client
+          .from('kloe_evidence_status')
+          .update({ expiry_status: expiryStatus, updated_at: now })
+          .eq('organization_id', organizationId)
+          .in('id', chunk);
+      }
+    }
+  }
+
+  static async setExpiryDate(organizationId: string, evidenceItemId: string, expiresAt: string | null) {
+    const client = await getDb();
+    const { data: row } = await client
+      .from('kloe_evidence_status')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('evidence_item_id', evidenceItemId)
+      .maybeSingle();
+
+    if (!row) return null;
+
+    const expiryStatus =
+      row.status === 'complete'
+        ? computeExpiryStatus(expiresAt, row.last_activity_at as string | null)
+        : null;
+
+    const { data } = await client
+      .from('kloe_evidence_status')
+      .update({
+        expires_at: expiresAt,
+        expiry_status: expiryStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('organization_id', organizationId)
+      .eq('evidence_item_id', evidenceItemId)
+      .select()
+      .single();
+
+    return data ? mapRow(data) : null;
+  }
+
+  static async setLastActivity(organizationId: string, evidenceItemId: string) {
+    const client = await getDb();
+    const now = new Date().toISOString();
+
+    const { data: row } = await client
+      .from('kloe_evidence_status')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('evidence_item_id', evidenceItemId)
+      .maybeSingle();
+
+    if (!row) return null;
+
+    const expiryStatus =
+      row.status === 'complete'
+        ? computeExpiryStatus(row.expires_at as string | null, now)
+        : null;
+
+    const { data } = await client
+      .from('kloe_evidence_status')
+      .update({
+        last_activity_at: now,
+        expiry_status: expiryStatus,
+        updated_at: now,
+      })
+      .eq('organization_id', organizationId)
+      .eq('evidence_item_id', evidenceItemId)
+      .select()
+      .single();
+
+    return data ? mapRow(data) : null;
   }
 
   static async getCompletionStats(organizationId: string, kloeCode: string) {

@@ -1,10 +1,16 @@
 import { getDb } from "@/lib/db";
 import {
+    getEvidenceItems,
+    getAllKloeCodes,
+    getKloeDefinition,
+    type KloeEvidenceItem,
+} from "@/lib/constants/cqc-evidence-requirements";
+import {
     getQuestionsForServiceType,
     type AssessmentQuestion,
     type CqcDomainType,
-    type ServiceType,
 } from "@/lib/constants/assessment-questions";
+import type { DomainSlug, EvidenceCriticality, ServiceType } from "@/types";
 
 /** Stored on auto-generated gaps for idempotent updates and resolution. */
 export interface AutoGapRemediationSteps {
@@ -307,6 +313,193 @@ export async function generateRemediationTasks(params: {
     }
 
     return tasksCreated;
+}
+
+const DOMAIN_FROM_PREFIX: Record<string, DomainSlug> = {
+    S: "safe",
+    E: "effective",
+    C: "caring",
+    R: "responsive",
+    W: "well-led",
+};
+
+function domainSlugFromKloeCode(kloeCode: string): DomainSlug {
+    const prefix = kloeCode.charAt(0);
+    return DOMAIN_FROM_PREFIX[prefix] ?? "well-led";
+}
+
+function criticalityToGapSeverity(c: EvidenceCriticality): "CRITICAL" | "HIGH" | "MEDIUM" {
+    const map: Record<EvidenceCriticality, "CRITICAL" | "HIGH" | "MEDIUM"> = {
+        critical: "CRITICAL",
+        high: "HIGH",
+        medium: "MEDIUM",
+    };
+    return map[c];
+}
+
+function remediationActionForEvidenceItem(
+    item: KloeEvidenceItem,
+): "Upload evidence" | "Generate or upload policy" | "Connect to Consentz or sync data" {
+    switch (item.sourceLabel) {
+        case "MANUAL_UPLOAD":
+            return "Upload evidence";
+        case "POLICY":
+            return "Generate or upload policy";
+        case "CONSENTZ":
+        case "CONSENTZ_MANUAL":
+            return "Connect to Consentz or sync data";
+    }
+}
+
+interface KloeEvidenceStatusRow {
+    evidence_item_id: string;
+    kloe_code: string;
+    status: string;
+    evidence_type: string;
+    expiry_status: string | null;
+    consentz_synced_at: string | null;
+}
+
+function evidenceStatusGapReasons(row: KloeEvidenceStatusRow): string[] {
+    const reasons: string[] = [];
+    if (row.status === "not_started") {
+        reasons.push("This evidence item has not been started yet.");
+    }
+    if (row.expiry_status === "expired") {
+        reasons.push("The linked evidence is expired.");
+    }
+    const isConsentzType =
+        row.evidence_type === "CONSENTZ" || row.evidence_type === "CONSENTZ_MANUAL";
+    if (isConsentzType && !row.consentz_synced_at) {
+        reasons.push("Consentz is not connected or data has not been synced.");
+    }
+    return reasons;
+}
+
+function shouldHaveEvidenceStatusGap(row: KloeEvidenceStatusRow): boolean {
+    return evidenceStatusGapReasons(row).length > 0;
+}
+
+/**
+ * Auto-creates compliance gaps from KLOE evidence status (missing, expired, Consentz not synced)
+ * and resolves gaps when those conditions clear.
+ */
+export async function generateEvidenceStatusGaps(params: {
+    organizationId: string;
+    serviceType: string;
+}): Promise<{ created: number; resolved: number }> {
+    const { organizationId, serviceType } = params;
+    const st = serviceType as ServiceType;
+    const client = await getDb();
+
+    const { data: statusRows, error: statusErr } = await client
+        .from("kloe_evidence_status")
+        .select(
+            "evidence_item_id, kloe_code, status, evidence_type, expiry_status, consentz_synced_at",
+        )
+        .eq("organization_id", organizationId);
+
+    if (statusErr) {
+        return { created: 0, resolved: 0 };
+    }
+
+    const rows = (statusRows ?? []) as KloeEvidenceStatusRow[];
+    const statusByItemId = new Map(rows.map((r) => [r.evidence_item_id, r]));
+
+    const itemById = new Map<string, { item: KloeEvidenceItem; kloeCode: string }>();
+    for (const kloeCode of getAllKloeCodes(st)) {
+        for (const item of getEvidenceItems(st, kloeCode)) {
+            itemById.set(item.id, { item, kloeCode });
+        }
+    }
+
+    const { data: existingOpen } = await client
+        .from("compliance_gaps")
+        .select("id, source, source_id")
+        .eq("organization_id", organizationId)
+        .eq("source", "evidence_status")
+        .in("status", ["OPEN", "IN_PROGRESS"]);
+
+    const existingKeys = new Set(
+        (existingOpen ?? []).map((g) => `evidence_status_${g.source_id as string}`),
+    );
+
+    let resolved = 0;
+
+    for (const gap of existingOpen ?? []) {
+        const eid = gap.source_id as string;
+        const row = statusByItemId.get(eid);
+        if (row && !shouldHaveEvidenceStatusGap(row)) {
+            const { error } = await client
+                .from("compliance_gaps")
+                .update({
+                    status: "RESOLVED",
+                    resolved_at: new Date().toISOString(),
+                    resolution_notes:
+                        "Auto-resolved: evidence status is complete, not expired, and Consentz sync satisfied where applicable",
+                })
+                .eq("id", gap.id);
+            if (!error) {
+                resolved++;
+            }
+        }
+    }
+
+    let created = 0;
+
+    for (const row of rows) {
+        const reasons = evidenceStatusGapReasons(row);
+        if (reasons.length === 0) continue;
+
+        const def = itemById.get(row.evidence_item_id);
+        if (!def) continue;
+
+        const { item, kloeCode } = def;
+        const kloeDef = getKloeDefinition(st, kloeCode);
+        const regulationCode = kloeDef?.regulations[0] ?? "";
+
+        const key = `evidence_status_${row.evidence_item_id}`;
+        if (existingKeys.has(key)) continue;
+
+        const domainSlug = domainSlugFromKloeCode(kloeCode);
+        const severity = criticalityToGapSeverity(item.criticality);
+        const action = remediationActionForEvidenceItem(item);
+
+        const titleParts: string[] = [];
+        if (row.status === "not_started") titleParts.push("Not started");
+        if (row.expiry_status === "expired") titleParts.push("Expired evidence");
+        if (
+            (row.evidence_type === "CONSENTZ" || row.evidence_type === "CONSENTZ_MANUAL") &&
+            !row.consentz_synced_at
+        ) {
+            titleParts.push("Consentz not synced");
+        }
+        const titleLabel = titleParts.length > 0 ? titleParts.join(" · ") : "Evidence gap";
+        const title = `${titleLabel} (${kloeCode})`;
+
+        const description = `${item.description} ${reasons.join(" ")}`.trim();
+
+        const { error } = await client.from("compliance_gaps").insert({
+            organization_id: organizationId,
+            domain: domainSlug,
+            kloe_code: kloeCode,
+            regulation_code: regulationCode,
+            title,
+            description,
+            severity,
+            status: "OPEN",
+            source: "evidence_status",
+            source_id: row.evidence_item_id,
+            remediation_steps: { action },
+        });
+
+        if (!error) {
+            existingKeys.add(key);
+            created++;
+        }
+    }
+
+    return { created, resolved };
 }
 
 /**

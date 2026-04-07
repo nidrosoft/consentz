@@ -21,7 +21,8 @@ import {
     getKloeDefinition, SOURCE_LABEL_DISPLAY,
     type KloeDefinition, type KloeEvidenceItem, type EvidenceSourceLabel,
 } from "@/lib/constants/cqc-evidence-requirements";
-import type { DomainSlug, ServiceType, KloeEvidenceStatus } from "@/types";
+import { useCurrentEvidenceFiles } from "@/hooks/use-evidence-files";
+import type { DomainSlug, ServiceType, KloeEvidenceStatus, EvidenceCriticality, EvidenceFileVersion } from "@/types";
 
 const SEVERITY_DOT: Record<string, string> = {
     CRITICAL: "bg-error-solid", HIGH: "bg-warning-solid", MEDIUM: "bg-brand-solid", LOW: "bg-quaternary",
@@ -43,6 +44,17 @@ const SOURCE_LEGEND: { label: string; color: string }[] = [
     { label: "Consentz", color: "bg-success-solid" },
     { label: "Consentz / Manual", color: "bg-utility-blue-light-500" },
 ];
+
+const CRITICALITY_COLORS: Record<EvidenceCriticality, "error" | "warning" | "gray"> = {
+    critical: "error",
+    high: "warning",
+    medium: "gray",
+};
+const CRITICALITY_LABELS: Record<EvidenceCriticality, string> = {
+    critical: "Critical",
+    high: "High",
+    medium: "Medium",
+};
 
 interface EvidenceRow {
     id: string;
@@ -79,12 +91,17 @@ function KloeDetailSkeleton() {
     );
 }
 
-function ActionButton({ item, kloeCode, domainSlug, router }: {
+function ActionButton({ item, kloeCode, domainSlug, router, consentzSyncedAt }: {
     item: KloeEvidenceItem;
     kloeCode: string;
     domainSlug: DomainSlug;
     router: ReturnType<typeof useRouter>;
+    consentzSyncedAt?: string | null;
 }) {
+    const syncLabel = consentzSyncedAt
+        ? `Last sync: ${new Date(consentzSyncedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+        : null;
+
     switch (item.sourceLabel) {
         case "POLICY":
             return (
@@ -110,12 +127,18 @@ function ActionButton({ item, kloeCode, domainSlug, router }: {
             );
         case "CONSENTZ":
             return (
-                <Badge size="sm" color="success" type="pill-color">Auto-synced</Badge>
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge size="sm" color="success" type="pill-color">Auto-synced from Consentz (live data)</Badge>
+                    {syncLabel && <span className="text-xs text-tertiary">{syncLabel}</span>}
+                </div>
             );
         case "CONSENTZ_MANUAL":
             return (
-                <div className="flex items-center gap-2">
-                    <Badge size="sm" color="success" type="pill-color">Auto-synced</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge size="sm" color="success" type="pill-color">Auto-synced from Consentz (live data)</Badge>
+                        {syncLabel && <span className="text-xs text-tertiary">{syncLabel}</span>}
+                    </div>
                     <Button
                         color="link-color"
                         size="sm"
@@ -156,6 +179,8 @@ export default function KloeDetailPage() {
     const allGaps = gapsResponse?.data ?? [];
     const kloeGaps = allGaps.filter((g) => g.kloe === kloeCode);
     const openGaps = kloeGaps.filter((g) => g.status === "OPEN");
+    const criticalGapCount = kloeGaps.filter((g) => g.severity === "CRITICAL").length;
+    const isHighRisk = criticalGapCount >= 2;
 
     const allEvidence = (evidenceResponse?.data ?? []) as EvidenceRow[];
     const kloeEvidence = useMemo(() => {
@@ -177,6 +202,17 @@ export default function KloeDetailPage() {
         }
         return map;
     }, [statusRecords]);
+
+    const { data: currentFiles } = useCurrentEvidenceFiles(kloeCode);
+    const fileMap = useMemo(() => {
+        const current = new Map<string, EvidenceFileVersion>();
+        const versionCounts = new Map<string, number>();
+        for (const f of currentFiles ?? []) {
+            versionCounts.set(f.evidenceItemId, (versionCounts.get(f.evidenceItemId) ?? 0) + 1);
+            if (f.isCurrent) current.set(f.evidenceItemId, f);
+        }
+        return { current, versionCounts };
+    }, [currentFiles]);
 
     const evidenceItems: KloeEvidenceItem[] = kloeDef?.evidenceItems ?? [];
     const isE3Clinic = kloeCode === "E3" && serviceType === "AESTHETIC_CLINIC";
@@ -259,6 +295,7 @@ export default function KloeDetailPage() {
             <div>
                 <div className="flex flex-wrap items-center gap-2">
                     <Badge size="md" color="gray" type="pill-color">{kloe.code}</Badge>
+                    {isHighRisk && <Badge size="md" color="error" type="pill-color">High Risk</Badge>}
                     <h1 className="text-display-xs font-semibold text-primary">{displayTitle}</h1>
                 </div>
                 <p className="mt-2 text-sm font-medium leading-relaxed text-secondary">{displayQuestion}</p>
@@ -367,6 +404,8 @@ export default function KloeDetailPage() {
                         {evidenceItems.map((item) => {
                             const statusRecord = statusMap.get(item.id);
                             const isComplete = statusRecord?.status === "complete";
+                            const currentFile = fileMap.current.get(item.id);
+                            const hasPreviousVersions = (fileMap.versionCounts.get(item.id) ?? 0) > 1;
 
                             return (
                                 <div key={item.id} className="flex items-start gap-3 px-3 py-3 sm:px-4 sm:py-3.5">
@@ -386,22 +425,53 @@ export default function KloeDetailPage() {
                                         <p className={cx("text-sm", isComplete ? "text-primary" : "text-secondary")}>
                                             {item.description}
                                         </p>
+                                        {(statusRecord?.expiryStatus === "expired" || statusRecord?.expiryStatus === "expiring_soon" || statusRecord?.expiresAt) && (
+                                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                {statusRecord?.expiryStatus === "expired" && (
+                                                    <Badge size="sm" color="error" type="pill-color">Expired</Badge>
+                                                )}
+                                                {statusRecord?.expiryStatus === "expiring_soon" && (
+                                                    <Badge size="sm" color="warning" type="pill-color">Expiring Soon</Badge>
+                                                )}
+                                                {statusRecord?.expiresAt && statusRecord.expiryStatus !== "expired" && statusRecord.expiryStatus !== "expiring_soon" && (
+                                                    <span className="text-xs text-tertiary">
+                                                        Expires: {new Date(statusRecord.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                        {currentFile && (
+                                            <p className="mt-1 text-xs text-tertiary">
+                                                Current: {currentFile.fileName} (uploaded {new Date(currentFile.uploadedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })})
+                                                {hasPreviousVersions && <span className="ml-1.5 text-quaternary">· has previous versions</span>}
+                                            </p>
+                                        )}
                                         <div className="mt-1.5">
                                             <ActionButton
                                                 item={item}
                                                 kloeCode={kloeCode}
                                                 domainSlug={domainSlug}
                                                 router={router}
+                                                consentzSyncedAt={statusRecord?.consentzSyncedAt}
                                             />
                                         </div>
                                     </div>
-                                    <Badge
-                                        size="sm"
-                                        color={SOURCE_LABEL_COLORS[item.sourceLabel]}
-                                        type="pill-color"
-                                    >
-                                        {SOURCE_LABEL_DISPLAY[item.sourceLabel]}
-                                    </Badge>
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                        <Badge
+                                            size="sm"
+                                            color={SOURCE_LABEL_COLORS[item.sourceLabel]}
+                                            type="pill-color"
+                                        >
+                                            {SOURCE_LABEL_DISPLAY[item.sourceLabel]}
+                                        </Badge>
+                                        <Badge
+                                            size="sm"
+                                            color={CRITICALITY_COLORS[item.criticality]}
+                                            type="pill-color"
+                                        >
+                                            {CRITICALITY_LABELS[item.criticality]}
+                                        </Badge>
+                                    </div>
                                 </div>
                             );
                         })}
