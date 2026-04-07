@@ -31,6 +31,7 @@ export type ConsentzMetrics = Record<string, ConsentzMetricEntry> | null;
 interface DashboardOverview {
   compliance: ComplianceScore;
   priorityGaps: PriorityGap[];
+  consentzConnected: boolean;
   consentzDataFreshness: string | null;
   consentzMetrics: ConsentzMetrics;
   gaps: {
@@ -87,13 +88,15 @@ export function useConsentzMetricsForDomain(domain: string) {
   const { data, ...rest } = useDashboard();
   const metrics = data?.consentzMetrics;
   const freshness = data?.consentzDataFreshness ?? null;
+  const consentzConnected = data?.consentzConnected ?? false;
 
-  if (!metrics) return { data: null as Record<string, ConsentzMetricEntry> | null, freshness, ...rest };
+  if (!metrics) return { data: null as Record<string, ConsentzMetricEntry> | null, freshness, consentzConnected, ...rest };
 
   const domainMetrics = Object.entries(metrics).filter(([, m]) => m.domain === domain);
   return {
     data: domainMetrics.length > 0 ? Object.fromEntries(domainMetrics) as Record<string, ConsentzMetricEntry> : null,
     freshness,
+    consentzConnected,
     ...rest,
   };
 }

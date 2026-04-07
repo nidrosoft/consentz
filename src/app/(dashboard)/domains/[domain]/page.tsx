@@ -263,20 +263,39 @@ function GapsSection({ gaps, viewMode }: { gaps: GapItem[]; viewMode: ViewMode }
 }
 
 function ConsentzDomainMetrics({ domain }: { domain: string }) {
-    const { data: metrics, freshness } = useConsentzMetricsForDomain(domain);
+    const { data: metrics, freshness, consentzConnected } = useConsentzMetricsForDomain(domain);
     if (!metrics) return null;
+
+    const isConnected = consentzConnected;
+    const hasFreshSync = isConnected && freshness;
+    const isSyncOverdue = hasFreshSync && Date.now() - new Date(freshness).getTime() > 24 * 60 * 60 * 1000;
 
     return (
         <div className="rounded-xl border border-secondary bg-primary p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <h3 className="text-lg font-semibold text-primary">Consentz Metrics</h3>
-                    <p className="mt-0.5 text-xs text-tertiary">Auto-synced from Consentz (live data)</p>
-                    {freshness && <p className="mt-0.5 text-xs text-tertiary">Synced {timeAgo(freshness)}</p>}
+                    {hasFreshSync ? (
+                        <p className="mt-0.5 text-xs text-tertiary">
+                            Last synced: {new Date(freshness).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })},{" "}
+                            {new Date(freshness).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                    ) : isConnected ? (
+                        <p className="mt-0.5 text-xs text-tertiary">Connected — awaiting first sync</p>
+                    ) : (
+                        <p className="mt-0.5 text-xs text-tertiary">Consentz is not connected</p>
+                    )}
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
-                    <span className="text-xs text-tertiary">Live data from Consentz</span>
-                    <Badge size="sm" color="brand" type="pill-color">Live</Badge>
+                <div className="flex shrink-0 items-center gap-2">
+                    {!isConnected ? (
+                        <Badge size="sm" color="error" type="pill-color">Not connected</Badge>
+                    ) : isSyncOverdue ? (
+                        <Badge size="sm" color="warning" type="pill-color">Sync overdue</Badge>
+                    ) : hasFreshSync ? (
+                        <Badge size="sm" color="success" type="pill-color">Live</Badge>
+                    ) : (
+                        <Badge size="sm" color="warning" type="pill-color">Awaiting sync</Badge>
+                    )}
                 </div>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -508,9 +527,21 @@ export default function DomainDetailPage() {
                                     </div>
                                     <p className="mt-3 text-sm font-semibold text-primary line-clamp-2">{displayTitle}</p>
                                     <p className="mt-1 text-xs text-tertiary line-clamp-2">{displayQuestion}</p>
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                    <div className="mt-2 flex flex-wrap gap-1">
                                         {kloeRegs.map((r) => (
-                                            <span key={r} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-tertiary">{r}</span>
+                                            <span
+                                                key={r}
+                                                className={cx(
+                                                    "rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                                                    slug === "safe" && "bg-[#EFF6FF] text-[#1D4ED8]",
+                                                    slug === "effective" && "bg-[#F5F3FF] text-[#6D28D9]",
+                                                    slug === "caring" && "bg-[#FDF2F8] text-[#BE185D]",
+                                                    slug === "responsive" && "bg-[#FFFBEB] text-[#B45309]",
+                                                    slug === "well-led" && "bg-[#ECFDF5] text-[#047857]",
+                                                )}
+                                            >
+                                                {r}
+                                            </span>
                                         ))}
                                     </div>
                                     <div className="mt-auto flex items-center justify-between pt-3">

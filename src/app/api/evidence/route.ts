@@ -71,7 +71,12 @@ export const POST = withAuth(async (req, { params, auth }) => {
 
   const linkedKloes = validated.linkedKloes ?? [];
   if (linkedKloes.length > 0) {
-    EvidenceStatusService.markEvidenceItemComplete(auth.organizationId, evidence.id, linkedKloes).catch(() => {});
+    EvidenceStatusService.markEvidenceItemComplete(
+      auth.organizationId,
+      evidence.id,
+      linkedKloes,
+      validated.validUntil ?? null,
+    ).catch(() => {});
   }
 
   return apiSuccess(evidence, undefined, 201);

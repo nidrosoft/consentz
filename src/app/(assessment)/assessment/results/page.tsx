@@ -185,7 +185,7 @@ export default function ResultsPage() {
                             {RATING_LABELS[pr] ?? summary.predictedRating}
                         </Badge>
                         <p className="text-sm text-tertiary">
-                            Modelled compliance score (raw self-assessment average {Math.round(summary.rawAverage)}%).
+                            Your self-assessment claimed {Math.round(summary.rawAverage)}%. Upload evidence to validate your compliance — the score updates as evidence is added.
                         </p>
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                             {domainRings.map((ring) => (

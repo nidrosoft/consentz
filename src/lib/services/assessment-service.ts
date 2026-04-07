@@ -137,14 +137,14 @@ export class AssessmentService {
           })
           .eq('id', params.assessmentId);
 
-        for (const a of mergedAnswers) {
-          await client.from('assessment_responses').insert({
+        await client.from('assessment_responses').insert(
+          mergedAnswers.map((a) => ({
             assessment_id: params.assessmentId,
             question_id: a.questionId,
             answer: serializeAnswerValue(a.answerValue),
             evidence_ids: [],
-          });
-        }
+          })),
+        );
 
         return AssessmentService.getById(params.assessmentId) as Promise<NonNullable<Awaited<ReturnType<typeof AssessmentService.getById>>>>;
       }
@@ -158,14 +158,14 @@ export class AssessmentService {
       current_step: params.currentStep,
     }).select().single();
 
-    for (const a of params.answers) {
-      await client.from('assessment_responses').insert({
+    await client.from('assessment_responses').insert(
+      params.answers.map((a) => ({
         assessment_id: assessment.id,
         question_id: a.questionId,
         answer: serializeAnswerValue(a.answerValue),
         evidence_ids: [],
-      });
-    }
+      })),
+    );
 
     return AssessmentService.getById(assessment.id) as Promise<NonNullable<Awaited<ReturnType<typeof AssessmentService.getById>>>>;
   }
@@ -260,58 +260,60 @@ export class AssessmentService {
       overallRating = getRatingFromScore(overallScore);
     }
 
+    // Batch-insert gaps for domains below "Good" threshold
+    const gapRows = scoredDomains
+      .filter((d) => d.score < 63)
+      .map((d) => ({
+        organization_id: params.organizationId,
+        domain: d.slug,
+        kloe_code: KLOES.find((k) => k.domain === d.slug)?.code ?? '',
+        title: `${d.domainName} domain needs improvement`,
+        description: `Assessment scored ${d.score}% in the ${d.domainName} domain, below the "Good" threshold of 63%.`,
+        severity: AssessmentService.getSeverityFromScore(d.score),
+        status: 'OPEN',
+        source: 'assessment',
+        assessment_id: params.assessmentId,
+        remediation_steps: { action: 'Upload evidence' },
+      }));
+
     let gapsCreated = 0;
     let tasksCreated = 0;
+    let insertedGaps: any[] = [];
 
-    for (const domainResult of scoredDomains) {
-      if (domainResult.score < 63) {
-        const severity = AssessmentService.getSeverityFromScore(domainResult.score);
-        const kloeCode = KLOES.find((k) => k.domain === domainResult.slug)?.code ?? '';
+    if (gapRows.length > 0) {
+      const { data: gaps } = await client.from('compliance_gaps')
+        .insert(gapRows)
+        .select();
+      insertedGaps = gaps ?? [];
+      gapsCreated = insertedGaps.length;
+    }
 
-        await client.from('compliance_gaps').insert({
+    // Batch-insert tasks for critical/high gaps
+    const taskRows = insertedGaps
+      .filter((g: any) => g.severity === 'CRITICAL' || g.severity === 'HIGH')
+      .map((g: any) => {
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + (g.severity === 'CRITICAL' ? 7 : 14));
+        return {
           organization_id: params.organizationId,
-          domain: domainResult.slug,
-          kloe_code: kloeCode,
-          title: `${domainResult.domainName} domain needs improvement`,
-          description: `Assessment scored ${domainResult.score}% in the ${domainResult.domainName} domain, below the "Good" threshold of 63%.`,
-          severity,
-          status: 'OPEN',
-          source: 'assessment',
-          assessment_id: params.assessmentId,
-        });
-        gapsCreated++;
+          title: `Address ${g.domain.charAt(0).toUpperCase() + g.domain.slice(1)} compliance gap`,
+          description: `Review and improve ${g.domain} domain compliance.`,
+          status: 'TODO',
+          priority: g.severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+          assigned_to: params.userId,
+          assigned_to_name: params.userId,
+          due_date: dueDate.toISOString(),
+          source: 'ASSESSMENT',
+          source_id: params.assessmentId,
+          gap_id: g.id,
+          domains: [g.domain],
+          kloe_code: g.kloe_code,
+        };
+      });
 
-        if (severity === 'CRITICAL' || severity === 'HIGH') {
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + (severity === 'CRITICAL' ? 7 : 14));
-
-          const { data: gap } = await client.from('compliance_gaps')
-            .select('*')
-            .eq('organization_id', params.organizationId)
-            .eq('assessment_id', params.assessmentId)
-            .eq('domain', domainResult.slug)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          await client.from('tasks').insert({
-            organization_id: params.organizationId,
-            title: `Address ${domainResult.domainName} compliance gap`,
-            description: `Review and improve ${domainResult.domainName} domain compliance. Current score: ${domainResult.score}%.`,
-            status: 'TODO',
-            priority: severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
-            assigned_to: params.userId,
-            assigned_to_name: params.userId,
-            due_date: dueDate.toISOString(),
-            source: 'ASSESSMENT',
-            source_id: params.assessmentId,
-            gap_id: gap?.id,
-            domains: [domainResult.slug],
-            kloe_code: kloeCode,
-          });
-          tasksCreated++;
-        }
-      }
+    if (taskRows.length > 0) {
+      await client.from('tasks').insert(taskRows);
+      tasksCreated = taskRows.length;
     }
 
     const domainResultsJson = Object.fromEntries(

@@ -28,14 +28,14 @@ export function assessmentCompletedEmail(data: AssessmentCompletedData): string 
   `).join('');
 
   return baseLayout({
-    preheader: `Your baseline score is ${data.overallScore}% — predicted rating: ${data.predictedRating}.`,
+    preheader: `Self-assessment: ${data.overallScore}% — predicted rating: ${data.predictedRating}. Upload evidence to validate.`,
     body: `
       <h1>Your CQC Assessment is Complete</h1>
-      <p>Great work, ${data.userName}. Your initial CQC compliance assessment has been processed. Here's your baseline:</p>
+      <p>Great work, ${data.userName}. Your initial CQC self-assessment has been processed. Here's your self-declared starting position:</p>
       <div style="text-align: center; margin: 24px 0;">
         <div class="metric-box" style="display: inline-block; padding: 24px 40px;">
           <p class="metric-value">${data.overallScore}%</p>
-          <p class="metric-label">Overall Compliance Score</p>
+          <p class="metric-label">Self-Assessment Score</p>
           <p style="margin: 8px 0 0;"><span class="badge ${ratingBadgeClass(data.predictedRating)}">${data.predictedRating.replace('_', ' ')}</span></p>
         </div>
       </div>
@@ -51,7 +51,7 @@ export function assessmentCompletedEmail(data: AssessmentCompletedData): string 
       <div class="card">${gapsList}</div>
       <p class="muted">${data.totalGaps} total gaps identified. Address critical ones first for the biggest score impact.</p>
       <hr class="divider">
-      <p><strong>What's next?</strong> Your dashboard is now active. Link your Consentz account to enable ongoing compliance monitoring.</p>
+      <p><strong>What's next?</strong> Your dashboard is now active. Your compliance score starts at 0% and rises as you upload evidence. Link your Consentz account to automatically sync operational data.</p>
       <p style="text-align: center; margin: 28px 0;"><a href="${APP_URL}/dashboard" class="btn">View Your Dashboard →</a></p>
     `,
   });

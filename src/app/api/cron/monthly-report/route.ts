@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       db.from('policies').select('id', { count: 'exact', head: true }).eq('organization_id', org.id).gte('updated_at', oneMonthAgo),
     ]);
 
-    const currentScore = scores.data?.overall_score || 0;
+    const currentScore = scores.data?.score || 0;
     const scoreChange = currentScore - (scores.data?.previous_score || currentScore);
     const predictedRating = scores.data?.predicted_rating || 'INADEQUATE';
 

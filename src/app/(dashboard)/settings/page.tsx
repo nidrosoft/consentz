@@ -993,13 +993,13 @@ function IntegrationsPanel() {
 
     const connectMutation = useMutation({
         mutationFn: () => apiPost<{ connected: boolean; clinicId: number; clinicName: string }>("/api/consentz/connect", { username: consentzUser, password: consentzPass }).then((r) => r.data),
-        onSuccess: () => { setConsentzUser(""); setConsentzPass(""); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); markOnboardingStep("connect_consentz"); toast.success("Connected", "Consentz integration is now active."); },
+        onSuccess: () => { setConsentzUser(""); setConsentzPass(""); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); queryClient.invalidateQueries({ queryKey: ["organization"] }); queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] }); markOnboardingStep("connect_consentz"); toast.success("Connected", "Consentz integration is now active."); },
         onError: () => toast.error("Connection failed", "Could not connect to Consentz."),
     });
 
     const disconnectMutation = useMutation({
         mutationFn: () => apiDelete("/api/consentz/connect"),
-        onSuccess: () => { setShowDisconnectConfirm(false); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); toast.success("Disconnected", "Consentz integration has been removed."); },
+        onSuccess: () => { setShowDisconnectConfirm(false); queryClient.invalidateQueries({ queryKey: ["consentz-status"] }); queryClient.invalidateQueries({ queryKey: ["consentz-last-sync"] }); queryClient.invalidateQueries({ queryKey: ["compliance"] }); queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] }); queryClient.invalidateQueries({ queryKey: ["organization"] }); toast.success("Disconnected", "Consentz integration has been removed."); },
         onError: () => toast.error("Disconnect failed", "Could not disconnect from Consentz."),
     });
 
@@ -1065,7 +1065,10 @@ function IntegrationsPanel() {
                                     <p className="text-sm font-medium text-primary">Clinic ID: {consentzStatus.clinicId}</p>
                                     <p className="text-xs text-tertiary">Connected as {consentzStatus.username}</p>
                                     {lastSyncData?.synced_at && (
-                                        <p className="mt-0.5 text-xs text-tertiary">Last synced {syncTimeAgo(lastSyncData.synced_at)}</p>
+                                        <p className="mt-0.5 text-xs text-tertiary">
+                                            Last synced: {new Date(lastSyncData.synced_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })},{" "}
+                                            {new Date(lastSyncData.synced_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-2">

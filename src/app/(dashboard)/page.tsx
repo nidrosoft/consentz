@@ -102,6 +102,91 @@ function DashboardSkeleton() {
     );
 }
 
+function DashboardConsentzMetrics({ metrics, freshness, connected }: {
+    metrics: Record<string, ConsentzMetricEntry>;
+    freshness: string | null;
+    connected: boolean;
+}) {
+    const router = useRouter();
+    const hasFreshSync = connected && freshness;
+    const isSyncOverdue = hasFreshSync && Date.now() - new Date(freshness!).getTime() > 24 * 60 * 60 * 1000;
+
+    return (
+        <div>
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                    <div>
+                        <h2 className="text-lg font-semibold text-primary">Consentz Metrics</h2>
+                        {hasFreshSync ? (
+                            <p className="text-xs text-tertiary">
+                                Last synced: {new Date(freshness!).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })},{" "}
+                                {new Date(freshness!).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                        ) : connected ? (
+                            <p className="text-xs text-tertiary">Connected — awaiting first sync</p>
+                        ) : (
+                            <p className="text-xs text-tertiary">Consentz is not connected</p>
+                        )}
+                    </div>
+                    {!connected ? (
+                        <Badge size="sm" color="error" type="pill-color">Not connected</Badge>
+                    ) : isSyncOverdue ? (
+                        <Badge size="sm" color="warning" type="pill-color">Sync overdue</Badge>
+                    ) : hasFreshSync ? (
+                        <Badge size="sm" color="success" type="pill-color">Live</Badge>
+                    ) : (
+                        <Badge size="sm" color="warning" type="pill-color">Awaiting sync</Badge>
+                    )}
+                </div>
+                <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => router.push("/settings")}>
+                    Sync Settings &rarr;
+                </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+                {Object.entries(metrics).map(([key, m]: [string, ConsentzMetricEntry]) => {
+                    const val = m.value;
+                    const displayValue = val != null
+                        ? m.unit === '/10' ? `${val}${m.unit}` : `${Math.round(val)}${m.unit}`
+                        : '—';
+                    const isGood = val != null && (m.unit === '/10' ? val >= 7 : val >= 75);
+                    const isWarning = val != null && (m.unit === '/10' ? val >= 5 && val < 7 : val >= 50 && val < 75);
+                    const domainColor = DOMAIN_COLORS[m.domain];
+                    return (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => router.push(`/domains/${m.domain}`)}
+                            className="flex flex-col gap-1.5 rounded-xl border border-secondary bg-primary p-3 text-left transition duration-100 hover:border-brand hover:shadow-xs"
+                        >
+                            <span className="text-xs font-medium text-tertiary leading-tight">{m.label}</span>
+                            <span className={cx(
+                                "font-mono text-xl font-bold",
+                                val == null ? "text-quaternary" : isGood ? "text-success-primary" : isWarning ? "text-warning-primary" : "text-error-primary",
+                            )}>
+                                {displayValue}
+                            </span>
+                            <div className="h-1 w-full rounded-full bg-quaternary overflow-hidden">
+                                <div
+                                    className={cx(
+                                        "h-full rounded-full transition-all duration-500",
+                                        val == null ? "w-0" : isGood ? "bg-success-solid" : isWarning ? "bg-warning-solid" : "bg-error-solid",
+                                    )}
+                                    style={{ width: val != null ? `${Math.min(100, m.unit === '/10' ? val * 10 : val)}%` : '0%' }}
+                                />
+                            </div>
+                            {domainColor && (
+                                <span className={cx("mt-0.5 inline-flex w-fit rounded px-1 py-px text-[9px] font-semibold leading-tight capitalize", domainColor.text, domainColor.bg)}>
+                                    {m.domain.replace("-", "-")}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export default function DashboardPage() {
     const router = useRouter();
     const { data: overview, isLoading, error } = useDashboard();
@@ -280,64 +365,11 @@ export default function DashboardPage() {
             </div>
 
             {/* Consentz Integration Metrics */}
-            {overview.consentzMetrics && (
-                <div>
-                    <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <h2 className="text-lg font-semibold text-primary">Consentz Live Metrics</h2>
-                            {overview.consentzDataFreshness && (
-                                <p className="text-xs text-tertiary">
-                                    Last synced {timeAgo(overview.consentzDataFreshness)}
-                                </p>
-                            )}
-                        </div>
-                        <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => router.push("/settings")}>
-                            Sync Settings &rarr;
-                        </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-                        {Object.entries(overview.consentzMetrics).map(([key, m]: [string, ConsentzMetricEntry]) => {
-                            const val = m.value;
-                            const displayValue = val != null
-                                ? m.unit === '/10' ? `${val}${m.unit}` : `${Math.round(val)}${m.unit}`
-                                : '—';
-                            const isGood = val != null && (m.unit === '/10' ? val >= 7 : val >= 75);
-                            const isWarning = val != null && (m.unit === '/10' ? val >= 5 && val < 7 : val >= 50 && val < 75);
-                            const domainColor = DOMAIN_COLORS[m.domain];
-                            return (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => router.push(`/domains/${m.domain}`)}
-                                    className="flex flex-col gap-1.5 rounded-xl border border-secondary bg-primary p-3 text-left transition duration-100 hover:border-brand hover:shadow-xs"
-                                >
-                                    <span className="text-xs font-medium text-tertiary leading-tight">{m.label}</span>
-                                    <span className={cx(
-                                        "font-mono text-xl font-bold",
-                                        val == null ? "text-quaternary" : isGood ? "text-success-primary" : isWarning ? "text-warning-primary" : "text-error-primary",
-                                    )}>
-                                        {displayValue}
-                                    </span>
-                                    <div className="h-1 w-full rounded-full bg-quaternary overflow-hidden">
-                                        <div
-                                            className={cx(
-                                                "h-full rounded-full transition-all duration-500",
-                                                val == null ? "w-0" : isGood ? "bg-success-solid" : isWarning ? "bg-warning-solid" : "bg-error-solid",
-                                            )}
-                                            style={{ width: val != null ? `${Math.min(100, m.unit === '/10' ? val * 10 : val)}%` : '0%' }}
-                                        />
-                                    </div>
-                                    {domainColor && (
-                                        <span className={cx("mt-0.5 inline-flex w-fit rounded px-1 py-px text-[9px] font-semibold leading-tight capitalize", domainColor.text, domainColor.bg)}>
-                                            {m.domain.replace("-", "-")}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
+            {overview.consentzMetrics && <DashboardConsentzMetrics
+                metrics={overview.consentzMetrics}
+                freshness={overview.consentzDataFreshness}
+                connected={overview.consentzConnected}
+            />}
 
             {/* Priority Gaps + Recent Activity */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">

@@ -4,6 +4,8 @@ import { requireMinRole } from '@/lib/auth';
 import { ComplianceService } from '@/lib/services/compliance-service';
 import { AuditService } from '@/lib/services/audit-service';
 
+export const maxDuration = 30;
+
 export const GET = withAuth(async (req, { params, auth }) => {
   const score = await ComplianceService.getCurrentScore(auth.organizationId);
   return apiSuccess(score);

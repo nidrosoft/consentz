@@ -2,6 +2,9 @@ import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { isKnownEvidenceItemId } from '@/lib/constants/cqc-evidence-requirements';
 import { EvidenceStatusService } from '@/lib/services/evidence-status-service';
+import { recalculateComplianceScores } from '@/lib/services/score-engine';
+import { generateEvidenceStatusGaps } from '@/lib/services/gap-generator';
+import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { auth }) => {
   const { searchParams } = new URL(req.url);
@@ -68,6 +71,21 @@ export const PATCH = withAuth(async (req, { auth }) => {
   if (!updated) {
     return apiError('NOT_FOUND', 'Evidence status record not found. Have you seeded evidence items?', 404);
   }
+
+  // Recalculate compliance scores and regenerate evidence-status gaps
+  // so the dashboard reflects the latest evidence state immediately.
+  const client = await getDb();
+  const { data: org } = await client
+    .from('organizations')
+    .select('service_type')
+    .eq('id', auth.organizationId)
+    .maybeSingle();
+  const serviceType = org?.service_type ?? 'AESTHETIC_CLINIC';
+
+  await Promise.all([
+    recalculateComplianceScores(auth.organizationId),
+    generateEvidenceStatusGaps({ organizationId: auth.organizationId, serviceType }),
+  ]);
 
   return apiSuccess(updated);
 });

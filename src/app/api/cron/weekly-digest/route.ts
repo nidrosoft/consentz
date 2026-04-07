@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       db.from('tasks').select('title, due_date, domain').eq('organization_id', org.id).neq('status', 'DONE').gte('due_date', new Date().toISOString()).order('due_date').limit(5),
     ]);
 
-    const currentScore = scores.data?.overall_score || 0;
+    const currentScore = scores.data?.score || 0;
     const scoreChange = currentScore - (scores.data?.previous_score || currentScore);
 
     for (const admin of admins) {

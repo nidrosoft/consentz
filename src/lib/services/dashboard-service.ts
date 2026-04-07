@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { getDb } from '@/lib/db';
+import { recalculateComplianceScores } from '@/lib/services/score-engine';
 import type { ActivityLogEntry, ComplianceScore, CqcRating, DomainScore, DomainSlug } from '@/types';
 
 const DOMAIN_ORDER: { db: string; slug: DomainSlug }[] = [
@@ -46,6 +47,7 @@ export class DashboardService {
       investigatingIncidentsRes,
       recentActivityRes,
       unreadNotifsRes,
+      orgConsentzRes,
     ] = await Promise.all([
       client
         .from('compliance_scores')
@@ -98,12 +100,39 @@ export class DashboardService {
         .eq('organization_id', params.organizationId)
         .eq('user_id', params.userId)
         .eq('is_read', false),
+      client
+        .from('organizations')
+        .select('consentz_clinic_id')
+        .eq('id', params.organizationId)
+        .single(),
     ]);
 
     if (complianceScoreRes.error) {
       console.error('[DashboardService] compliance_scores query error:', complianceScoreRes.error);
     }
-    const complianceScore = complianceScoreRes.data;
+
+    // Auto-recalculate if scores are stale (>1 hour) or missing, so
+    // stale pre-fix data and zero-evidence inflated scores get refreshed.
+    const STALE_MS = 60 * 60 * 1000;
+    const calcAt = complianceScoreRes.data?.calculated_at
+      ? new Date(complianceScoreRes.data.calculated_at).getTime()
+      : 0;
+    let complianceScore = complianceScoreRes.data;
+
+    if (!complianceScore || Date.now() - calcAt > STALE_MS) {
+      try {
+        await recalculateComplianceScores(params.organizationId);
+        const { data: fresh } = await client
+          .from('compliance_scores')
+          .select('id, organization_id, domain_code, score, rating, calculated_at, breakdown, previous_score, score_trend, predicted_rating, rating_confidence, has_critical_gap, total_requirements, met_requirements, total_gaps, critical_gaps, domain_scores(id, compliance_score_id, domain, score, max_score, percentage, status, previous_score, trend, total_gaps, critical_gaps, high_gaps, medium_gaps, low_gaps, total_kloes, covered_kloes, calculated_at)')
+          .eq('organization_id', params.organizationId)
+          .maybeSingle();
+        if (fresh) complianceScore = fresh;
+      } catch (e) {
+        console.error('[DashboardService] auto-recalculate failed:', e);
+      }
+    }
+
     const openGaps = openGapsRes.data ?? [];
     const allTasks = allTasksRes.data ?? [];
     const evidenceItems = evidenceItemsRes.data ?? [];
@@ -113,6 +142,7 @@ export class DashboardService {
     const investigatingIncidents = investigatingIncidentsRes.count ?? 0;
     const recentActivity = recentActivityRes.data ?? [];
     const unreadNotifs = unreadNotifsRes.count ?? 0;
+    const consentzConnected = !!orgConsentzRes.data?.consentz_clinic_id;
 
     const activeTasks = allTasks.filter((t) => t.status !== 'COMPLETED');
     const overdueTasks = allTasks.filter((t) => t.due_date && t.due_date < nowISO && t.status !== 'COMPLETED');
@@ -268,6 +298,7 @@ export class DashboardService {
     return {
       compliance,
       priorityGaps,
+      consentzConnected,
       consentzDataFreshness: lastSync?.synced_at ?? null,
       consentzMetrics,
       gaps: {

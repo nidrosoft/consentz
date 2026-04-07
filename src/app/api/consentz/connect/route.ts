@@ -48,14 +48,18 @@ export const POST = withAuth(async (req, { auth }) => {
   }
 
   const dbClient = await getDb();
-  await dbClient.from('organizations')
+  const { error: updateError } = await dbClient.from('organizations')
     .update({
       consentz_clinic_id: clinicId,
       consentz_username: username,
-      consentz_session_token: sessionToken,
-      consentz_password: null,
+      consentz_password: password,
     })
     .eq('id', auth.organizationId);
+
+  if (updateError) {
+    console.error('[CONSENTZ_CONNECT] DB update failed:', updateError);
+    return ApiErrors.internal('Failed to save Consentz connection');
+  }
 
   return apiSuccess({
     connected: true,
@@ -66,14 +70,18 @@ export const POST = withAuth(async (req, { auth }) => {
 
 export const DELETE = withAuth(async (_req, { auth }) => {
   const dbClient = await getDb();
-  await dbClient.from('organizations')
+  const { error: updateError } = await dbClient.from('organizations')
     .update({
       consentz_clinic_id: null,
       consentz_username: null,
-      consentz_session_token: null,
       consentz_password: null,
     })
     .eq('id', auth.organizationId);
+
+  if (updateError) {
+    console.error('[CONSENTZ_DISCONNECT] DB update failed:', updateError);
+    return ApiErrors.internal('Failed to disconnect Consentz');
+  }
 
   return apiSuccess({ disconnected: true });
 });

@@ -79,6 +79,7 @@ export interface ComplianceGap {
   regulation: string;
   createdAt: string;
   remediationSteps?: string[];
+  remediationAction?: string | null;
   dueDate?: string | null;
   resolutionNotes?: string | null;
 }
@@ -201,6 +202,8 @@ export interface Organization {
   bedCount: number;
   currentRating: CqcRating;
   lastInspection: string;
+  /** Consentz clinic ID — null if not connected */
+  consentz_clinic_id?: number | null;
   /** Aesthetic clinic: E3 nutrition marked N/A; excluded from evidence-status scoring */
   e3_nutrition_na_aesthetic?: boolean;
   /** PATCH body (camelCase); persisted as e3_nutrition_na_aesthetic */

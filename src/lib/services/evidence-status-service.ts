@@ -171,6 +171,7 @@ export class EvidenceStatusService {
     organizationId: string,
     evidenceId: string,
     kloeCodes: string[],
+    expiresAt: string | null = null,
   ) {
     const client = await getDb();
 
@@ -184,12 +185,20 @@ export class EvidenceStatusService {
         .neq('status', 'complete');
 
       if (items?.length) {
+        const now = new Date().toISOString();
+        const expiryStatus = expiresAt
+          ? computeExpiryStatus(expiresAt, now)
+          : null;
+
         await client
           .from('kloe_evidence_status')
           .update({
             status: 'complete',
             linked_evidence_id: evidenceId,
-            updated_at: new Date().toISOString(),
+            expires_at: expiresAt,
+            expiry_status: expiryStatus,
+            last_activity_at: now,
+            updated_at: now,
           })
           .eq('id', items[0].id);
       }

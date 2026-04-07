@@ -273,11 +273,14 @@ export class OnboardingService {
             .eq('organization_id', params.organizationId)
             .maybeSingle();
 
+        // The overallComplianceScore is the evidence-driven score, NOT the
+        // questionnaire's rawAverage. If no evidence has been uploaded yet,
+        // the score should be 0 — reflecting no proven compliance.
         return {
             assessmentId,
             rawAverage,
-            predictedRating: cs?.predicted_rating ?? predictedFromRaw,
-            overallComplianceScore: cs ? Math.round(cs.score) : rawAverage,
+            predictedRating: cs?.predicted_rating ?? 'INADEQUATE',
+            overallComplianceScore: cs ? Math.round(cs.score) : 0,
             domainResults,
             gapSummary,
             domainScores: cs?.domain_scores ?? [],

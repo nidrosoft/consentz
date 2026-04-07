@@ -360,7 +360,14 @@ interface KloeEvidenceStatusRow {
     consentz_synced_at: string | null;
 }
 
-function evidenceStatusGapReasons(row: KloeEvidenceStatusRow): string[] {
+const SYNC_OVERDUE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function isConsentzSyncOverdue(consentzSyncedAt: string | null): boolean {
+    if (!consentzSyncedAt) return false; // null = not connected (separate check)
+    return Date.now() - new Date(consentzSyncedAt).getTime() > SYNC_OVERDUE_MS;
+}
+
+function evidenceStatusGapReasons(row: KloeEvidenceStatusRow, consentzConnected = true): string[] {
     const reasons: string[] = [];
     if (row.status === "not_started") {
         reasons.push("This evidence item has not been started yet.");
@@ -370,14 +377,18 @@ function evidenceStatusGapReasons(row: KloeEvidenceStatusRow): string[] {
     }
     const isConsentzType =
         row.evidence_type === "CONSENTZ" || row.evidence_type === "CONSENTZ_MANUAL";
-    if (isConsentzType && !row.consentz_synced_at) {
-        reasons.push("Consentz is not connected or data has not been synced.");
+    if (isConsentzType && !consentzConnected) {
+        reasons.push("Consentz is not connected. Connect via Settings > Integrations.");
+    } else if (isConsentzType && !row.consentz_synced_at) {
+        reasons.push("Consentz is connected but data has not been synced yet.");
+    } else if (isConsentzType && isConsentzSyncOverdue(row.consentz_synced_at)) {
+        reasons.push("Consentz sync is overdue (last sync more than 24 hours ago).");
     }
     return reasons;
 }
 
-function shouldHaveEvidenceStatusGap(row: KloeEvidenceStatusRow): boolean {
-    return evidenceStatusGapReasons(row).length > 0;
+function shouldHaveEvidenceStatusGap(row: KloeEvidenceStatusRow, consentzConnected = true): boolean {
+    return evidenceStatusGapReasons(row, consentzConnected).length > 0;
 }
 
 /**
@@ -392,17 +403,23 @@ export async function generateEvidenceStatusGaps(params: {
     const st = serviceType as ServiceType;
     const client = await getDb();
 
-    const { data: statusRows, error: statusErr } = await client
-        .from("kloe_evidence_status")
-        .select(
-            "evidence_item_id, kloe_code, status, evidence_type, expiry_status, consentz_synced_at",
-        )
-        .eq("organization_id", organizationId);
+    const [{ data: statusRows, error: statusErr }, { data: orgData }] = await Promise.all([
+        client
+            .from("kloe_evidence_status")
+            .select("evidence_item_id, kloe_code, status, evidence_type, expiry_status, consentz_synced_at")
+            .eq("organization_id", organizationId),
+        client
+            .from("organizations")
+            .select("consentz_clinic_id")
+            .eq("id", organizationId)
+            .single(),
+    ]);
 
     if (statusErr) {
         return { created: 0, resolved: 0 };
     }
 
+    const consentzConnected = !!orgData?.consentz_clinic_id;
     const rows = (statusRows ?? []) as KloeEvidenceStatusRow[];
     const statusByItemId = new Map(rows.map((r) => [r.evidence_item_id, r]));
 
@@ -429,7 +446,7 @@ export async function generateEvidenceStatusGaps(params: {
     for (const gap of existingOpen ?? []) {
         const eid = gap.source_id as string;
         const row = statusByItemId.get(eid);
-        if (row && !shouldHaveEvidenceStatusGap(row)) {
+        if (row && !shouldHaveEvidenceStatusGap(row, consentzConnected)) {
             const { error } = await client
                 .from("compliance_gaps")
                 .update({
@@ -448,7 +465,7 @@ export async function generateEvidenceStatusGaps(params: {
     let created = 0;
 
     for (const row of rows) {
-        const reasons = evidenceStatusGapReasons(row);
+        const reasons = evidenceStatusGapReasons(row, consentzConnected);
         if (reasons.length === 0) continue;
 
         const def = itemById.get(row.evidence_item_id);
@@ -468,11 +485,14 @@ export async function generateEvidenceStatusGaps(params: {
         const titleParts: string[] = [];
         if (row.status === "not_started") titleParts.push("Not started");
         if (row.expiry_status === "expired") titleParts.push("Expired evidence");
-        if (
-            (row.evidence_type === "CONSENTZ" || row.evidence_type === "CONSENTZ_MANUAL") &&
-            !row.consentz_synced_at
-        ) {
-            titleParts.push("Consentz not synced");
+        const isConsentz =
+            row.evidence_type === "CONSENTZ" || row.evidence_type === "CONSENTZ_MANUAL";
+        if (isConsentz && !consentzConnected) {
+            titleParts.push("Consentz not connected");
+        } else if (isConsentz && !row.consentz_synced_at) {
+            titleParts.push("Consentz awaiting sync");
+        } else if (isConsentz && isConsentzSyncOverdue(row.consentz_synced_at)) {
+            titleParts.push("Consentz sync overdue");
         }
         const titleLabel = titleParts.length > 0 ? titleParts.join(" · ") : "Evidence gap";
         const title = `${titleLabel} (${kloeCode})`;
@@ -490,6 +510,44 @@ export async function generateEvidenceStatusGaps(params: {
             status: "OPEN",
             source: "evidence_status",
             source_id: row.evidence_item_id,
+            remediation_steps: { action },
+        });
+
+        if (!error) {
+            existingKeys.add(key);
+            created++;
+        }
+    }
+
+    // Also generate gaps for evidence items with NO status row at all (unseeded).
+    // These represent evidence the organisation has never even started tracking.
+    for (const [evidenceItemId, def] of itemById) {
+        if (statusByItemId.has(evidenceItemId)) continue; // already handled above
+
+        const key = `evidence_status_${evidenceItemId}`;
+        if (existingKeys.has(key)) continue;
+
+        const { item, kloeCode } = def;
+        const kloeDef = getKloeDefinition(st, kloeCode);
+        const regulationCode = kloeDef?.regulations[0] ?? "";
+        const domainSlug = domainSlugFromKloeCode(kloeCode);
+        const severity = criticalityToGapSeverity(item.criticality);
+        const action = remediationActionForEvidenceItem(item);
+
+        const title = `Missing evidence (${kloeCode})`;
+        const description = `${item.description} This evidence item has not been tracked or uploaded yet.`;
+
+        const { error } = await client.from("compliance_gaps").insert({
+            organization_id: organizationId,
+            domain: domainSlug,
+            kloe_code: kloeCode,
+            regulation_code: regulationCode,
+            title,
+            description,
+            severity,
+            status: "OPEN",
+            source: "evidence_status",
+            source_id: evidenceItemId,
             remediation_steps: { action },
         });
 

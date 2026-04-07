@@ -137,7 +137,11 @@ export default function EvidenceDetailPage() {
                     <div className="flex items-center gap-3">
                         <Calendar className="size-4 text-fg-quaternary" />
                         <span className="text-sm font-medium text-tertiary">Expires</span>
-                        <span className="text-sm text-primary">{evidence.expiresAt ?? "N/A"}</span>
+                        <span className={`text-sm ${evidence.status === "EXPIRED" ? "font-medium text-error-primary" : evidence.status === "EXPIRING_SOON" ? "font-medium text-warning-primary" : "text-primary"}`}>
+                            {evidence.expiresAt
+                                ? new Date(evidence.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                                : "N/A"}
+                        </span>
                     </div>
                     <div className="flex items-center gap-3">
                         <User01 className="size-4 text-fg-quaternary" />

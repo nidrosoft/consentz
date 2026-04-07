@@ -1,6 +1,10 @@
 import { withAuth } from '@/lib/api-handler';
 import { apiSuccess, apiError } from '@/lib/api-response';
 import { EvidenceFileService } from '@/lib/services/evidence-file-service';
+import { EvidenceStatusService } from '@/lib/services/evidence-status-service';
+import { recalculateComplianceScores } from '@/lib/services/score-engine';
+import { generateEvidenceStatusGaps } from '@/lib/services/gap-generator';
+import { getDb } from '@/lib/db';
 
 export const GET = withAuth(async (req, { auth }) => {
   const url = new URL(req.url);
@@ -37,6 +41,30 @@ export const POST = withAuth(async (req, { auth }) => {
     uploadedBy: auth.userId,
     expiresAt: expiresAt ?? null,
   });
+
+  // Mark the evidence item as complete and propagate expiry date
+  await EvidenceStatusService.updateStatus(auth.organizationId, evidenceItemId, {
+    status: 'complete',
+    linkedEvidenceId: version.id,
+  });
+  if (expiresAt) {
+    await EvidenceStatusService.setExpiryDate(auth.organizationId, evidenceItemId, expiresAt);
+  }
+  await EvidenceStatusService.setLastActivity(auth.organizationId, evidenceItemId);
+
+  // Recalculate compliance scores and regenerate evidence-status gaps
+  const client = await getDb();
+  const { data: org } = await client
+    .from('organizations')
+    .select('service_type')
+    .eq('id', auth.organizationId)
+    .maybeSingle();
+  const serviceType = org?.service_type ?? 'AESTHETIC_CLINIC';
+
+  await Promise.all([
+    recalculateComplianceScores(auth.organizationId),
+    generateEvidenceStatusGaps({ organizationId: auth.organizationId, serviceType }),
+  ]);
 
   return apiSuccess(version, undefined, 201);
 });

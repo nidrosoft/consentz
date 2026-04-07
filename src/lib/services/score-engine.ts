@@ -1,7 +1,5 @@
 import { getDb } from '@/lib/db';
 import {
-  ASSESSMENT_QUESTIONS,
-  getQuestionsForServiceType,
   type AssessmentQuestion,
   type ServiceType,
 } from '@/lib/constants/assessment-questions';
@@ -238,17 +236,15 @@ function calculateTimeliness(
 // ---------------------------------------------------------------------------
 
 function calculateConfidence(
-  answeredCount: number,
-  totalQuestions: number,
-  currentEvidenceCount: number,
+  evidenceCompleteCount: number,
+  totalEvidenceItems: number,
 ): number {
-  const questionCoverage =
-    Math.min(answeredCount / Math.max(totalQuestions, 1), 1.0) * 0.4;
-  const expectedEvidence = totalQuestions * 0.6;
-  const evidenceCoverage =
-    Math.min(currentEvidenceCount / Math.max(expectedEvidence, 1), 1.0) * 0.4;
-  const recencyFactor = 0.15;
-  return Math.round((questionCoverage + evidenceCoverage + recencyFactor) * 100) / 100;
+  // Confidence is driven purely by what percentage of required evidence
+  // items have status 'complete' (0–1.0). The self-assessment questionnaire
+  // is a declaration of intent and does not contribute to confidence.
+  if (totalEvidenceItems === 0) return 0;
+  const coverage = Math.min(evidenceCompleteCount / totalEvidenceItems, 1.0);
+  return Math.round(coverage * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +463,8 @@ export async function calculateKloeScore(
   organizationId: string,
   kloeCode: string,
   serviceType: ServiceType,
-  prefetchedStatuses?: Array<{ evidence_item_id: string; status: string; expiry_status: string | null }>,
+  prefetchedStatuses?: Array<{ evidence_item_id: string; status: string; expiry_status: string | null; evidence_type?: string; consentz_synced_at?: string | null }>,
+  consentzConnected = true,
 ): Promise<KloeScoreResult> {
   const items = getEvidenceItems(serviceType, kloeCode);
 
@@ -480,12 +477,13 @@ export async function calculateKloeScore(
     const client = await getDb();
     const { data } = await client
       .from('kloe_evidence_status')
-      .select('evidence_item_id, status, expiry_status')
+      .select('evidence_item_id, status, expiry_status, evidence_type, consentz_synced_at')
       .eq('organization_id', organizationId)
       .eq('kloe_code', kloeCode);
     statusRows = data ?? [];
   }
 
+  const SYNC_OVERDUE_MS = 24 * 60 * 60 * 1000;
   const statusMap = new Map(
     statusRows.map((r) => [r.evidence_item_id, r]),
   );
@@ -501,7 +499,20 @@ export async function calculateKloeScore(
     totalWeight += weight;
 
     const row = statusMap.get(item.id);
-    const isPresent = row?.status === 'complete' && row?.expiry_status !== 'expired';
+
+    // Consentz items score 0 if org not connected, no sync data, or sync overdue (>24h)
+    const isConsentzType = row?.evidence_type === 'CONSENTZ' || row?.evidence_type === 'CONSENTZ_MANUAL';
+    const consentzDisconnected = isConsentzType && !consentzConnected;
+    const consentzMissing = isConsentzType && consentzConnected && !row?.consentz_synced_at;
+    const consentzOverdue = isConsentzType && consentzConnected && row?.consentz_synced_at
+      ? (Date.now() - new Date(row.consentz_synced_at).getTime() > SYNC_OVERDUE_MS)
+      : false;
+
+    const isPresent = row?.status === 'complete'
+      && row?.expiry_status !== 'expired'
+      && !consentzDisconnected
+      && !consentzMissing
+      && !consentzOverdue;
 
     if (isPresent) {
       weightedSum += weight;
@@ -543,42 +554,13 @@ export async function recalculateComplianceScores(organizationId: string) {
   const client = await getDb();
   const domains = ['safe', 'effective', 'caring', 'responsive', 'well_led'];
 
-  // Domain key used in ASSESSMENT_QUESTIONS is UPPER_CASE; map lowercase slugs.
-  const domainKeyMap: Record<string, string> = {
-    safe: 'SAFE',
-    effective: 'EFFECTIVE',
-    caring: 'CARING',
-    responsive: 'RESPONSIVE',
-    well_led: 'WELL_LED',
-  };
-
   // --- Load data in parallel ---------------------------------------------------
 
   const [
-    assessmentResult,
-    responsesResult,
-    allEvidenceResult,
     openGapsResult,
     orgResult,
     kloeStatusResult,
   ] = await Promise.all([
-    client
-      .from('assessments')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('status', 'COMPLETED')
-      .order('completed_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    client
-      .from('assessment_responses')
-      .select('question_id, answer, assessment_id')
-      .eq('organization_id', organizationId)
-      .order('created_at', { ascending: false }),
-    client
-      .from('evidence_items')
-      .select('*')
-      .eq('organization_id', organizationId),
     client
       .from('compliance_gaps')
       .select('*')
@@ -586,17 +568,15 @@ export async function recalculateComplianceScores(organizationId: string) {
       .in('status', ['OPEN', 'IN_PROGRESS']),
     client
       .from('organizations')
-      .select('service_type, e3_nutrition_na_aesthetic')
+      .select('service_type, e3_nutrition_na_aesthetic, consentz_clinic_id')
       .eq('id', organizationId)
       .maybeSingle(),
     client
       .from('kloe_evidence_status')
-      .select('kloe_code, evidence_item_id, status, expiry_status')
+      .select('kloe_code, evidence_item_id, status, expiry_status, evidence_type, consentz_synced_at')
       .eq('organization_id', organizationId),
   ]);
 
-  const assessment = assessmentResult.data;
-  const allEvidence = allEvidenceResult.data ?? [];
   const openGaps = openGapsResult.data ?? [];
   const hasCriticalGap = openGaps.some((g: any) => g.severity === 'CRITICAL');
 
@@ -606,43 +586,21 @@ export async function recalculateComplianceScores(organizationId: string) {
     evidence_item_id: string;
     status: string;
     expiry_status: string | null;
+    evidence_type?: string;
+    consentz_synced_at?: string | null;
   }>;
   const e3NutritionNa = orgResult.data?.e3_nutrition_na_aesthetic ?? false;
-
-  // Build a map of question_id → answer value from the latest completed assessment
-  const answerMap = new Map<string, string>();
-  let assessmentResponses = responsesResult.data ?? [];
-  if (assessment) {
-    assessmentResponses = assessmentResponses.filter(
-      (r: any) => r.assessment_id === assessment.id,
-    );
-  }
-  for (const r of assessmentResponses) {
-    answerMap.set(r.question_id, r.answer);
-  }
-
-  // Get questions for this service type
-  const allQuestions = getQuestionsForServiceType(serviceType);
+  const consentzConnected = !!orgResult.data?.consentz_clinic_id;
 
   // --- Per-domain scoring: domain score = average of KLOE evidence scores ---
+  // The self-assessment questionnaire sets a *claimed* starting position.
+  // The displayed compliance score is driven exclusively by evidence status.
+  // A provider who claims 80% but has uploaded zero evidence scores 0%.
 
   const allKloeScores: KloeScoreResult[] = [];
   const domainScoreData: { domain: string; score: number; rating: CqcRatingType }[] = [];
-  let totalAnswered = 0;
-  let totalQuestionsCount = 0;
 
   for (const domain of domains) {
-    const upperDomain = domainKeyMap[domain];
-    const domainQuestions = allQuestions.filter((q) => q.domain === upperDomain);
-    totalQuestionsCount += domainQuestions.length;
-
-    // Count answered questions for confidence score
-    let answeredCount = 0;
-    for (const question of domainQuestions) {
-      if (answerMap.has(question.id)) answeredCount++;
-    }
-    totalAnswered += answeredCount;
-
     const domainGaps = openGaps.filter((g: any) => g.domain === domain);
 
     // --- KLOE evidence-based scoring (domain score = average of KLOE scores) ---
@@ -669,6 +627,7 @@ export async function recalculateComplianceScores(organizationId: string) {
           kloe.code,
           serviceType,
           kloeStatuses,
+          consentzConnected,
         );
         kloeResults.push(kloeResult);
         allKloeScores.push(kloeResult);
@@ -706,13 +665,11 @@ export async function recalculateComplianceScores(organizationId: string) {
   const overallScore = calculateOverallScore(domainScoreData);
   const predictedRating = determineOverallRating(domainScoreData, hasCriticalGap);
 
-  // --- Confidence ---------------------------------------------------------------
+  // --- Confidence (purely evidence-driven) -------------------------------------
 
-  const confidence = calculateConfidence(
-    totalAnswered,
-    totalQuestionsCount,
-    allEvidence.length,
-  );
+  const totalEvidenceItems = allKloeStatuses.length;
+  const completeEvidenceItems = allKloeStatuses.filter((s) => s.status === 'complete').length;
+  const confidence = calculateConfidence(completeEvidenceItems, totalEvidenceItems);
 
   // --- Persist -------------------------------------------------------------------
 
@@ -765,21 +722,24 @@ export async function recalculateComplianceScores(organizationId: string) {
     complianceScoreId = cs.id;
   }
 
-    for (const ds of domainScoreData) {
+  const domainScoreRows = domainScoreData.map((ds) => {
     const domainGaps = openGaps.filter((g: any) => g.domain === ds.domain);
-    await client.from('domain_scores').insert({
+    return {
       compliance_score_id: complianceScoreId,
-          domain: ds.domain,
-          score: ds.score,
+      domain: ds.domain,
+      score: ds.score,
       max_score: 100,
-          percentage: ds.score,
+      percentage: ds.score,
       status: ds.rating,
       total_gaps: domainGaps.length,
       critical_gaps: domainGaps.filter((g: any) => g.severity === 'CRITICAL').length,
       high_gaps: domainGaps.filter((g: any) => g.severity === 'HIGH').length,
       medium_gaps: domainGaps.filter((g: any) => g.severity === 'MEDIUM').length,
       low_gaps: domainGaps.filter((g: any) => g.severity === 'LOW').length,
-    });
+    };
+  });
+  if (domainScoreRows.length > 0) {
+    await client.from('domain_scores').insert(domainScoreRows);
   }
 
   const estimatedTimeToGood = calculateTimeToGood(domainScoreData, openGaps);

@@ -5,6 +5,8 @@ import { AuditService } from '@/lib/services/audit-service';
 import { calculateAssessmentSchema } from '@/lib/validations/assessment';
 import { checkRateLimit } from '@/lib/rate-limiter';
 
+export const maxDuration = 30;
+
 export const POST = withAuth(async (req, { params, auth }) => {
   const rateCheck = checkRateLimit(auth.userId, 'assessment');
   if (!rateCheck.allowed) {

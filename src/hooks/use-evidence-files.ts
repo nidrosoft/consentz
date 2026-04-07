@@ -43,6 +43,8 @@ export function useUploadEvidenceFile() {
       queryClient.invalidateQueries({ queryKey: ['evidence-files', variables.evidenceItemId] });
       queryClient.invalidateQueries({ queryKey: ['evidence-files', 'current', variables.kloeCode] });
       queryClient.invalidateQueries({ queryKey: ['evidence-status'] });
+      queryClient.invalidateQueries({ queryKey: ['compliance'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Evidence uploaded', 'New file version has been added.');
     },
     onError: () =>

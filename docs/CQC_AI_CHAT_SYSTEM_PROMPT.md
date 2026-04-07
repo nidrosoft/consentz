@@ -283,10 +283,10 @@ The key differentiator is "ongoing compliance" — rather than scrambling before
 
 ### How the System Works (End-to-End Flow)
 1. **Sign Up & Onboarding** — User creates account, selects service type (Aesthetic Clinic or Care Home), and links their Consentz account
-2. **Initial Assessment** — Multi-step questionnaire covering all 5 CQC domains. Questions are tailored to service type. Generates baseline compliance score and identifies gaps.
+2. **Initial Assessment** — Multi-step questionnaire covering all 5 CQC domains. Questions are tailored to service type. Identifies compliance gaps and generates remediation tasks. The questionnaire is a self-declaration — it does NOT set the compliance score.
 3. **Dashboard Activation** — After assessment, dashboard shows overall compliance score, predicted CQC rating, domain-by-domain breakdown, priority gaps, and tasks.
 4. **Consentz Data Sync** — Platform automatically syncs with Consentz every 6 hours, pulling 8 CQC report feeds (staff competency, consent completion, consent decay, infection incidents, policy acknowledgement, safety checklist, treatment risk heatmap, patient feedback).
-5. **Ongoing Score Updates** — Compliance score recalculates after each sync using a blended formula: 30% assessment baseline + 20% evidence coverage + 30% live Consentz data + 15% task completion - penalties for overdue critical gaps.
+5. **Ongoing Score Updates** — Compliance score recalculates whenever evidence status changes or a Consentz sync completes. The score is driven entirely by evidence — each KLOE's score is the weighted sum of present evidence items divided by total weight. Domain score = average of KLOE scores. Overall = average of domain scores.
 6. **Gap Remediation** — Users work through compliance gaps by uploading evidence, creating policies, completing tasks, and addressing findings.
 7. **Continuous Improvement** — The score dynamically reflects real-time clinic operations, enabling users to see compliance improve as they take action.
 
@@ -331,14 +331,15 @@ Complete activity trail. Every action in the system is logged: who did what, whe
 - Integrations: Link Consentz account (enter Consentz clinic ID), generate SDK API keys for external integrations
 
 ### The Compliance Score Formula
-The overall compliance score (0-100%) is calculated using:
-- 30% — Assessment Baseline: Score from the initial (or most recent) CQC assessment questionnaire
-- 20% — Evidence Coverage: Percentage of required evidence uploaded and current per domain
-- 30% — Consentz Live Data: Real-time metrics from 8 Consentz data feeds mapped to domains
-- 15% — Task Completion: Percentage of compliance tasks completed per domain
-- Penalty: Each overdue critical gap deducts 3 points
+The overall compliance score (0-100%) is driven **entirely by evidence**. The self-assessment questionnaire is a declaration of intent — it identifies starting gaps and generates remediation tasks, but it does NOT contribute to the displayed score. A provider who claims 80% in the questionnaire but has uploaded zero evidence will show 0%.
 
-Domain weights in the overall score: Safe 25%, Effective 20%, Caring 15%, Responsive 15%, Well-Led 25%.
+How it works:
+- Each KLOE has a set of required evidence items, each weighted by criticality (Critical = 3, High = 2, Medium = 1).
+- An evidence item counts as "present" only when its status is 'complete', it is not expired, and (for Consentz items) the organisation is connected with a fresh sync.
+- KLOE score = weighted sum of present items / total weight × 100, with hard caps for missing critical/high items.
+- Domain score = average of all KLOE scores in that domain.
+- Overall score = average of all 5 domain scores.
+- Rating limiters: any domain with a critical gap is capped at Requires Improvement; high gaps cap at Good.
 
 Score-to-rating mapping: 88-100 = Outstanding, 63-87 = Good, 39-62 = Requires Improvement, 0-38 = Inadequate.
 

@@ -18,7 +18,7 @@ import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization
 import { useEvidenceStatus, useSeedEvidenceStatus, useUpdateEvidenceStatus } from "@/hooks/use-evidence-status";
 import { KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
 import {
-    getKloeDefinition, SOURCE_LABEL_DISPLAY,
+    getKloeDefinition, SOURCE_LABEL_DISPLAY, CRITICALITY_WEIGHT,
     type KloeDefinition, type KloeEvidenceItem, type EvidenceSourceLabel,
 } from "@/lib/constants/cqc-evidence-requirements";
 import { useCurrentEvidenceFiles } from "@/hooks/use-evidence-files";
@@ -91,17 +91,61 @@ function KloeDetailSkeleton() {
     );
 }
 
-function ActionButton({ item, kloeCode, domainSlug, router, consentzSyncedAt }: {
+const SYNC_OVERDUE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function ConsentzSyncBadge({ consentzSyncedAt, consentzConnected, domainSlug, router }: {
+    consentzSyncedAt?: string | null;
+    consentzConnected: boolean;
+    domainSlug: DomainSlug;
+    router: ReturnType<typeof useRouter>;
+}) {
+    if (!consentzConnected || !consentzSyncedAt) {
+        // Not connected or no data received
+        return (
+            <div className="flex flex-wrap items-center gap-2">
+                <Badge size="sm" color="error" type="pill-color">Not connected</Badge>
+                <Button
+                    color="link-color"
+                    size="sm"
+                    iconLeading={Link01}
+                    onClick={() => router.push("/settings")}
+                >
+                    Connect Consentz
+                </Button>
+            </div>
+        );
+    }
+
+    const syncDate = new Date(consentzSyncedAt);
+    const isOverdue = Date.now() - syncDate.getTime() > SYNC_OVERDUE_MS;
+    const formattedTime = syncDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+        + ", " + syncDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+    if (isOverdue) {
+        return (
+            <div className="flex flex-wrap items-center gap-1.5">
+                <Badge size="sm" color="warning" type="pill-color">Sync overdue</Badge>
+                <span className="text-xs text-tertiary">Last synced: {formattedTime}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-wrap items-center gap-1.5">
+            <Badge size="sm" color="success" type="pill-color">Live</Badge>
+            <span className="text-xs text-tertiary">Last synced: {formattedTime}</span>
+        </div>
+    );
+}
+
+function ActionButton({ item, kloeCode, domainSlug, router, consentzSyncedAt, consentzConnected }: {
     item: KloeEvidenceItem;
     kloeCode: string;
     domainSlug: DomainSlug;
     router: ReturnType<typeof useRouter>;
     consentzSyncedAt?: string | null;
+    consentzConnected: boolean;
 }) {
-    const syncLabel = consentzSyncedAt
-        ? `Last sync: ${new Date(consentzSyncedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
-        : null;
-
     switch (item.sourceLabel) {
         case "POLICY":
             return (
@@ -126,19 +170,11 @@ function ActionButton({ item, kloeCode, domainSlug, router, consentzSyncedAt }: 
                 </Button>
             );
         case "CONSENTZ":
-            return (
-                <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge size="sm" color="success" type="pill-color">Auto-synced from Consentz (live data)</Badge>
-                    {syncLabel && <span className="text-xs text-tertiary">{syncLabel}</span>}
-                </div>
-            );
+            return <ConsentzSyncBadge consentzSyncedAt={consentzSyncedAt} consentzConnected={consentzConnected} domainSlug={domainSlug} router={router} />;
         case "CONSENTZ_MANUAL":
             return (
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge size="sm" color="success" type="pill-color">Auto-synced from Consentz (live data)</Badge>
-                        {syncLabel && <span className="text-xs text-tertiary">{syncLabel}</span>}
-                    </div>
+                    <ConsentzSyncBadge consentzSyncedAt={consentzSyncedAt} consentzConnected={consentzConnected} domainSlug={domainSlug} router={router} />
                     <Button
                         color="link-color"
                         size="sm"
@@ -229,15 +265,54 @@ export default function KloeDetailPage() {
             ? Math.round((completedCount / evidenceItems.length) * 100)
             : 0;
 
-    const hasPolicy = kloeEvidence.some((e) => e.category === "POLICY");
-    const hasTraining = kloeEvidence.some((e) => e.category === "TRAINING_RECORD");
-    const coverageFactors = [
-        openGaps.length === 0 ? 40 : openGaps.some((g) => g.severity === "CRITICAL") ? 0 : 15,
-        kloeEvidence.length > 0 ? 25 : 0,
-        hasPolicy ? 20 : 0,
-        hasTraining ? 15 : 0,
-    ];
-    const assessmentScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
+    // Compute KLOE score using the same weighted formula as the backend score engine.
+    // Each evidence item is weighted by criticality. Items that are complete (and not expired)
+    // contribute their weight; missing/expired items score 0. Hard caps apply for critical/high gaps.
+    // Consentz items with no sync data or overdue sync (>24h) count as missing.
+    const kloeScore = useMemo(() => {
+        if (evidenceExcluded || evidenceItems.length === 0) return 0;
+        const SYNC_OVERDUE = 24 * 60 * 60 * 1000;
+        let weightedSum = 0;
+        let totalWeight = 0;
+        let criticalMissing = 0;
+        let highMissing = 0;
+        let hasCriticalExpired = false;
+
+        for (const item of evidenceItems) {
+            const weight = CRITICALITY_WEIGHT[item.criticality];
+            totalWeight += weight;
+            const row = statusMap.get(item.id);
+
+            // Consentz items score 0 if org not connected, not synced, or sync is overdue
+            const isConsentz = row?.evidenceType === "CONSENTZ" || row?.evidenceType === "CONSENTZ_MANUAL";
+            const consentzInvalid = isConsentz && (
+                !org?.consentz_clinic_id ||
+                !row?.consentzSyncedAt ||
+                (Date.now() - new Date(row.consentzSyncedAt).getTime() > SYNC_OVERDUE)
+            );
+
+            const isPresent = row?.status === "complete"
+                && row?.expiryStatus !== "expired"
+                && !consentzInvalid;
+
+            if (isPresent) {
+                weightedSum += weight;
+            } else {
+                if (item.criticality === "critical") {
+                    criticalMissing++;
+                    if (row?.expiryStatus === "expired") hasCriticalExpired = true;
+                } else if (item.criticality === "high") {
+                    highMissing++;
+                }
+            }
+        }
+
+        let score = totalWeight > 0 ? (weightedSum / totalWeight) * 100 : 0;
+        if (criticalMissing > 0) score = Math.min(score, hasCriticalExpired ? 40 : 50);
+        if (highMissing >= 2) score = Math.min(score, 60);
+        else if (highMissing > 0) score = Math.min(score, 70);
+        return Math.round(score);
+    }, [evidenceItems, statusMap, evidenceExcluded, org]);
 
     const isLoading = gapsLoading || evidenceLoading;
     const needsSeeding =
@@ -346,14 +421,14 @@ export default function KloeDetailPage() {
                     )}
                 </div>
                 <div className="rounded-xl border border-secondary bg-primary p-4">
-                    <p className="text-xs font-medium text-tertiary uppercase tracking-wide">Assessment Score</p>
+                    <p className="text-xs font-medium text-tertiary uppercase tracking-wide">KLOE Score</p>
                     <div className="mt-2 flex items-center gap-3">
-                        <span className="font-mono text-2xl font-bold text-primary">{assessmentScore}%</span>
-                        <div className="flex-1"><ProgressBarBase value={assessmentScore} min={0} max={100} /></div>
+                        <span className="font-mono text-2xl font-bold text-primary">{kloeScore}%</span>
+                        <div className="flex-1"><ProgressBarBase value={kloeScore} min={0} max={100} /></div>
                     </div>
                     <div className="mt-1.5">
-                        <Badge size="sm" color={openGaps.length === 0 ? "success" : "warning"} type="pill-color">
-                            {openGaps.length === 0 ? "Compliant" : `${openGaps.length} gap${openGaps.length !== 1 ? "s" : ""}`}
+                        <Badge size="sm" color={kloeScore >= 63 ? "success" : kloeScore >= 39 ? "warning" : "error"} type="pill-color">
+                            {kloeScore >= 88 ? "Outstanding" : kloeScore >= 63 ? "Good" : kloeScore >= 39 ? "Requires Improvement" : "Inadequate"}
                         </Badge>
                     </div>
                 </div>
@@ -362,12 +437,38 @@ export default function KloeDetailPage() {
             {/* Linked Regulations */}
             {kloeRegulations.length > 0 && (
                 <div>
-                    <h2 className="mb-3 text-lg font-semibold text-primary">Linked Regulations</h2>
+                    <h2 className="mb-1 text-lg font-semibold text-primary">Linked Regulations</h2>
+                    <p className="mb-3 text-xs text-tertiary">
+                        {domainSlug === "safe" && "CQC regulations governing safety standards and safeguarding for this KLOE."}
+                        {domainSlug === "effective" && "CQC regulations ensuring effective, evidence-based care and treatment for this KLOE."}
+                        {domainSlug === "caring" && "CQC regulations that uphold compassion, dignity and respect for this KLOE."}
+                        {domainSlug === "responsive" && "CQC regulations ensuring services are responsive and person-centred for this KLOE."}
+                        {domainSlug === "well-led" && "CQC regulations relating to governance, leadership and accountability for this KLOE."}
+                    </p>
                     <div className="flex flex-wrap gap-2">
                         {kloeRegulations.map((reg) => (
-                            <div key={reg.code} className="rounded-lg border border-secondary bg-primary px-3 py-2">
-                                <span className="text-sm font-medium text-primary">{reg.code.replace("REG", "Reg ")}</span>
-                                <span className="ml-1.5 text-sm text-tertiary">{reg.title}</span>
+                            <div
+                                key={reg.code}
+                                className={cx(
+                                    "rounded-lg px-2.5 py-1.5",
+                                    domainSlug === "safe" && "bg-[#EFF6FF] border border-[#BFDBFE]",
+                                    domainSlug === "effective" && "bg-[#F5F3FF] border border-[#DDD6FE]",
+                                    domainSlug === "caring" && "bg-[#FDF2F8] border border-[#FBCFE8]",
+                                    domainSlug === "responsive" && "bg-[#FFFBEB] border border-[#FDE68A]",
+                                    domainSlug === "well-led" && "bg-[#ECFDF5] border border-[#A7F3D0]",
+                                )}
+                            >
+                                <span className={cx(
+                                    "text-xs font-bold",
+                                    domainSlug === "safe" && "text-[#1D4ED8]",
+                                    domainSlug === "effective" && "text-[#6D28D9]",
+                                    domainSlug === "caring" && "text-[#BE185D]",
+                                    domainSlug === "responsive" && "text-[#B45309]",
+                                    domainSlug === "well-led" && "text-[#047857]",
+                                )}>
+                                    {reg.code.replace("REG", "Reg ")}
+                                </span>
+                                <span className="ml-1.5 text-xs text-tertiary">{reg.title}</span>
                             </div>
                         ))}
                     </div>
@@ -453,17 +554,30 @@ export default function KloeDetailPage() {
                                                 domainSlug={domainSlug}
                                                 router={router}
                                                 consentzSyncedAt={statusRecord?.consentzSyncedAt}
+                                                consentzConnected={!!org?.consentz_clinic_id}
                                             />
                                         </div>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1.5">
-                                        <Badge
-                                            size="sm"
-                                            color={SOURCE_LABEL_COLORS[item.sourceLabel]}
-                                            type="pill-color"
-                                        >
-                                            {SOURCE_LABEL_DISPLAY[item.sourceLabel]}
-                                        </Badge>
+                                        {(() => {
+                                            const isConsentzSource = item.sourceLabel === "CONSENTZ" || item.sourceLabel === "CONSENTZ_MANUAL";
+                                            if (isConsentzSource) {
+                                                const connected = !!org?.consentz_clinic_id;
+                                                const syncedAt = statusRecord?.consentzSyncedAt;
+                                                const hasSyncData = connected && syncedAt;
+                                                const overdue = hasSyncData && Date.now() - new Date(syncedAt).getTime() > SYNC_OVERDUE_MS;
+                                                const badgeColor = !connected || !syncedAt ? "error" : overdue ? "warning" : "success";
+                                                const badgeText = !connected ? "Consentz · Not connected" : !syncedAt ? "Consentz · No data" : overdue ? "Consentz · Overdue" : "Consentz · Live";
+                                                return (
+                                                    <Badge size="sm" color={badgeColor} type="pill-color">{badgeText}</Badge>
+                                                );
+                                            }
+                                            return (
+                                                <Badge size="sm" color={SOURCE_LABEL_COLORS[item.sourceLabel]} type="pill-color">
+                                                    {SOURCE_LABEL_DISPLAY[item.sourceLabel]}
+                                                </Badge>
+                                            );
+                                        })()}
                                         <Badge
                                             size="sm"
                                             color={CRITICALITY_COLORS[item.criticality]}
@@ -559,14 +673,38 @@ export default function KloeDetailPage() {
                                         </div>
                                     </div>
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                        <Button
-                                            color="secondary"
-                                            size="sm"
-                                            iconTrailing={isExpanded ? ChevronUp : ChevronDown}
-                                            onClick={() => setExpandedGapId(isExpanded ? null : gap.id)}
-                                        >
-                                            {isExpanded ? "Hide Remediation" : "View Remediation"}
-                                        </Button>
+                                        {gap.remediationAction ? (
+                                            <Button
+                                                color="primary"
+                                                size="sm"
+                                                iconLeading={
+                                                    gap.remediationAction.includes("Upload") ? Upload01
+                                                    : gap.remediationAction.includes("Consentz") ? Link01
+                                                    : gap.remediationAction.includes("policy") || gap.remediationAction.includes("Policy") ? Link01
+                                                    : undefined
+                                                }
+                                                onClick={() => {
+                                                    if (gap.remediationAction?.includes("Upload")) {
+                                                        router.push(`/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`);
+                                                    } else if (gap.remediationAction?.includes("policy") || gap.remediationAction?.includes("Policy")) {
+                                                        router.push(`/policies?domain=${domainSlug}`);
+                                                    } else if (gap.remediationAction?.includes("Consentz")) {
+                                                        router.push("/settings");
+                                                    }
+                                                }}
+                                            >
+                                                {gap.remediationAction}
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                color="secondary"
+                                                size="sm"
+                                                iconTrailing={isExpanded ? ChevronUp : ChevronDown}
+                                                onClick={() => setExpandedGapId(isExpanded ? null : gap.id)}
+                                            >
+                                                {isExpanded ? "Hide Remediation" : "View Remediation"}
+                                            </Button>
+                                        )}
                                         {gap.status !== "RESOLVED" && (
                                             <Button
                                                 color="tertiary"
@@ -579,7 +717,7 @@ export default function KloeDetailPage() {
                                         )}
                                     </div>
 
-                                    {isExpanded && (
+                                    {!gap.remediationAction && isExpanded && (
                                         <div className="mt-3 rounded-lg border border-secondary bg-secondary p-4">
                                             <p className="text-xs font-semibold text-secondary uppercase tracking-wide">Remediation Steps</p>
                                             {hasSteps ? (
@@ -599,10 +737,19 @@ export default function KloeDetailPage() {
                             );
                         })}
                     </div>
-                ) : (
+                ) : kloeScore >= 63 ? (
                     <div className="flex items-center gap-3 rounded-xl border border-success-200 bg-success-primary p-4">
                         <CheckCircle className="size-5 text-success-primary" />
                         <p className="text-sm font-medium text-success-primary">No gaps — this KLOE is fully compliant.</p>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-3 rounded-xl border border-warning-200 bg-warning-primary p-4">
+                        <AlertTriangle className="size-5 text-warning-primary" />
+                        <p className="text-sm font-medium text-warning-primary">
+                            {evidenceItems.length === 0
+                                ? "No evidence requirements defined for this KLOE."
+                                : `Evidence incomplete (${evidenceCompletionPct}%). Upload missing evidence to generate a compliant score.`}
+                        </p>
                     </div>
                 )}
             </div>

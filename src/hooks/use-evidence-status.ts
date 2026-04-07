@@ -47,6 +47,7 @@ export function useUpdateEvidenceStatus() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['evidence-status'] });
       queryClient.invalidateQueries({ queryKey: ['compliance'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }
