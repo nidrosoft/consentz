@@ -38,7 +38,7 @@ const ASSESSMENT_DOMAIN_TO_DB: Record<CqcDomainType, string> = {
     EFFECTIVE: "effective",
     CARING: "caring",
     RESPONSIVE: "responsive",
-    WELL_LED: "well_led",
+    WELL_LED: "well-led",
 };
 
 function domainForGap(question: AssessmentQuestion): string {

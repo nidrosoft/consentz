@@ -3,7 +3,6 @@
 // =============================================================================
 
 import { getDb } from '@/lib/db';
-import { recalculateComplianceScores } from '@/lib/services/score-engine';
 import type { ActivityLogEntry, ComplianceScore, CqcRating, DomainScore, DomainSlug } from '@/types';
 
 const DOMAIN_ORDER: { db: string; slug: DomainSlug }[] = [
@@ -111,27 +110,10 @@ export class DashboardService {
       console.error('[DashboardService] compliance_scores query error:', complianceScoreRes.error);
     }
 
-    // Auto-recalculate if scores are stale (>1 hour) or missing, so
-    // stale pre-fix data and zero-evidence inflated scores get refreshed.
-    const STALE_MS = 60 * 60 * 1000;
-    const calcAt = complianceScoreRes.data?.calculated_at
-      ? new Date(complianceScoreRes.data.calculated_at).getTime()
-      : 0;
+    // Read scores as-is from the DB. Scores are recalculated only when
+    // evidence is explicitly changed (uploads, deletes, status changes,
+    // syncs) — never on a read-only GET to avoid side effects on navigation.
     let complianceScore = complianceScoreRes.data;
-
-    if (!complianceScore || Date.now() - calcAt > STALE_MS) {
-      try {
-        await recalculateComplianceScores(params.organizationId);
-        const { data: fresh } = await client
-          .from('compliance_scores')
-          .select('id, organization_id, domain_code, score, rating, calculated_at, breakdown, previous_score, score_trend, predicted_rating, rating_confidence, has_critical_gap, total_requirements, met_requirements, total_gaps, critical_gaps, domain_scores(id, compliance_score_id, domain, score, max_score, percentage, status, previous_score, trend, total_gaps, critical_gaps, high_gaps, medium_gaps, low_gaps, total_kloes, covered_kloes, calculated_at)')
-          .eq('organization_id', params.organizationId)
-          .maybeSingle();
-        if (fresh) complianceScore = fresh;
-      } catch (e) {
-        console.error('[DashboardService] auto-recalculate failed:', e);
-      }
-    }
 
     const openGaps = openGapsRes.data ?? [];
     const allTasks = allTasksRes.data ?? [];
@@ -143,6 +125,35 @@ export class DashboardService {
     const recentActivity = recentActivityRes.data ?? [];
     const unreadNotifs = unreadNotifsRes.count ?? 0;
     const consentzConnected = !!orgConsentzRes.data?.consentz_clinic_id;
+
+    // Enrich activity entries with kloe_code from related entities
+    const kloeEntityTypes = ['EVIDENCE', 'TASK', 'GAP'];
+    const kloeEntityIds = recentActivity
+      .filter((a) => kloeEntityTypes.includes(a.entity_type) && a.entity_id)
+      .map((a) => ({ type: a.entity_type, id: a.entity_id }));
+
+    const kloeMap = new Map<string, string>();
+    if (kloeEntityIds.length > 0) {
+      const evidenceIds = kloeEntityIds.filter((e) => e.type === 'EVIDENCE').map((e) => e.id);
+      const taskIds = kloeEntityIds.filter((e) => e.type === 'TASK').map((e) => e.id);
+      const gapIds = kloeEntityIds.filter((e) => e.type === 'GAP').map((e) => e.id);
+
+      const [evidenceKloes, taskKloes, gapKloes] = await Promise.all([
+        evidenceIds.length > 0
+          ? client.from('evidence_items').select('id, kloe_code').in('id', evidenceIds)
+          : { data: [] },
+        taskIds.length > 0
+          ? client.from('tasks').select('id, kloe_code').in('id', taskIds)
+          : { data: [] },
+        gapIds.length > 0
+          ? client.from('compliance_gaps').select('id, kloe_code').in('id', gapIds)
+          : { data: [] },
+      ]);
+
+      for (const row of [...(evidenceKloes.data ?? []), ...(taskKloes.data ?? []), ...(gapKloes.data ?? [])]) {
+        if (row.kloe_code) kloeMap.set(row.id, row.kloe_code);
+      }
+    }
 
     const activeTasks = allTasks.filter((t) => t.status !== 'COMPLETED');
     const overdueTasks = allTasks.filter((t) => t.due_date && t.due_date < nowISO && t.status !== 'COMPLETED');
@@ -341,6 +352,7 @@ export class DashboardService {
         description: a.description,
         user: a.actor_name,
         createdAt: a.created_at,
+        kloeCode: a.entity_id ? (kloeMap.get(a.entity_id) ?? null) : null,
       })),
       deadlines: [],
       notifications: { unreadCount: unreadNotifs },

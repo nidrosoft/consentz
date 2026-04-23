@@ -187,6 +187,7 @@ export interface ActivityLogEntry {
   user: string;
   createdAt: string;
   entityType: EntityType;
+  kloeCode?: string | null;
 }
 
 export interface Organization {
@@ -238,6 +239,8 @@ export interface KloeEvidenceStatus {
   createdAt: string;
 }
 
+export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected' | 'error';
+
 export interface EvidenceFileVersion {
   id: string;
   organizationId: string;
@@ -249,6 +252,8 @@ export interface EvidenceFileVersion {
   uploadedAt: string;
   expiresAt: string | null;
   isCurrent: boolean;
+  verificationStatus: VerificationStatus;
+  verificationResult: Record<string, unknown> | null;
 }
 
 export interface UpcomingDeadline {

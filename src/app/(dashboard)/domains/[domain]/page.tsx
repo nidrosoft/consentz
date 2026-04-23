@@ -12,10 +12,13 @@ import { useComplianceScore, useComplianceGaps, useUpdateGap, useTreatmentRiskHe
 import { useEvidence } from "@/hooks/use-evidence";
 import { useConsentzMetricsForDomain, type ConsentzMetricEntry } from "@/hooks/use-dashboard";
 import { RATING_LABELS, KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
-import { getKloeDefinition } from "@/lib/constants/cqc-evidence-requirements";
+import { getKloeDefinition, type KloeDefinition } from "@/lib/constants/cqc-evidence-requirements";
+import { computeKloeScore, type VerificationInfo } from "@/lib/services/kloe-score-formula";
+import { useAllCurrentEvidenceFiles } from "@/hooks/use-evidence-files";
 import { useOrganization } from "@/hooks/use-organization";
+import { useAllEvidenceStatus } from "@/hooks/use-evidence-status";
 import { TreatmentRiskHeatmap, TreatmentRiskHeatmapSkeleton, TreatmentRiskHeatmapEmpty } from "@/components/application/treatment-risk-heatmap";
-import type { DomainSlug, ServiceType } from "@/types";
+import type { DomainSlug, ServiceType, KloeEvidenceStatus } from "@/types";
 import type { FC } from "react";
 
 type ViewMode = "card" | "list";
@@ -114,6 +117,34 @@ function MiniScoreRing({ score }: { score: number }) {
             </div>
         </div>
     );
+}
+
+function computeKloeScores(
+    kloeDef: KloeDefinition | undefined,
+    statusMap: Map<string, KloeEvidenceStatus>,
+    org: { consentz_clinic_id?: string | number | null } | undefined,
+    verificationByItemId: Map<string, VerificationInfo>,
+): { kloeScore: number; evidenceCompletionPct: number; completedCount: number; totalCount: number } {
+    const evidenceItems = kloeDef?.evidenceItems ?? [];
+    if (evidenceItems.length === 0) return { kloeScore: 0, evidenceCompletionPct: 0, completedCount: 0, totalCount: 0 };
+
+    // Evidence completion: count items marked complete (regardless of expiry/sync),
+    // matching the detail page's completedCount logic.
+    const completed = evidenceItems.filter((item) => statusMap.get(item.id)?.status === "complete").length;
+
+    const { score } = computeKloeScore({
+        items: evidenceItems,
+        statusRows: Array.from(statusMap.values()),
+        verificationByItemId,
+        consentzConnected: !!org?.consentz_clinic_id,
+    });
+
+    return {
+        kloeScore: score,
+        evidenceCompletionPct: Math.round((completed / evidenceItems.length) * 100),
+        completedCount: completed,
+        totalCount: evidenceItems.length,
+    };
 }
 
 function DomainDetailSkeleton() {
@@ -378,8 +409,26 @@ export default function DomainDetailPage() {
 
     const { data: score, isLoading: scoreLoading, error: scoreError } = useComplianceScore();
     const { data: gapsResponse, isLoading: gapsLoading } = useComplianceGaps({ domain: slug, pageSize: 100 });
-    const { data: evidenceResponse } = useEvidence({ domain: slug, pageSize: 200 });
+    const { data: evidenceResponse } = useEvidence({ pageSize: 100 });
+    const { data: allStatusRecords } = useAllEvidenceStatus();
+    const { data: allCurrentFiles } = useAllCurrentEvidenceFiles();
     const allEvidence = (evidenceResponse?.data ?? []) as { id: string; kloe_code?: string; kloeCode?: string; category?: string; title?: string; file_name?: string; status?: string }[];
+
+    // Map evidence_item_id -> VerificationInfo (status + AI complianceScore) so
+    // the tile scores apply the graduated multiplier.
+    const verificationByItemId = useMemo(() => {
+        const map = new Map<string, VerificationInfo>();
+        for (const f of allCurrentFiles ?? []) {
+            if (!f.isCurrent) continue;
+            const result = f.verificationResult as Record<string, unknown> | null | undefined;
+            const rawScore = result && typeof result.complianceScore === "number" ? result.complianceScore : null;
+            map.set(f.evidenceItemId, {
+                status: f.verificationStatus ?? "unverified",
+                complianceScore: rawScore,
+            });
+        }
+        return map;
+    }, [allCurrentFiles]);
 
     const evidenceByKloe = useMemo(() => {
         const map: Record<string, typeof allEvidence> = {};
@@ -391,6 +440,16 @@ export default function DomainDetailPage() {
         }
         return map;
     }, [allEvidence]);
+
+    const statusByKloe = useMemo(() => {
+        const map = new Map<string, Map<string, KloeEvidenceStatus>>();
+        for (const s of allStatusRecords ?? []) {
+            let kloeMap = map.get(s.kloeCode);
+            if (!kloeMap) { kloeMap = new Map(); map.set(s.kloeCode, kloeMap); }
+            kloeMap.set(s.evidenceItemId, s);
+        }
+        return map;
+    }, [allStatusRecords]);
 
     const gaps = gapsResponse?.data ?? [];
     const domainScore = score?.domains.find((d) => d.slug === slug);
@@ -496,20 +555,13 @@ export default function DomainDetailPage() {
                             const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
                             const criticalCount = kloeGaps.filter((g) => g.severity === "CRITICAL").length;
                             const kloeEvidenceList = evidenceByKloe[kloe.code] ?? [];
-                            const hasPolicy = kloeEvidenceList.some((e) => e.category === "POLICY");
-                            const hasTraining = kloeEvidenceList.some((e) => e.category === "TRAINING_RECORD");
-                            const coverageFactors = [
-                                kloeGaps.length === 0 ? 40 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 0 : 15,
-                                kloeEvidenceList.length > 0 ? 25 : 0,
-                                hasPolicy ? 20 : 0,
-                                hasTraining ? 15 : 0,
-                            ];
-                            const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
 
                             const kloeDef = getKloeDefinition(serviceType, kloe.code);
+                            const statusMap = statusByKloe.get(kloe.code) ?? new Map();
+                            const { kloeScore, evidenceCompletionPct, completedCount, totalCount } = computeKloeScores(kloeDef, statusMap, org, verificationByItemId);
+
                             const displayTitle = kloeDef?.title ?? kloe.title;
                             const displayQuestion = kloeDef?.keyQuestion ?? kloe.keyQuestion;
-                            const evidenceCount = kloeDef?.evidenceItems.length ?? 0;
                             const kloeRegs = (kloeDef?.regulations ?? kloe.regulations).map((r) => r.replace("REG", "Reg "));
 
                             return (
@@ -523,7 +575,16 @@ export default function DomainDetailPage() {
                                             <Badge size="sm" color="gray" type="pill-color">{kloe.code}</Badge>
                                             {criticalCount >= 2 && <Badge size="sm" color="error" type="pill-color">High Risk</Badge>}
                                         </div>
-                                        <MiniScoreRing score={kloeScore} />
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="flex flex-col items-center">
+                                                <MiniScoreRing score={evidenceCompletionPct} />
+                                                <span className="mt-0.5 text-[8px] font-medium text-tertiary leading-none">Evidence</span>
+                                            </div>
+                                            <div className="flex flex-col items-center">
+                                                <MiniScoreRing score={kloeScore} />
+                                                <span className="mt-0.5 text-[8px] font-medium text-tertiary leading-none">Score</span>
+                                            </div>
+                                        </div>
                                     </div>
                                     <p className="mt-3 text-sm font-semibold text-primary line-clamp-2">{displayTitle}</p>
                                     <p className="mt-1 text-xs text-tertiary line-clamp-2">{displayQuestion}</p>
@@ -546,8 +607,8 @@ export default function DomainDetailPage() {
                                     </div>
                                     <div className="mt-auto flex items-center justify-between pt-3">
                                         <div className="flex items-center gap-3 text-xs text-tertiary">
+                                            <span>{completedCount}/{totalCount} items</span>
                                             <span>{kloeEvidenceList.length} doc{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
-                                            {evidenceCount > 0 && <span>{evidenceCount} required</span>}
                                             {kloeGaps.length > 0 && (
                                                 <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
                                             )}
@@ -564,20 +625,13 @@ export default function DomainDetailPage() {
                             const kloeGaps = gaps.filter((g) => g.kloe === kloe.code && g.status === "OPEN");
                             const criticalCount = kloeGaps.filter((g) => g.severity === "CRITICAL").length;
                             const kloeEvidenceList = evidenceByKloe[kloe.code] ?? [];
-                            const hasPolicy = kloeEvidenceList.some((e) => e.category === "POLICY");
-                            const hasTraining = kloeEvidenceList.some((e) => e.category === "TRAINING_RECORD");
-                            const coverageFactors = [
-                                kloeGaps.length === 0 ? 40 : kloeGaps.some((g) => g.severity === "CRITICAL") ? 0 : 15,
-                                kloeEvidenceList.length > 0 ? 25 : 0,
-                                hasPolicy ? 20 : 0,
-                                hasTraining ? 15 : 0,
-                            ];
-                            const kloeScore = Math.min(100, coverageFactors.reduce((a, b) => a + b, 0));
 
                             const kloeDef = getKloeDefinition(serviceType, kloe.code);
+                            const statusMap = statusByKloe.get(kloe.code) ?? new Map();
+                            const { kloeScore, evidenceCompletionPct, completedCount, totalCount } = computeKloeScores(kloeDef, statusMap, org, verificationByItemId);
+
                             const displayTitle = kloeDef?.title ?? kloe.title;
                             const displayQuestion = kloeDef?.keyQuestion ?? kloe.keyQuestion;
-                            const evidenceCount = kloeDef?.evidenceItems.length ?? 0;
                             const kloeRegs = (kloeDef?.regulations ?? kloe.regulations).map((r) => r.replace("REG", "Reg "));
 
                             return (
@@ -596,18 +650,27 @@ export default function DomainDetailPage() {
                                             {kloeRegs.length > 0 && (
                                                 <span>Linked: {kloeRegs.join(", ")}</span>
                                             )}
-                                            <span>Evidence: {kloeEvidenceList.length} document{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
-                                            {evidenceCount > 0 && <span>{evidenceCount} required</span>}
+                                            <span>{completedCount}/{totalCount} items</span>
+                                            <span>{kloeEvidenceList.length} doc{kloeEvidenceList.length !== 1 ? "s" : ""}</span>
                                             {kloeGaps.length > 0 && (
                                                 <span className="text-warning-primary">{kloeGaps.length} gap{kloeGaps.length > 1 ? "s" : ""}</span>
                                             )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <span className="font-mono text-sm font-bold text-primary">{kloeScore}%</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="flex flex-col items-center">
+                                                <MiniScoreRing score={evidenceCompletionPct} />
+                                                <span className="mt-0.5 text-[8px] font-medium text-tertiary leading-none">Evidence</span>
+                                            </div>
+                                            <div className="flex flex-col items-center">
+                                                <MiniScoreRing score={kloeScore} />
+                                                <span className="mt-0.5 text-[8px] font-medium text-tertiary leading-none">Score</span>
+                                            </div>
+                                        </div>
                                         {criticalCount >= 2 && <Badge size="sm" color="error" type="pill-color">High Risk</Badge>}
                                         <Badge size="sm" color={kloeGaps.length === 0 ? "success" : "warning"} type="pill-color">
-                                            {kloeGaps.length === 0 ? "✓" : "⚠"}
+                                            {kloeGaps.length === 0 ? "\u2713" : "\u26A0"}
                                         </Badge>
                                         <ChevronRight className="size-4 text-fg-quaternary" />
                                     </div>

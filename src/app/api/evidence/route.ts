@@ -4,7 +4,6 @@ import { requireMinRole } from '@/lib/auth';
 import { parsePagination } from '@/lib/pagination';
 import { EvidenceService } from '@/lib/services/evidence-service';
 import { AuditService } from '@/lib/services/audit-service';
-import { EvidenceStatusService } from '@/lib/services/evidence-status-service';
 import { createEvidenceSchema, evidenceFilterSchema } from '@/lib/validations/evidence';
 import type { DomainSlug, EvidenceStatus, EvidenceType } from '@/types';
 
@@ -68,16 +67,6 @@ export const POST = withAuth(async (req, { params, auth }) => {
     entityId: evidence.id,
     description: `Uploaded evidence: ${validated.name}`,
   });
-
-  const linkedKloes = validated.linkedKloes ?? [];
-  if (linkedKloes.length > 0) {
-    EvidenceStatusService.markEvidenceItemComplete(
-      auth.organizationId,
-      evidence.id,
-      linkedKloes,
-      validated.validUntil ?? null,
-    ).catch(() => {});
-  }
 
   return apiSuccess(evidence, undefined, 201);
 });

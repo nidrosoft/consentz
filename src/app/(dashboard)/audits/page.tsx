@@ -46,6 +46,22 @@ const ACTION_META: Record<string, { icon: FC<{ className?: string }>; color: "su
     GENERATE:   { icon: ShieldTick,  color: "brand" },
 };
 
+const DOMAIN_COLORS: Record<string, { text: string; bg: string }> = {
+    safe: { text: "text-[#3B82F6]", bg: "bg-[#EFF6FF]" },
+    effective: { text: "text-[#8B5CF6]", bg: "bg-[#F5F3FF]" },
+    caring: { text: "text-[#EC4899]", bg: "bg-[#FDF2F8]" },
+    responsive: { text: "text-[#F59E0B]", bg: "bg-[#FFFBEB]" },
+    "well-led": { text: "text-[#10B981]", bg: "bg-[#ECFDF5]" },
+};
+
+const KLOE_PREFIX_TO_DOMAIN: Record<string, string> = {
+    S: "safe", E: "effective", C: "caring", R: "responsive", W: "well-led",
+};
+
+function getDomainFromKloe(kloeCode: string): string | null {
+    return KLOE_PREFIX_TO_DOMAIN[kloeCode.charAt(0).toUpperCase()] ?? null;
+}
+
 const PAGE_SIZE = 10;
 
 function formatDate(dateStr: string): string {
@@ -242,7 +258,18 @@ export function AuditLogPanel() {
                                             </span>
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-medium text-primary max-w-xs xl:max-w-md">{entry.description}</p>
-                                                <p className="mt-0.5 text-xs text-tertiary font-mono">{entry.id.slice(0, 8)}…</p>
+                                                <div className="mt-0.5 flex items-center gap-2">
+                                                    <span className="text-xs text-tertiary font-mono">{entry.id.slice(0, 8)}…</span>
+                                                    {entry.kloeCode && (() => {
+                                                        const domain = getDomainFromKloe(entry.kloeCode!);
+                                                        const colors = domain ? DOMAIN_COLORS[domain] : null;
+                                                        return colors ? (
+                                                            <span className={cx("rounded px-1 py-px text-[10px] font-semibold leading-tight", colors.text, colors.bg)}>
+                                                                {entry.kloeCode}
+                                                            </span>
+                                                        ) : null;
+                                                    })()}
+                                                </div>
                                             </div>
                                         </div>
                                     </Table.Cell>

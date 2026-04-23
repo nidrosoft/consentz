@@ -49,6 +49,11 @@ export default function EvidenceUploadPage() {
     const prefillDomain = searchParams.get("domain");
     const prefillKloe = searchParams.get("kloe");
 
+    // Build return URL: go back to KLOE page if we came from one, otherwise /evidence
+    const returnUrl = prefillDomain && prefillKloe
+        ? `/domains/${prefillDomain}/${prefillKloe}`
+        : "/evidence";
+
     const [file, setFile] = useState<File | null>(null);
     const [name, setName] = useState("");
     const [category, setCategory] = useState<string | null>(
@@ -151,7 +156,7 @@ export default function EvidenceUploadPage() {
             queryClient.invalidateQueries({ queryKey: ["evidence"] });
             markOnboardingStep("upload_evidence");
             toast.success("Evidence uploaded", "Your document has been saved successfully.");
-            router.push("/evidence");
+            router.push(returnUrl);
         },
         onError: (err: Error) => {
             setError(err.message);
@@ -163,7 +168,9 @@ export default function EvidenceUploadPage() {
 
     return (
         <div className="flex flex-col gap-4 sm:gap-6">
-            <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push("/evidence")}>Back to Evidence</Button>
+            <Button color="link-color" size="sm" iconLeading={ChevronLeft} onClick={() => router.push(returnUrl)}>
+                {prefillKloe ? `Back to ${prefillKloe.toUpperCase()}` : "Back to Evidence"}
+            </Button>
 
             <div>
                 <h1 className="text-display-xs font-semibold text-primary">Upload Evidence</h1>
@@ -273,7 +280,7 @@ export default function EvidenceUploadPage() {
             </div>
 
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <Button color="secondary" size="lg" onClick={() => router.push("/evidence")}>Cancel</Button>
+                <Button color="secondary" size="lg" onClick={() => router.push(returnUrl)}>Cancel</Button>
                 <Button
                     color="primary"
                     size="lg"

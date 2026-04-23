@@ -9,7 +9,8 @@
         "setup:buckets": "npx tsx scripts/setup-storage-buckets.ts",
         "test": "vitest run",
         "test:watch": "vitest",
-        "seed:assessment-bank": "npx tsx scripts/seed-full-assessment-bank.ts"
+        "seed:assessment-bank": "npx tsx scripts/seed-full-assessment-bank.ts",
+        "seed:policy-templates": "npx tsx --env-file=.env.local scripts/ingest-policy-templates.ts"
     },
     "dependencies": {
         "@ai-sdk/anthropic": "^3.0.64",
@@ -28,13 +29,17 @@
         "@untitledui/file-icons": "^0.0.8",
         "@untitledui/icons": "^0.0.22",
         "ai": "^6.0.142",
+        "docxtemplater": "^3.68.5",
         "input-otp": "^1.4.2",
         "jspdf": "^4.2.1",
         "jspdf-autotable": "^5.0.7",
         "lucide-react": "^0.577.0",
+        "mammoth": "^1.12.0",
         "motion": "^12.29.0",
         "next": "^16.1.4",
         "next-themes": "^0.4.6",
+        "pdf-parse": "^2.4.5",
+        "pizzip": "^3.2.0",
         "qr-code-styling": "^1.9.2",
         "react": "^19.2.3",
         "react-aria": "^3.47.0",

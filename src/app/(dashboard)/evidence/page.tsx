@@ -19,6 +19,24 @@ const STATUS_BADGE: Record<string, "success" | "warning" | "error" | "gray"> = {
     VALID: "success", EXPIRING_SOON: "warning", EXPIRED: "error", PENDING_REVIEW: "gray",
 };
 
+const KLOE_DOMAIN_COLORS: Record<string, { text: string; bg: string }> = {
+    S: { text: "text-[#3B82F6]", bg: "bg-[#EFF6FF]" },
+    E: { text: "text-[#8B5CF6]", bg: "bg-[#F5F3FF]" },
+    C: { text: "text-[#EC4899]", bg: "bg-[#FDF2F8]" },
+    R: { text: "text-[#F59E0B]", bg: "bg-[#FFFBEB]" },
+    W: { text: "text-[#10B981]", bg: "bg-[#ECFDF5]" },
+};
+
+function KloeBadge({ code }: { code: string }) {
+    const colors = KLOE_DOMAIN_COLORS[code.charAt(0).toUpperCase()];
+    if (!colors) return <span className="text-xs text-tertiary">{code}</span>;
+    return (
+        <span className={cx("rounded px-1 py-px text-[10px] font-semibold leading-tight", colors.text, colors.bg)}>
+            {code}
+        </span>
+    );
+}
+
 const EVIDENCE_TYPES: EvidenceType[] = ["POLICY", "CERTIFICATE", "TRAINING_RECORD", "AUDIT_REPORT", "RISK_ASSESSMENT", "MEETING_MINUTES", "PHOTO", "OTHER"];
 const EVIDENCE_STATUSES: EvidenceStatus[] = ["VALID", "EXPIRING_SOON", "EXPIRED"];
 const DOMAINS: DomainSlug[] = ["safe", "effective", "caring", "responsive", "well-led"];
@@ -256,8 +274,12 @@ export default function EvidencePage() {
                                 <DomainBadgeList domains={ev.linkedDomains} size="sm" max={2} />
                             </div>
                             <div className="flex items-center gap-2 text-xs text-tertiary">
-                                <span>{ev.linkedKloes.join(", ")}</span>
-                                <span>&middot;</span>
+                                {ev.linkedKloes.length > 0 ? (
+                                    <span className="flex flex-wrap items-center gap-1">
+                                        {ev.linkedKloes.map((k) => <KloeBadge key={k} code={k} />)}
+                                    </span>
+                                ) : null}
+                                {ev.linkedKloes.length > 0 && ev.uploadedBy && <span>&middot;</span>}
                                 <span>{ev.uploadedBy}</span>
                             </div>
                         </button>
@@ -297,7 +319,9 @@ export default function EvidencePage() {
                                         <DomainBadgeList domains={ev.linkedDomains} size="sm" showIcon={false} />
                                     </Table.Cell>
                                     <Table.Cell className="hidden sm:table-cell">
-                                        <span className="text-sm text-tertiary">{ev.linkedKloes.join(", ")}</span>
+                                        <span className="flex flex-wrap items-center gap-1">
+                                            {ev.linkedKloes.map((k) => <KloeBadge key={k} code={k} />)}
+                                        </span>
                                     </Table.Cell>
                                     <Table.Cell>
                                         <BadgeWithDot size="sm" color={STATUS_BADGE[ev.status]}>

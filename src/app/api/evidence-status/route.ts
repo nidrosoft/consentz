@@ -32,6 +32,9 @@ export const POST = withAuth(async (req, { auth }) => {
       auth.organizationId,
       serviceType as 'AESTHETIC_CLINIC' | 'CARE_HOME',
     );
+
+    generateEvidenceStatusGaps({ organizationId: auth.organizationId, serviceType }).catch(() => {});
+
     return apiSuccess(items, undefined, 201);
   }
 

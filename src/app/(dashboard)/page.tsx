@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     BarChart01, Award02, AlertTriangle, Clock, ClockRefresh, CheckCircle,
@@ -10,6 +11,8 @@ import {
 import { EmptyState } from "@/components/application/empty-state/empty-state";
 import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
+import { CloseButton } from "@/components/base/buttons/close-button";
 import { MetricsChart04 } from "@/components/application/metrics/metrics";
 import { Table, TableCard } from "@/components/application/table/table";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
@@ -62,6 +65,19 @@ const ENTITY_STYLE: Record<string, { bg: string; fg: string }> = {
     ASSESSMENT:   { bg: "bg-[#FFFAEB]", fg: "text-[#DC6803]" },
     NOTIFICATION: { bg: "bg-[#EEF4FF]", fg: "text-[#3538CD]" },
 };
+
+const KLOE_PREFIX_TO_DOMAIN: Record<string, string> = {
+    S: "safe",
+    E: "effective",
+    C: "caring",
+    R: "responsive",
+    W: "well-led",
+};
+
+function getDomainFromKloe(kloeCode: string): string | null {
+    const prefix = kloeCode.charAt(0).toUpperCase();
+    return KLOE_PREFIX_TO_DOMAIN[prefix] ?? null;
+}
 
 function getGreeting(): string {
     const h = new Date().getHours();
@@ -189,6 +205,7 @@ function DashboardConsentzMetrics({ metrics, freshness, connected }: {
 
 export default function DashboardPage() {
     const router = useRouter();
+    const [showRetakeConfirm, setShowRetakeConfirm] = useState(false);
     const { data: overview, isLoading, error } = useDashboard();
 
     if (isLoading) return <DashboardSkeleton />;
@@ -292,7 +309,7 @@ export default function DashboardPage() {
             <div data-tour="domain-overview">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-lg font-semibold text-primary">CQC Domain Overview</h2>
-                    <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => router.push("/reassessment")}>
+                    <Button color="link-color" size="sm" className="self-start sm:self-auto" onClick={() => setShowRetakeConfirm(true)}>
                         Retake Assessment &rarr;
                     </Button>
                 </div>
@@ -462,7 +479,10 @@ export default function DashboardPage() {
                                 </EmptyState.Content>
                             </EmptyState>
                         ) : (
-                            activity.slice(0, 5).map((entry: ActivityLogEntry) => (
+                            activity.slice(0, 5).map((entry: ActivityLogEntry) => {
+                                const kloeDomain = entry.kloeCode ? getDomainFromKloe(entry.kloeCode) : null;
+                                const kloeColor = kloeDomain ? (DOMAIN_COLORS[kloeDomain] ?? { text: "text-tertiary", bg: "bg-secondary" }) : null;
+                                return (
                                 <div key={entry.id} className="flex items-start gap-3 rounded-lg border border-secondary p-3">
                                     <span className={cx("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full", ENTITY_STYLE[entry.entityType]?.bg ?? "bg-secondary")}>
                                         {entry.entityType === "EVIDENCE" && <File06 className={cx("size-4", ENTITY_STYLE.EVIDENCE.fg)} />}
@@ -474,12 +494,20 @@ export default function DashboardPage() {
                                         {entry.entityType === "TRAINING" && <Award02 className={cx("size-4", ENTITY_STYLE.TRAINING.fg)} />}
                                         {entry.entityType === "GAP" && <AlertTriangle className={cx("size-4", ENTITY_STYLE.GAP.fg)} />}
                                     </span>
-                                    <div className="flex-1">
-                                        <p className="text-sm text-primary">{entry.description}</p>
-                                        <p className="mt-0.5 text-xs text-tertiary">{entry.user} &middot; {timeAgo(entry.createdAt)}</p>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="truncate text-sm text-primary">{entry.description}</p>
+                                        <div className="mt-0.5 flex items-center gap-2 text-xs text-tertiary">
+                                            <span>{entry.user} &middot; {timeAgo(entry.createdAt)}</span>
+                                            {entry.kloeCode && kloeColor && (
+                                                <span className={cx("rounded px-1 py-px text-[10px] font-semibold leading-tight", kloeColor.text, kloeColor.bg)}>
+                                                    {entry.kloeCode}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>
@@ -549,6 +577,63 @@ export default function DashboardPage() {
                     </Table>
                 </TableCard.Root>
             )}
+
+            {/* Retake Assessment Confirmation Modal */}
+            <ModalOverlay isOpen={showRetakeConfirm} onOpenChange={setShowRetakeConfirm} isDismissable>
+                <Modal className="w-full max-w-md">
+                    <Dialog className="flex-col items-stretch rounded-xl bg-primary p-5 shadow-xl ring-1 ring-secondary sm:p-6">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-warning-secondary">
+                                    <AlertTriangle className="size-5 text-warning-primary" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <h2 className="text-lg font-semibold text-primary">Retake Compliance Assessment?</h2>
+                                    <p className="mt-1 text-sm text-tertiary">
+                                        Starting a new assessment will replace your current compliance scores with the results from this assessment.
+                                    </p>
+                                </div>
+                            </div>
+                            <CloseButton size="sm" onPress={() => setShowRetakeConfirm(false)} />
+                        </div>
+
+                        <div className="mt-4 rounded-lg border border-warning-300 bg-warning-secondary px-3 py-2.5">
+                            <p className="text-xs font-medium text-warning-primary">What will happen:</p>
+                            <ul className="mt-1.5 space-y-1 text-xs text-tertiary">
+                                <li className="flex items-start gap-1.5">
+                                    <span className="mt-1 block size-1 shrink-0 rounded-full bg-warning-solid" />
+                                    Your current domain scores will be recalculated based on the new answers
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                    <span className="mt-1 block size-1 shrink-0 rounded-full bg-warning-solid" />
+                                    New compliance gaps may be generated from your responses
+                                </li>
+                                <li className="flex items-start gap-1.5">
+                                    <span className="mt-1 block size-1 shrink-0 rounded-full bg-warning-solid" />
+                                    Your overall compliance rating may change
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+                            <Button color="secondary" size="md" className="w-full sm:w-auto" onClick={() => setShowRetakeConfirm(false)}>
+                                Cancel
+                            </Button>
+                            <Button
+                                color="primary"
+                                size="md"
+                                className="w-full sm:w-auto"
+                                onClick={() => {
+                                    setShowRetakeConfirm(false);
+                                    router.push("/reassessment");
+                                }}
+                            >
+                                Continue to Assessment
+                            </Button>
+                        </div>
+                    </Dialog>
+                </Modal>
+            </ModalOverlay>
         </div>
     );
 }

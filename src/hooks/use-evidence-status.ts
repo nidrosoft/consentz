@@ -40,8 +40,8 @@ export function useUpdateEvidenceStatus() {
     mutationFn: (data: {
       evidenceItemId: string;
       status?: KloeEvidenceStatusValue;
-      linkedPolicyId?: string;
-      linkedEvidenceId?: string;
+      linkedPolicyId?: string | null;
+      linkedEvidenceId?: string | null;
       notes?: string;
     }) => apiPatch<KloeEvidenceStatus>('/api/evidence-status', data).then((r) => r.data),
     onSuccess: () => {

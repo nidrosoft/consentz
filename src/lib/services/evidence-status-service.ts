@@ -209,6 +209,7 @@ export class EvidenceStatusService {
     const client = await getDb();
     const now = new Date().toISOString();
 
+    // Mark incomplete Consentz items as complete
     await client
       .from('kloe_evidence_status')
       .update({
@@ -219,6 +220,18 @@ export class EvidenceStatusService {
       .eq('organization_id', organizationId)
       .in('evidence_type', ['CONSENTZ', 'CONSENTZ_MANUAL'])
       .neq('status', 'complete');
+
+    // Refresh consentz_synced_at on ALL Consentz items (including already-complete)
+    // so sync timestamps stay consistent across every row.
+    await client
+      .from('kloe_evidence_status')
+      .update({
+        consentz_synced_at: now,
+        updated_at: now,
+      })
+      .eq('organization_id', organizationId)
+      .in('evidence_type', ['CONSENTZ', 'CONSENTZ_MANUAL'])
+      .eq('status', 'complete');
   }
 
   static async refreshExpiryStatuses(organizationId: string) {

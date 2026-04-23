@@ -39,6 +39,21 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Cura source DOCX manual (already stored in Supabase Storage; not committed)
+CQC Cosmetic Clinic — Policies & Procedures Manual/
+
+# Manual test harnesses
+test-ai-verify.mjs
+test-*.mjs
+
+# Use npm (package-lock.json) as the single source of truth for this repo
+pnpm-lock.yaml
+
+# Playwright test artefacts
+.playwright-mcp/
+*.png
+!public/**/*.png
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

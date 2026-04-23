@@ -12,6 +12,8 @@ export interface FileVersion {
   uploadedAt: string;
   expiresAt: string | null;
   isCurrent: boolean;
+  verificationStatus: string;
+  verificationResult: Record<string, unknown> | null;
 }
 
 function mapRow(row: Record<string, unknown>): FileVersion {
@@ -27,6 +29,8 @@ function mapRow(row: Record<string, unknown>): FileVersion {
     uploadedAt: row.uploaded_at as string,
     expiresAt: (row.expires_at as string) ?? null,
     isCurrent: row.is_current as boolean,
+    verificationStatus: (row.verification_status as string) ?? 'unverified',
+    verificationResult: (row.verification_result as Record<string, unknown>) ?? null,
   };
 }
 
@@ -78,7 +82,7 @@ export class EvidenceFileService {
       .eq('organization_id', params.organizationId)
       .eq('evidence_item_id', params.evidenceItemId);
 
-    const { data } = await client
+    const { data, error } = await client
       .from('evidence_file_versions')
       .insert({
         organization_id: params.organizationId,
@@ -94,6 +98,57 @@ export class EvidenceFileService {
       .select()
       .single();
 
+    if (error || !data) {
+      console.error('[EvidenceFileService.addVersion] Insert failed:', error?.message, error?.details, error?.hint);
+      throw new Error(error?.message ?? 'Failed to insert evidence file version');
+    }
+
     return mapRow(data as Record<string, unknown>);
+  }
+
+  /** Delete a file version. If the deleted version was current, promotes the next most recent. */
+  static async deleteVersion(organizationId: string, versionId: string): Promise<{ deleted: boolean; evidenceItemId: string | null }> {
+    const client = await getDb();
+
+    // Fetch the version to be deleted
+    const { data: row } = await client
+      .from('evidence_file_versions')
+      .select('*')
+      .eq('id', versionId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (!row) return { deleted: false, evidenceItemId: null };
+
+    const wasCurrent = row.is_current as boolean;
+    const evidenceItemId = row.evidence_item_id as string;
+
+    // Delete the version
+    await client
+      .from('evidence_file_versions')
+      .delete()
+      .eq('id', versionId)
+      .eq('organization_id', organizationId);
+
+    // If the deleted version was current, promote the next most recent
+    if (wasCurrent) {
+      const { data: next } = await client
+        .from('evidence_file_versions')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('evidence_item_id', evidenceItemId)
+        .order('uploaded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (next) {
+        await client
+          .from('evidence_file_versions')
+          .update({ is_current: true })
+          .eq('id', next.id);
+      }
+    }
+
+    return { deleted: true, evidenceItemId };
   }
 }

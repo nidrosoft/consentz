@@ -1398,6 +1398,13 @@ export default function SettingsPage() {
 
     const [selectedTab, setSelectedTab] = useState<Key>(initialTab);
 
+    // Sync tab state when URL search params change (e.g. navigating from another page)
+    useEffect(() => {
+        const t = params.get("tab");
+        const resolved = (t && TAB_MAP[t]) ? TAB_MAP[t] : (t ?? "organisation");
+        setSelectedTab(resolved);
+    }, [params]);
+
     const handleTabChange = (key: Key) => {
         setSelectedTab(key);
         const url = key === "organisation" ? "/settings" : `/settings?tab=${String(key)}`;

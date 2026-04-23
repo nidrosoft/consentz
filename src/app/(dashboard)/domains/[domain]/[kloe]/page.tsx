@@ -1,16 +1,28 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
     ChevronLeft, File06, AlertTriangle, CheckCircle, ChevronDown, ChevronUp,
-    Upload01, Plus, Eye, RefreshCcw01, Link01,
+    Upload01, UploadCloud01, RefreshCcw01, Link01, LinkBroken01, Trash01, RefreshCw01,
+    Eye, Download01, XClose, SearchLg, ShieldTick,
 } from "@untitledui/icons";
-import { Badge, BadgeWithDot } from "@/components/base/badges/badges";
+import { FileIcon } from "@untitledui/file-icons";
+import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
+import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { ProgressBarBase } from "@/components/base/progress-indicators/progress-indicators";
+import { Table, TableCard } from "@/components/application/table/table";
 import { Toggle } from "@/components/base/toggle/toggle";
+import { ModalOverlay, Modal, Dialog } from "@/components/application/modals/modal";
+import { Input } from "@/components/base/input/input";
+import { Select } from "@/components/base/select/select";
+import { DatePickerField } from "@/components/application/date-picker/date-picker-field";
 import { cx } from "@/utils/cx";
+import { apiGet, apiPost } from "@/lib/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/lib/toast";
+import { useMarkOnboardingStep } from "@/hooks/use-onboarding";
 import { useComplianceGaps, useUpdateGap } from "@/hooks/use-compliance";
 import { useEvidence } from "@/hooks/use-evidence";
 import { useMe } from "@/hooks/use-me";
@@ -18,11 +30,16 @@ import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization
 import { useEvidenceStatus, useSeedEvidenceStatus, useUpdateEvidenceStatus } from "@/hooks/use-evidence-status";
 import { KLOES, REGULATIONS } from "@/lib/constants/cqc-framework";
 import {
-    getKloeDefinition, SOURCE_LABEL_DISPLAY, CRITICALITY_WEIGHT,
+    getKloeDefinition, SOURCE_LABEL_DISPLAY,
     type KloeDefinition, type KloeEvidenceItem, type EvidenceSourceLabel,
 } from "@/lib/constants/cqc-evidence-requirements";
-import { useCurrentEvidenceFiles } from "@/hooks/use-evidence-files";
-import type { DomainSlug, ServiceType, KloeEvidenceStatus, EvidenceCriticality, EvidenceFileVersion } from "@/types";
+import { computeKloeScore, type VerificationInfo } from "@/lib/services/kloe-score-formula";
+import { useCurrentEvidenceFiles, useDeleteEvidenceFile } from "@/hooks/use-evidence-files";
+import { usePolicyTemplateMapForKloe, getPolicyTemplateDownloadUrl, type PolicyTemplateDTO } from "@/hooks/use-policy-templates";
+import { useVerifyEvidence, type VerificationResult, type VerificationResponse } from "@/hooks/use-evidence-verification";
+import { usePolicies } from "@/hooks/use-policies";
+import { useConsentzStatus, useConsentzLastSync, useConsentzDisconnect, useConsentzSync } from "@/hooks/use-consentz";
+import type { DomainSlug, ServiceType, KloeEvidenceStatus, EvidenceCriticality, EvidenceFileVersion, Policy } from "@/types";
 
 const SEVERITY_DOT: Record<string, string> = {
     CRITICAL: "bg-error-solid", HIGH: "bg-warning-solid", MEDIUM: "bg-brand-solid", LOW: "bg-quaternary",
@@ -38,13 +55,6 @@ const SOURCE_LABEL_COLORS: Record<EvidenceSourceLabel, "blue" | "orange" | "succ
     CONSENTZ_MANUAL: "blue-light",
 };
 
-const SOURCE_LEGEND: { label: string; color: string }[] = [
-    { label: "Policy", color: "bg-blue-500" },
-    { label: "Manual Upload", color: "bg-orange-500" },
-    { label: "Consentz", color: "bg-success-solid" },
-    { label: "Consentz / Manual", color: "bg-utility-blue-light-500" },
-];
-
 const CRITICALITY_COLORS: Record<EvidenceCriticality, "error" | "warning" | "gray"> = {
     critical: "error",
     high: "warning",
@@ -55,6 +65,26 @@ const CRITICALITY_LABELS: Record<EvidenceCriticality, string> = {
     high: "High",
     medium: "Medium",
 };
+
+const EVIDENCE_TYPES = [
+    { id: "POLICY", label: "Policy" },
+    { id: "CERTIFICATE", label: "Certificate" },
+    { id: "TRAINING_RECORD", label: "Training Record" },
+    { id: "AUDIT_REPORT", label: "Audit Report" },
+    { id: "RISK_ASSESSMENT", label: "Risk Assessment" },
+    { id: "MEETING_MINUTES", label: "Meeting Minutes" },
+    { id: "CHECKLIST", label: "Checklist" },
+    { id: "OTHER", label: "Other" },
+];
+
+const UPLOAD_ALLOWED_EXTENSIONS = ["pdf", "docx", "doc", "xlsx", "xls", "csv", "jpg", "jpeg", "png", "webp"];
+const UPLOAD_MAX_SIZE = 10 * 1024 * 1024;
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface EvidenceRow {
     id: string;
@@ -93,101 +123,31 @@ function KloeDetailSkeleton() {
 
 const SYNC_OVERDUE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-function ConsentzSyncBadge({ consentzSyncedAt, consentzConnected, domainSlug, router }: {
-    consentzSyncedAt?: string | null;
-    consentzConnected: boolean;
-    domainSlug: DomainSlug;
-    router: ReturnType<typeof useRouter>;
-}) {
-    if (!consentzConnected || !consentzSyncedAt) {
-        // Not connected or no data received
-        return (
-            <div className="flex flex-wrap items-center gap-2">
-                <Badge size="sm" color="error" type="pill-color">Not connected</Badge>
-                <Button
-                    color="link-color"
-                    size="sm"
-                    iconLeading={Link01}
-                    onClick={() => router.push("/settings")}
-                >
-                    Connect Consentz
-                </Button>
-            </div>
-        );
+/** Compute a display-ready status for a single evidence row. */
+function getRowStatus(
+    item: KloeEvidenceItem,
+    statusRecord: KloeEvidenceStatus | undefined,
+    consentzConnected: boolean,
+): { label: string; color: "success" | "error" | "warning" | "gray" } {
+    const isConsentz = item.sourceLabel === "CONSENTZ" || item.sourceLabel === "CONSENTZ_MANUAL";
+
+    // Expiry takes priority when evidence is complete
+    if (statusRecord?.status === "complete") {
+        if (statusRecord.expiryStatus === "expired") return { label: "Expired", color: "error" };
+        if (statusRecord.expiryStatus === "expiring_soon") return { label: "Expiring soon", color: "warning" };
+        if (isConsentz) {
+            if (!consentzConnected) return { label: "Not connected", color: "error" };
+            if (!statusRecord.consentzSyncedAt) return { label: "Awaiting sync", color: "warning" };
+            const overdue = Date.now() - new Date(statusRecord.consentzSyncedAt).getTime() > SYNC_OVERDUE_MS;
+            if (overdue) return { label: "Sync overdue", color: "warning" };
+            return { label: "Live", color: "success" };
+        }
+        return { label: "Complete", color: "success" };
     }
 
-    const syncDate = new Date(consentzSyncedAt);
-    const isOverdue = Date.now() - syncDate.getTime() > SYNC_OVERDUE_MS;
-    const formattedTime = syncDate.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-        + ", " + syncDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    if (isConsentz && !consentzConnected) return { label: "Not connected", color: "error" };
 
-    if (isOverdue) {
-        return (
-            <div className="flex flex-wrap items-center gap-1.5">
-                <Badge size="sm" color="warning" type="pill-color">Sync overdue</Badge>
-                <span className="text-xs text-tertiary">Last synced: {formattedTime}</span>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex flex-wrap items-center gap-1.5">
-            <Badge size="sm" color="success" type="pill-color">Live</Badge>
-            <span className="text-xs text-tertiary">Last synced: {formattedTime}</span>
-        </div>
-    );
-}
-
-function ActionButton({ item, kloeCode, domainSlug, router, consentzSyncedAt, consentzConnected }: {
-    item: KloeEvidenceItem;
-    kloeCode: string;
-    domainSlug: DomainSlug;
-    router: ReturnType<typeof useRouter>;
-    consentzSyncedAt?: string | null;
-    consentzConnected: boolean;
-}) {
-    switch (item.sourceLabel) {
-        case "POLICY":
-            return (
-                <Button
-                    color="link-color"
-                    size="sm"
-                    iconLeading={Link01}
-                    onClick={() => router.push(`/policies?domain=${domainSlug}`)}
-                >
-                    View Policies
-                </Button>
-            );
-        case "MANUAL_UPLOAD":
-            return (
-                <Button
-                    color="link-color"
-                    size="sm"
-                    iconLeading={Upload01}
-                    onClick={() => router.push(`/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`)}
-                >
-                    Upload
-                </Button>
-            );
-        case "CONSENTZ":
-            return <ConsentzSyncBadge consentzSyncedAt={consentzSyncedAt} consentzConnected={consentzConnected} domainSlug={domainSlug} router={router} />;
-        case "CONSENTZ_MANUAL":
-            return (
-                <div className="flex flex-wrap items-center gap-2">
-                    <ConsentzSyncBadge consentzSyncedAt={consentzSyncedAt} consentzConnected={consentzConnected} domainSlug={domainSlug} router={router} />
-                    <Button
-                        color="link-color"
-                        size="sm"
-                        iconLeading={Upload01}
-                        onClick={() => router.push(`/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`)}
-                    >
-                        Upload additional
-                    </Button>
-                </div>
-            );
-        default:
-            return null;
-    }
+    return { label: "Not started", color: "gray" };
 }
 
 export default function KloeDetailPage() {
@@ -206,25 +166,204 @@ export default function KloeDetailPage() {
     const kloeDef: KloeDefinition | undefined = getKloeDefinition(serviceType, kloeCode);
 
     const { data: gapsResponse, isLoading: gapsLoading, error } = useComplianceGaps({ domain: domainSlug, pageSize: 100 });
-    const { data: evidenceResponse, isLoading: evidenceLoading } = useEvidence({ domain: domainSlug, pageSize: 200 });
+    const { data: evidenceResponse, isLoading: evidenceLoading } = useEvidence({ kloeCode, pageSize: 100 });
     const { data: statusRecords, isLoading: statusLoading } = useEvidenceStatus(kloeCode);
     const updateGap = useUpdateGap();
     const seedStatus = useSeedEvidenceStatus();
     const updateStatus = useUpdateEvidenceStatus();
+    const deleteFile = useDeleteEvidenceFile();
+
+    // Consentz hooks for quick-action bar
+    const { data: consentzStatus } = useConsentzStatus();
+    const { data: lastSyncData } = useConsentzLastSync(!!consentzStatus?.connected);
+    const consentzDisconnect = useConsentzDisconnect();
+    const consentzSync = useConsentzSync();
+
+    const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+    const [confirmDeleteFileId, setConfirmDeleteFileId] = useState<string | null>(null);
+    const [viewerFile, setViewerFile] = useState<{ url: string; name: string; type: string } | null>(null);
+    const [viewerLoading, setViewerLoading] = useState(false);
+    const [linkPolicyTarget, setLinkPolicyTarget] = useState<string | null>(null);
+    const [policySearch, setPolicySearch] = useState("");
+    const { data: policiesResponse } = usePolicies({ status: "PUBLISHED", pageSize: 100 });
+
+    // AI Evidence Verification
+    const verifyEvidence = useVerifyEvidence();
+    const [verificationResultModal, setVerificationResultModal] = useState<{
+        evidenceItemId: string;
+        result: VerificationResult;
+        status: "verified" | "rejected" | "error";
+    } | null>(null);
+    const [verifyingItemId, setVerifyingItemId] = useState<string | null>(null);
+
+    function handleVerifyEvidence(item: KloeEvidenceItem, file: EvidenceFileVersion) {
+        setVerifyingItemId(item.id);
+        verifyEvidence.mutate(
+            {
+                fileVersionId: file.id,
+                kloeCode: kloeCode.toUpperCase(),
+                evidenceRequirementId: item.id,
+                documentCategory: item.sourceLabel,
+                fileName: file.fileName,
+                fileUrl: file.fileUrl,
+                fileType: file.fileType,
+            },
+            {
+                onSuccess: (data) => {
+                    setVerifyingItemId(null);
+                    if (data) {
+                        setVerificationResultModal({
+                            evidenceItemId: item.id,
+                            result: data.result,
+                            status: data.verificationStatus,
+                        });
+                    }
+                },
+                onError: () => setVerifyingItemId(null),
+            },
+        );
+    }
+
+    // Upload evidence modal state
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [uploadTargetItemId, setUploadTargetItemId] = useState<string | null>(null);
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
+    const [uploadName, setUploadName] = useState("");
+    const [uploadCategory, setUploadCategory] = useState<string | null>(null);
+    const [uploadExpiry, setUploadExpiry] = useState("");
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const [uploadDragOver, setUploadDragOver] = useState(false);
+    const uploadFileInputRef = useRef<HTMLInputElement>(null);
+    const queryClient = useQueryClient();
+    const markOnboardingStep = useMarkOnboardingStep();
+
+    function resetUploadModal() {
+        setShowUploadModal(false);
+        setUploadTargetItemId(null);
+        setUploadFile(null);
+        setUploadName("");
+        setUploadCategory(null);
+        setUploadExpiry("");
+        setUploadError(null);
+        setUploadDragOver(false);
+        if (uploadFileInputRef.current) uploadFileInputRef.current.value = "";
+    }
+
+    function handleUploadFileSelect(f: File) {
+        const ext = f.name.split(".").pop()?.toLowerCase();
+        if (!ext || !UPLOAD_ALLOWED_EXTENSIONS.includes(ext)) {
+            setUploadError(`Unsupported file type (.${ext}). Allowed: ${UPLOAD_ALLOWED_EXTENSIONS.join(", ")}`);
+            return;
+        }
+        if (f.size > UPLOAD_MAX_SIZE) {
+            setUploadError(`File too large (${formatFileSize(f.size)}). Maximum is 10 MB.`);
+            return;
+        }
+        setUploadError(null);
+        setUploadFile(f);
+        if (!uploadName) {
+            setUploadName(f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "));
+        }
+    }
+
+    const handleUploadDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        setUploadDragOver(false);
+        const f = e.dataTransfer.files[0];
+        if (f) handleUploadFileSelect(f);
+    }, [uploadName]);
+
+    const uploadMutation = useMutation({
+        mutationFn: async () => {
+            if (!uploadFile) throw new Error("No file selected");
+            if (!uploadTargetItemId) {
+                if (!uploadName.trim()) throw new Error("Document name is required");
+                if (!uploadCategory) throw new Error("Document type is required");
+            }
+
+            const formData = new FormData();
+            formData.append("file", uploadFile);
+            formData.append("bucket", "evidence");
+
+            const uploadRes = await fetch("/api/evidence/upload", { method: "POST", body: formData });
+            if (!uploadRes.ok) {
+                const errData = await uploadRes.json().catch(() => null);
+                throw new Error(errData?.error?.message ?? `Upload failed (${uploadRes.status})`);
+            }
+
+            const uploadData = await uploadRes.json();
+            const fileInfo = uploadData.data;
+
+            // If uploading for a specific evidence requirement, create a file version
+            // linked directly to that requirement (evidence_file_versions).
+            if (uploadTargetItemId) {
+                await apiPost("/api/evidence-files", {
+                    evidenceItemId: uploadTargetItemId,
+                    kloeCode: kloeCode.toUpperCase(),
+                    fileUrl: fileInfo.fileUrl,
+                    fileName: fileInfo.fileName,
+                    fileType: fileInfo.fileType,
+                    expiresAt: uploadExpiry || null,
+                });
+            } else {
+                // General upload — creates an evidence_items record linked to the KLOE
+                await apiPost("/api/evidence", {
+                    name: uploadName.trim(),
+                    category: uploadCategory,
+                    fileUrl: fileInfo.fileUrl,
+                    fileName: fileInfo.fileName,
+                    fileType: fileInfo.fileType,
+                    fileSize: fileInfo.fileSize,
+                    storagePath: fileInfo.storagePath,
+                    linkedKloes: [kloeCode.toUpperCase()],
+                    linkedDomains: [domainSlug],
+                    validUntil: uploadExpiry || undefined,
+                });
+            }
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["evidence"] });
+            queryClient.invalidateQueries({ queryKey: ["evidence-files"] });
+            queryClient.invalidateQueries({ queryKey: ["evidence-status"] });
+            queryClient.invalidateQueries({ queryKey: ["compliance"] });
+            queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+            markOnboardingStep("upload_evidence");
+            toast.success("Evidence uploaded", uploadTargetItemId
+                ? "File linked to this requirement. You can now verify it with AI."
+                : "Your document has been saved and linked to this KLOE."
+            );
+            resetUploadModal();
+        },
+        onError: (err: Error) => {
+            setUploadError(err.message);
+            toast.error("Upload failed", err.message);
+        },
+    });
+
+    const canSubmitUpload = !!uploadFile && !uploadMutation.isPending && (
+        uploadTargetItemId ? true : (!!uploadName.trim() && !!uploadCategory)
+    );
+
+    async function openFileViewer(fileId: string) {
+        setViewerLoading(true);
+        try {
+            const res = await apiGet<{ signedUrl: string; fileName: string; fileType: string }>(`/api/evidence-files/view?id=${fileId}`);
+            if (res.data) {
+                setViewerFile({ url: res.data.signedUrl, name: res.data.fileName, type: res.data.fileType });
+            }
+        } catch {
+            // fallback — ignore
+        } finally {
+            setViewerLoading(false);
+        }
+    }
 
     const allGaps = gapsResponse?.data ?? [];
     const kloeGaps = allGaps.filter((g) => g.kloe === kloeCode);
-    const openGaps = kloeGaps.filter((g) => g.status === "OPEN");
     const criticalGapCount = kloeGaps.filter((g) => g.severity === "CRITICAL").length;
     const isHighRisk = criticalGapCount >= 2;
 
-    const allEvidence = (evidenceResponse?.data ?? []) as EvidenceRow[];
-    const kloeEvidence = useMemo(() => {
-        return allEvidence.filter((ev) => {
-            const codes = (ev.kloe_code ?? ev.kloeCode ?? "").split(",").map((c) => c.trim().toUpperCase()).filter(Boolean);
-            return codes.includes(kloeCode);
-        });
-    }, [allEvidence, kloeCode]);
+    const kloeEvidence = (evidenceResponse?.data ?? []) as EvidenceRow[];
 
     const kloeRegulations = useMemo(() => {
         const regCodes = kloeDef?.regulations ?? kloe?.regulations ?? [];
@@ -240,6 +379,7 @@ export default function KloeDetailPage() {
     }, [statusRecords]);
 
     const { data: currentFiles } = useCurrentEvidenceFiles(kloeCode);
+    const { data: policyTemplateMap } = usePolicyTemplateMapForKloe(kloeCode);
     const fileMap = useMemo(() => {
         const current = new Map<string, EvidenceFileVersion>();
         const versionCounts = new Map<string, number>();
@@ -250,7 +390,18 @@ export default function KloeDetailPage() {
         return { current, versionCounts };
     }, [currentFiles]);
 
-    const evidenceItems: KloeEvidenceItem[] = kloeDef?.evidenceItems ?? [];
+    // `evidenceItems` is referenced by React Aria's <Table.Body items={...}>,
+    // which caches per-row render output keyed on BOTH the array identity AND
+    // individual item identity. The row renderer reads policyTemplateMap /
+    // fileMap from closure, so when those async data sources resolve we must
+    // produce NEW item object references — otherwise the rows render once at
+    // mount (with undefined data) and never pick up the loaded data.
+    const evidenceItems: KloeEvidenceItem[] = useMemo(
+        () => (kloeDef?.evidenceItems ?? []).map((i) => ({ ...i })),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [kloeDef, policyTemplateMap, fileMap, statusMap],
+    );
+    const hasConsentzItems = evidenceItems.some((i) => i.sourceLabel === "CONSENTZ" || i.sourceLabel === "CONSENTZ_MANUAL");
     const isE3Clinic = kloeCode === "E3" && serviceType === "AESTHETIC_CLINIC";
     const e3NutritionNa = org?.e3_nutrition_na_aesthetic === true;
     const evidenceExcluded = isE3Clinic && e3NutritionNa;
@@ -265,54 +416,109 @@ export default function KloeDetailPage() {
             ? Math.round((completedCount / evidenceItems.length) * 100)
             : 0;
 
-    // Compute KLOE score using the same weighted formula as the backend score engine.
-    // Each evidence item is weighted by criticality. Items that are complete (and not expired)
-    // contribute their weight; missing/expired items score 0. Hard caps apply for critical/high gaps.
-    // Consentz items with no sync data or overdue sync (>24h) count as missing.
+    // Compute KLOE score using the shared pure formula from `kloe-score-formula.ts`.
+    // Identical to the backend score engine — so the tile, domain aggregate,
+    // and persisted compliance_scores row always agree.
+    //
+    // The formula applies the AI-produced complianceScore (0-100) stored on
+    // each current evidence_file_version as a graduated multiplier, so a
+    // high-quality doc contributes more than a low-quality one.
     const kloeScore = useMemo(() => {
         if (evidenceExcluded || evidenceItems.length === 0) return 0;
+        const consentzConnectedForScore = !!org?.consentz_clinic_id;
+
+        // Build verification map from current file versions.
+        const verificationByItemId = new Map<string, VerificationInfo>();
+        fileMap.current.forEach((f, itemId) => {
+            const result = f.verificationResult as Record<string, unknown> | null | undefined;
+            const rawScore = result && typeof result.complianceScore === "number" ? result.complianceScore : null;
+            verificationByItemId.set(itemId, {
+                status: f.verificationStatus ?? "unverified",
+                complianceScore: rawScore,
+            });
+        });
+
+        return computeKloeScore({
+            items: evidenceItems,
+            statusRows: Array.from(statusMap.values()),
+            verificationByItemId,
+            consentzConnected: consentzConnectedForScore,
+        }).score;
+    }, [evidenceItems, statusMap, evidenceExcluded, org, fileMap]);
+
+    // Derive compliance gaps from evidence status so gaps appear immediately
+    // for missing/expired evidence without waiting for the cron job.
+    const derivedEvidenceGaps = useMemo(() => {
+        if (evidenceExcluded || evidenceItems.length === 0) return [];
         const SYNC_OVERDUE = 24 * 60 * 60 * 1000;
-        let weightedSum = 0;
-        let totalWeight = 0;
-        let criticalMissing = 0;
-        let highMissing = 0;
-        let hasCriticalExpired = false;
+        const CRITICALITY_TO_SEVERITY: Record<EvidenceCriticality, "CRITICAL" | "HIGH" | "MEDIUM"> = {
+            critical: "CRITICAL", high: "HIGH", medium: "MEDIUM",
+        };
+        const ACTION_MAP: Record<string, string> = {
+            MANUAL_UPLOAD: "Upload evidence",
+            POLICY: "Generate or upload policy",
+            CONSENTZ: "Connect to Consentz or sync data",
+            CONSENTZ_MANUAL: "Connect to Consentz or sync data",
+        };
+        const dbGapSourceIds = new Set(
+            kloeGaps.filter((g) => (g as any).source === "evidence_status").map((g) => (g as any).sourceId),
+        );
+
+        const gaps: typeof kloeGaps = [];
 
         for (const item of evidenceItems) {
-            const weight = CRITICALITY_WEIGHT[item.criticality];
-            totalWeight += weight;
             const row = statusMap.get(item.id);
+            const reasons: string[] = [];
 
-            // Consentz items score 0 if org not connected, not synced, or sync is overdue
+            if (!row || row.status === "not_started") {
+                reasons.push("Evidence has not been provided.");
+            } else if (row.status === "complete" && row.expiryStatus === "expired") {
+                reasons.push("Evidence has expired.");
+            }
+
             const isConsentz = row?.evidenceType === "CONSENTZ" || row?.evidenceType === "CONSENTZ_MANUAL";
-            const consentzInvalid = isConsentz && (
-                !org?.consentz_clinic_id ||
-                !row?.consentzSyncedAt ||
-                (Date.now() - new Date(row.consentzSyncedAt).getTime() > SYNC_OVERDUE)
-            );
-
-            const isPresent = row?.status === "complete"
-                && row?.expiryStatus !== "expired"
-                && !consentzInvalid;
-
-            if (isPresent) {
-                weightedSum += weight;
-            } else {
-                if (item.criticality === "critical") {
-                    criticalMissing++;
-                    if (row?.expiryStatus === "expired") hasCriticalExpired = true;
-                } else if (item.criticality === "high") {
-                    highMissing++;
+            if (isConsentz) {
+                if (!org?.consentz_clinic_id) {
+                    reasons.push("Consentz is not connected.");
+                } else if (!row?.consentzSyncedAt) {
+                    reasons.push("Consentz data has not been synced.");
+                } else if (Date.now() - new Date(row.consentzSyncedAt).getTime() > SYNC_OVERDUE) {
+                    reasons.push("Consentz sync is overdue.");
                 }
             }
-        }
 
-        let score = totalWeight > 0 ? (weightedSum / totalWeight) * 100 : 0;
-        if (criticalMissing > 0) score = Math.min(score, hasCriticalExpired ? 40 : 50);
-        if (highMissing >= 2) score = Math.min(score, 60);
-        else if (highMissing > 0) score = Math.min(score, 70);
-        return Math.round(score);
-    }, [evidenceItems, statusMap, evidenceExcluded, org]);
+            if (reasons.length === 0) continue;
+            if (dbGapSourceIds.has(item.id)) continue;
+
+            const severity = CRITICALITY_TO_SEVERITY[item.criticality];
+            const titleParts: string[] = [];
+            if (!row || row.status === "not_started") titleParts.push("Missing evidence");
+            if (row?.expiryStatus === "expired") titleParts.push("Expired");
+            if (isConsentz && !org?.consentz_clinic_id) titleParts.push("Consentz not connected");
+
+            gaps.push({
+                id: `derived_${item.id}`,
+                title: `${titleParts.join(" · ") || "Evidence gap"}: ${item.description}`,
+                description: reasons.join(" "),
+                severity,
+                status: "OPEN" as const,
+                domain: domainSlug,
+                kloe: kloeCode,
+                regulation: kloeDef?.regulations[0] ?? "",
+                createdAt: new Date().toISOString(),
+                remediationSteps: [],
+                remediationAction: ACTION_MAP[item.sourceLabel] ?? "Upload evidence",
+                dueDate: null,
+                resolutionNotes: null,
+            });
+        }
+        return gaps;
+    }, [evidenceItems, statusMap, evidenceExcluded, org, kloeGaps, kloeCode, domainSlug, kloeDef]);
+
+    // Merge DB gaps with derived evidence gaps (DB gaps take priority via dedup)
+    const allKloeGaps = useMemo(() => {
+        return [...kloeGaps, ...derivedEvidenceGaps];
+    }, [kloeGaps, derivedEvidenceGaps]);
 
     const isLoading = gapsLoading || evidenceLoading;
     const needsSeeding =
@@ -475,145 +681,440 @@ export default function KloeDetailPage() {
                 </div>
             )}
 
-            {/* Evidence Requirements Checklist */}
-            <div>
-                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 className="text-lg font-semibold text-primary">
-                        Evidence Requirements
-                        {evidenceExcluded ? " (not tracked)" : ` (${evidenceItems.length})`}
-                    </h2>
-                    {needsSeeding && (
-                        <Button
-                            color="secondary"
-                            size="sm"
-                            iconLeading={RefreshCcw01}
-                            isLoading={seedStatus.isPending}
-                            onClick={() => seedStatus.mutate(serviceType)}
-                        >
-                            Initialize Tracking
-                        </Button>
-                    )}
+            {/* Evidence Requirements Table */}
+            {evidenceExcluded ? (
+                <div className="rounded-xl border border-dashed border-secondary bg-secondary/30 px-4 py-6 text-center">
+                    <p className="text-sm text-secondary">
+                        Evidence checklist is hidden because this KLOE is marked not applicable for your service type.
+                    </p>
                 </div>
-                {evidenceExcluded ? (
-                    <div className="rounded-xl border border-dashed border-secondary bg-secondary/30 px-4 py-6 text-center">
-                        <p className="text-sm text-secondary">
-                            Evidence checklist is hidden because this KLOE is marked not applicable for your service type.
-                        </p>
-                    </div>
-                ) : evidenceItems.length > 0 ? (
-                    <div className="rounded-xl border border-secondary bg-primary divide-y divide-secondary">
-                        {evidenceItems.map((item) => {
-                            const statusRecord = statusMap.get(item.id);
-                            const isComplete = statusRecord?.status === "complete";
-                            const currentFile = fileMap.current.get(item.id);
-                            const hasPreviousVersions = (fileMap.versionCounts.get(item.id) ?? 0) > 1;
-
-                            return (
-                                <div key={item.id} className="flex items-start gap-3 px-3 py-3 sm:px-4 sm:py-3.5">
-                                    <button
-                                        type="button"
-                                        className="mt-0.5 shrink-0"
-                                        onClick={() => handleToggleComplete(item)}
-                                        aria-label={isComplete ? "Mark as incomplete" : "Mark as complete"}
+            ) : (
+                <TableCard.Root>
+                    <TableCard.Header
+                        title="Evidence Requirements"
+                        badge={evidenceItems.length > 0 ? String(evidenceItems.length) : undefined}
+                        description={hasConsentzItems && consentzStatus?.connected && lastSyncData?.synced_at
+                            ? `Consentz connected · Last synced ${new Date(lastSyncData.synced_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}, ${new Date(lastSyncData.synced_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
+                            : undefined}
+                        contentTrailing={
+                            <div className="flex flex-wrap items-center gap-2">
+                                {needsSeeding && (
+                                    <Button
+                                        color="secondary"
+                                        size="sm"
+                                        iconLeading={RefreshCcw01}
+                                        isLoading={seedStatus.isPending}
+                                        onClick={() => seedStatus.mutate(serviceType)}
                                     >
-                                        {isComplete ? (
-                                            <CheckCircle className="size-5 text-success-primary" />
-                                        ) : (
-                                            <div className="flex size-5 items-center justify-center rounded-full border-2 border-tertiary transition hover:border-brand" />
-                                        )}
-                                    </button>
-                                    <div className="flex-1 min-w-0">
-                                        <p className={cx("text-sm", isComplete ? "text-primary" : "text-secondary")}>
-                                            {item.description}
-                                        </p>
-                                        {(statusRecord?.expiryStatus === "expired" || statusRecord?.expiryStatus === "expiring_soon" || statusRecord?.expiresAt) && (
-                                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                                {statusRecord?.expiryStatus === "expired" && (
-                                                    <Badge size="sm" color="error" type="pill-color">Expired</Badge>
-                                                )}
-                                                {statusRecord?.expiryStatus === "expiring_soon" && (
-                                                    <Badge size="sm" color="warning" type="pill-color">Expiring Soon</Badge>
-                                                )}
-                                                {statusRecord?.expiresAt && statusRecord.expiryStatus !== "expired" && statusRecord.expiryStatus !== "expiring_soon" && (
-                                                    <span className="text-xs text-tertiary">
-                                                        Expires: {new Date(statusRecord.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                                                    </span>
-                                                )}
+                                        Initialize Tracking
+                                    </Button>
+                                )}
+                                {hasConsentzItems && consentzStatus?.connected ? (
+                                    <>
+                                        <Button
+                                            color="secondary"
+                                            size="sm"
+                                            iconLeading={RefreshCw01}
+                                            isLoading={consentzSync.isPending}
+                                            onClick={() => consentzSync.mutate()}
+                                        >
+                                            {consentzSync.isSuccess ? "Synced!" : "Sync Now"}
+                                        </Button>
+                                        {showDisconnectConfirm ? (
+                                            <div className="flex items-center gap-1.5">
+                                                <Button color="primary-destructive" size="sm" isLoading={consentzDisconnect.isPending} onClick={() => { consentzDisconnect.mutate(); setShowDisconnectConfirm(false); }}>Confirm</Button>
+                                                <Button color="secondary" size="sm" onClick={() => setShowDisconnectConfirm(false)}>Cancel</Button>
                                             </div>
+                                        ) : (
+                                            <Button color="tertiary-destructive" size="sm" iconLeading={LinkBroken01} onClick={() => setShowDisconnectConfirm(true)}>Disconnect</Button>
                                         )}
-                                        {currentFile && (
-                                            <p className="mt-1 text-xs text-tertiary">
-                                                Current: {currentFile.fileName} (uploaded {new Date(currentFile.uploadedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })})
-                                                {hasPreviousVersions && <span className="ml-1.5 text-quaternary">· has previous versions</span>}
-                                            </p>
-                                        )}
-                                        <div className="mt-1.5">
-                                            <ActionButton
-                                                item={item}
-                                                kloeCode={kloeCode}
-                                                domainSlug={domainSlug}
-                                                router={router}
-                                                consentzSyncedAt={statusRecord?.consentzSyncedAt}
-                                                consentzConnected={!!org?.consentz_clinic_id}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-1.5">
-                                        {(() => {
-                                            const isConsentzSource = item.sourceLabel === "CONSENTZ" || item.sourceLabel === "CONSENTZ_MANUAL";
-                                            if (isConsentzSource) {
-                                                const connected = !!org?.consentz_clinic_id;
-                                                const syncedAt = statusRecord?.consentzSyncedAt;
-                                                const hasSyncData = connected && syncedAt;
-                                                const overdue = hasSyncData && Date.now() - new Date(syncedAt).getTime() > SYNC_OVERDUE_MS;
-                                                const badgeColor = !connected || !syncedAt ? "error" : overdue ? "warning" : "success";
-                                                const badgeText = !connected ? "Consentz · Not connected" : !syncedAt ? "Consentz · No data" : overdue ? "Consentz · Overdue" : "Consentz · Live";
-                                                return (
-                                                    <Badge size="sm" color={badgeColor} type="pill-color">{badgeText}</Badge>
-                                                );
-                                            }
-                                            return (
+                                    </>
+                                ) : hasConsentzItems ? (
+                                    <Button
+                                        color="primary"
+                                        size="sm"
+                                        iconLeading={Link01}
+                                        onClick={() => router.push("/settings?tab=integrations")}
+                                    >
+                                        Connect Consentz
+                                    </Button>
+                                ) : null}
+                            </div>
+                        }
+                    />
+                    {evidenceItems.length > 0 ? (
+                        <Table aria-label="Evidence requirements" size="sm">
+                            <Table.Header className="bg-primary">
+                                <Table.Head id="evidence" label="Evidence" isRowHeader className="min-w-[280px]" />
+                                <Table.Head id="status" label="Status" />
+                                <Table.Head id="source" label="Source" />
+                                <Table.Head id="risk" label="Risk" />
+                                <Table.Head id="actions" />
+                            </Table.Header>
+                            <Table.Body items={evidenceItems}>
+                                {(item) => {
+                                    const statusRecord = statusMap.get(item.id);
+                                    const isComplete = statusRecord?.status === "complete";
+                                    const currentFile = fileMap.current.get(item.id);
+                                    const hasPreviousVersions = (fileMap.versionCounts.get(item.id) ?? 0) > 1;
+                                    // Use the same source the section header reads so per-row
+                                    // "Not connected" labels cannot contradict header's "Connected".
+                                    const consentzConnected = consentzStatus?.connected ?? !!org?.consentz_clinic_id;
+                                    const rowStatus = getRowStatus(item, statusRecord, consentzConnected);
+                                    const isConsentz = item.sourceLabel === "CONSENTZ" || item.sourceLabel === "CONSENTZ_MANUAL";
+                                    const fileExt = currentFile?.fileName?.split(".").pop() ?? "";
+                                    const itemTemplates: PolicyTemplateDTO[] = policyTemplateMap?.[item.id] ?? [];
+                                    const primaryTemplate = itemTemplates[0] ?? null;
+
+                                    return (
+                                        <Table.Row id={item.id}>
+                                            {/* Evidence — thumbnail + description */}
+                                            <Table.Cell>
+                                                <div className="flex items-center gap-3">
+                                                    {currentFile ? (
+                                                        <>
+                                                            <FileIcon type={fileExt} theme="light" className="size-9 shrink-0 dark:hidden" />
+                                                            <FileIcon type={fileExt} theme="dark" className="size-9 shrink-0 not-dark:hidden" />
+                                                        </>
+                                                    ) : isConsentz ? (
+                                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-success-primary/10">
+                                                            <RefreshCw01 className="size-4 text-success-primary" />
+                                                        </div>
+                                                    ) : item.sourceLabel === "POLICY" ? (
+                                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10">
+                                                            <Link01 className="size-4 text-brand-primary" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                                                            <Upload01 className="size-4 text-fg-quaternary" />
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-primary line-clamp-2">{item.description}</p>
+                                                        {currentFile && (
+                                                            <div className="mt-0.5 flex items-center gap-1.5">
+                                                                <button
+                                                                    type="button"
+                                                                    className="flex items-center gap-1 text-xs text-tertiary truncate transition hover:text-brand-primary"
+                                                                    onClick={() => openFileViewer(currentFile.id)}
+                                                                >
+                                                                    <span className="truncate">{currentFile.fileName}</span>
+                                                                    {hasPreviousVersions && <span className="shrink-0 text-quaternary">· v{fileMap.versionCounts.get(item.id)}</span>}
+                                                                </button>
+                                                                {currentFile.verificationStatus === "verified" && (
+                                                                    <button type="button" onClick={() => {
+                                                                        if (currentFile.verificationResult) {
+                                                                            setVerificationResultModal({
+                                                                                evidenceItemId: item.id,
+                                                                                result: currentFile.verificationResult as unknown as VerificationResult,
+                                                                                status: "verified",
+                                                                            });
+                                                                        }
+                                                                    }} className="shrink-0" title="AI Verified — click for details">
+                                                                        <Badge size="sm" color="success" type="pill-color">
+                                                                            <ShieldTick className="size-3" /> Verified
+                                                                            {typeof (currentFile.verificationResult as any)?.complianceScore === "number" && (
+                                                                                <span className="ml-1 tabular-nums">· {(currentFile.verificationResult as any).complianceScore}</span>
+                                                                            )}
+                                                                        </Badge>
+                                                                    </button>
+                                                                )}
+                                                                {currentFile.verificationStatus === "rejected" && (
+                                                                    <button type="button" onClick={() => {
+                                                                        if (currentFile.verificationResult) {
+                                                                            setVerificationResultModal({
+                                                                                evidenceItemId: item.id,
+                                                                                result: currentFile.verificationResult as unknown as VerificationResult,
+                                                                                status: "rejected",
+                                                                            });
+                                                                        }
+                                                                    }} className="shrink-0" title="AI Rejected — click for details">
+                                                                        <Badge size="sm" color="error" type="pill-color">
+                                                                            <AlertTriangle className="size-3" /> Rejected
+                                                                            {typeof (currentFile.verificationResult as any)?.complianceScore === "number" && (
+                                                                                <span className="ml-1 tabular-nums">· {(currentFile.verificationResult as any).complianceScore}</span>
+                                                                            )}
+                                                                        </Badge>
+                                                                    </button>
+                                                                )}
+                                                                {currentFile.verificationStatus === "pending" && (
+                                                                    <Badge size="sm" color="warning" type="pill-color">
+                                                                        <RefreshCw01 className="size-3 animate-spin" /> Verifying
+                                                                    </Badge>
+                                                                )}
+                                                                {verifyingItemId === item.id && (
+                                                                    <Badge size="sm" color="warning" type="pill-color">
+                                                                        <RefreshCw01 className="size-3 animate-spin" /> Verifying…
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {statusRecord?.expiresAt && rowStatus.label !== "Expired" && rowStatus.label !== "Expiring soon" && (
+                                                            <p className="mt-0.5 text-xs text-tertiary">
+                                                                Exp. {new Date(statusRecord.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                                                            </p>
+                                                        )}
+                                                        {!currentFile && primaryTemplate && (
+                                                            <a
+                                                                href={getPolicyTemplateDownloadUrl(primaryTemplate.code)}
+                                                                className="mt-0.5 inline-flex items-center gap-1 text-xs text-brand-primary hover:underline"
+                                                                title={`Download pre-filled ${primaryTemplate.title}${itemTemplates.length > 1 ? ` (+${itemTemplates.length - 1} more)` : ""}`}
+                                                            >
+                                                                <Download01 className="size-3" />
+                                                                Cura template: {primaryTemplate.code}
+                                                                {itemTemplates.length > 1 && <span className="text-tertiary">+{itemTemplates.length - 1}</span>}
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </Table.Cell>
+
+                                            {/* Status */}
+                                            <Table.Cell>
+                                                <button
+                                                    type="button"
+                                                    className="group flex items-center gap-1.5"
+                                                    onClick={() => handleToggleComplete(item)}
+                                                    aria-label={isComplete ? "Mark as incomplete" : "Mark as complete"}
+                                                >
+                                                    {isComplete ? (
+                                                        <CheckCircle className="size-4 text-success-primary" />
+                                                    ) : (
+                                                        <div className="flex size-4 items-center justify-center rounded-full border-2 border-tertiary transition group-hover:border-brand" />
+                                                    )}
+                                                    <Badge size="sm" color={rowStatus.color} type="pill-color">{rowStatus.label}</Badge>
+                                                </button>
+                                            </Table.Cell>
+
+                                            {/* Source */}
+                                            <Table.Cell>
                                                 <Badge size="sm" color={SOURCE_LABEL_COLORS[item.sourceLabel]} type="pill-color">
                                                     {SOURCE_LABEL_DISPLAY[item.sourceLabel]}
                                                 </Badge>
-                                            );
-                                        })()}
-                                        <Badge
-                                            size="sm"
-                                            color={CRITICALITY_COLORS[item.criticality]}
-                                            type="pill-color"
-                                        >
-                                            {CRITICALITY_LABELS[item.criticality]}
-                                        </Badge>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <div className="rounded-xl border border-dashed border-secondary bg-secondary p-6 text-center">
-                        <p className="text-sm text-tertiary">Evidence requirements for this KLOE are not yet defined for your service type.</p>
-                    </div>
-                )}
-                {!evidenceExcluded && (
-                    <div className="mt-3 flex flex-wrap gap-3 text-xs text-tertiary">
-                        {SOURCE_LEGEND.map((l) => (
-                            <span key={l.label} className="flex items-center gap-1.5">
-                                <span className={cx("inline-block size-2 rounded-full", l.color)} /> {l.label}
-                            </span>
-                        ))}
-                    </div>
-                )}
-            </div>
+                                            </Table.Cell>
 
-            {/* Linked Evidence */}
+                                            {/* Risk */}
+                                            <Table.Cell>
+                                                <Badge size="sm" color={CRITICALITY_COLORS[item.criticality]} type="pill-color">
+                                                    {CRITICALITY_LABELS[item.criticality]}
+                                                </Badge>
+                                            </Table.Cell>
+
+                                            {/* Actions — three-dot dropdown */}
+                                            <Table.Cell className="px-4">
+                                                <div className="flex items-center justify-end">
+                                                    <Dropdown.Root>
+                                                        <Dropdown.DotsButton />
+                                                        <Dropdown.Popover className="w-min">
+                                                            <Dropdown.Menu selectionMode="none">
+                                                                {/* View document — when a file exists */}
+                                                                {currentFile && (
+                                                                    <Dropdown.Item
+                                                                        icon={Eye}
+                                                                        onAction={() => openFileViewer(currentFile.id)}
+                                                                    >
+                                                                        <span className="pr-4">View document</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Download — when a file exists */}
+                                                                {currentFile && (
+                                                                    <Dropdown.Item
+                                                                        icon={Download01}
+                                                                        onAction={() => window.open(currentFile.fileUrl, "_blank")}
+                                                                    >
+                                                                        <span className="pr-4">Download</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Verify with AI — when a file exists */}
+                                                                {currentFile && (
+                                                                    <Dropdown.Item
+                                                                        icon={ShieldTick}
+                                                                        onAction={() => handleVerifyEvidence(item, currentFile)}
+                                                                        isDisabled={verifyingItemId === item.id}
+                                                                    >
+                                                                        <span className="pr-4">
+                                                                            {verifyingItemId === item.id ? "Verifying…" : currentFile.verificationStatus === "verified" ? "Re-verify with AI" : "Verify with AI"}
+                                                                        </span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {currentFile && <Dropdown.Separator />}
+
+                                                                {/* Toggle complete */}
+                                                                <Dropdown.Item
+                                                                    icon={isComplete ? RefreshCcw01 : CheckCircle}
+                                                                    onAction={() => handleToggleComplete(item)}
+                                                                >
+                                                                    <span className="pr-4">{isComplete ? "Mark incomplete" : "Mark complete"}</span>
+                                                                </Dropdown.Item>
+
+                                                                {/* Upload — for MANUAL_UPLOAD and CONSENTZ_MANUAL */}
+                                                                {(item.sourceLabel === "MANUAL_UPLOAD" || item.sourceLabel === "CONSENTZ_MANUAL") && (
+                                                                    <Dropdown.Item
+                                                                        icon={Upload01}
+                                                                        onAction={() => { setUploadTargetItemId(item.id); setShowUploadModal(true); }}
+                                                                    >
+                                                                        <span className="pr-4">{currentFile ? "Replace file" : "Upload evidence"}</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Link policy — for POLICY source when not linked */}
+                                                                {item.sourceLabel === "POLICY" && !statusRecord?.linkedPolicyId && (
+                                                                    <Dropdown.Item
+                                                                        icon={Link01}
+                                                                        onAction={() => { setPolicySearch(""); setLinkPolicyTarget(item.id); }}
+                                                                    >
+                                                                        <span className="pr-4">Link a policy</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Download Cura policy template(s) — when this evidence has one mapped */}
+                                                                {itemTemplates.map((t) => (
+                                                                    <Dropdown.Item
+                                                                        key={t.code}
+                                                                        icon={Download01}
+                                                                        onAction={() => window.open(getPolicyTemplateDownloadUrl(t.code), "_blank")}
+                                                                    >
+                                                                        <span className="pr-4">Download {t.code} template</span>
+                                                                    </Dropdown.Item>
+                                                                ))}
+
+                                                                {/* View linked policy — for POLICY source when linked */}
+                                                                {item.sourceLabel === "POLICY" && statusRecord?.linkedPolicyId && (
+                                                                    <Dropdown.Item
+                                                                        icon={Eye}
+                                                                        onAction={() => router.push(`/policies/${statusRecord.linkedPolicyId}`)}
+                                                                    >
+                                                                        <span className="pr-4">View linked policy</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Sync — for Consentz items when connected */}
+                                                                {isConsentz && consentzConnected && (
+                                                                    <Dropdown.Item
+                                                                        icon={RefreshCw01}
+                                                                        onAction={() => consentzSync.mutate()}
+                                                                    >
+                                                                        <span className="pr-4">Sync now</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Disconnect — for Consentz items when connected */}
+                                                                {isConsentz && consentzConnected && (
+                                                                    <Dropdown.Item
+                                                                        icon={LinkBroken01}
+                                                                        onAction={() => consentzDisconnect.mutate()}
+                                                                        isDisabled={consentzDisconnect.isPending}
+                                                                    >
+                                                                        <span className="pr-4">Disconnect Consentz</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Connect — for Consentz items when not connected */}
+                                                                {isConsentz && !consentzConnected && (
+                                                                    <Dropdown.Item
+                                                                        icon={Link01}
+                                                                        onAction={() => router.push("/settings?tab=integrations")}
+                                                                    >
+                                                                        <span className="pr-4">Connect Consentz</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Destructive actions */}
+                                                                {(currentFile || (item.sourceLabel === "POLICY" && statusRecord?.linkedPolicyId)) && <Dropdown.Separator />}
+
+                                                                {/* Unlink — for POLICY items with a linked policy */}
+                                                                {item.sourceLabel === "POLICY" && statusRecord?.linkedPolicyId && (
+                                                                    <Dropdown.Item
+                                                                        icon={LinkBroken01}
+                                                                        onAction={() => updateStatus.mutate({ evidenceItemId: item.id, status: "not_started", linkedPolicyId: null })}
+                                                                    >
+                                                                        <span className="pr-4">Unlink policy</span>
+                                                                    </Dropdown.Item>
+                                                                )}
+
+                                                                {/* Delete — when a file has been uploaded */}
+                                                                {currentFile && (
+                                                                    <Dropdown.Item
+                                                                        icon={Trash01}
+                                                                        onAction={() => {
+                                                                            if (confirmDeleteFileId === currentFile.id) {
+                                                                                deleteFile.mutate(
+                                                                                    { id: currentFile.id, kloeCode, evidenceItemId: item.id },
+                                                                                    { onSettled: () => setConfirmDeleteFileId(null) },
+                                                                                );
+                                                                            } else {
+                                                                                setConfirmDeleteFileId(currentFile.id);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <span className="pr-4">
+                                                                            {confirmDeleteFileId === currentFile.id ? "Confirm delete" : "Delete file"}
+                                                                        </span>
+                                                                    </Dropdown.Item>
+                                                                )}
+                                                            </Dropdown.Menu>
+                                                        </Dropdown.Popover>
+                                                    </Dropdown.Root>
+                                                </div>
+                                            </Table.Cell>
+                                        </Table.Row>
+                                    );
+                                }}
+                            </Table.Body>
+                        </Table>
+                    ) : (
+                        <div className="px-6 py-10 text-center">
+                            <p className="text-sm text-tertiary">Evidence requirements for this KLOE are not yet defined for your service type.</p>
+                        </div>
+                    )}
+                </TableCard.Root>
+            )}
+
+            {/* Linked Evidence — includes both per-requirement file uploads and general KLOE evidence */}
             <div>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 className="text-lg font-semibold text-primary">Linked Evidence ({kloeEvidence.length})</h2>
-                    <Button color="secondary" size="sm" iconLeading={Upload01} onClick={() => router.push(`/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`)}>Upload Evidence</Button>
+                    <h2 className="text-lg font-semibold text-primary">Linked Evidence ({kloeEvidence.length + fileMap.current.size})</h2>
+                    <Button color="secondary" size="sm" iconLeading={Upload01} onClick={() => setShowUploadModal(true)}>Upload Evidence</Button>
                 </div>
-                {kloeEvidence.length > 0 ? (
+                {(kloeEvidence.length + fileMap.current.size) > 0 ? (
                     <div className="flex flex-col gap-2">
+                        {/* Per-requirement file uploads (evidence_file_versions) */}
+                        {evidenceItems.map((item) => {
+                            const f = fileMap.current.get(item.id);
+                            if (!f) return null;
+                            const vStatus = f.verificationStatus;
+                            const badgeColor: "success" | "error" | "warning" | "gray" =
+                                vStatus === "verified" ? "success"
+                                : vStatus === "rejected" ? "error"
+                                : vStatus === "pending" ? "warning"
+                                : "gray";
+                            const badgeLabel =
+                                vStatus === "verified" ? "Verified"
+                                : vStatus === "rejected" ? "Rejected"
+                                : vStatus === "pending" ? "Verifying"
+                                : "Unverified";
+                            return (
+                                <button
+                                    key={`file_${f.id}`}
+                                    onClick={() => openFileViewer(f.id)}
+                                    className="flex items-center gap-3 rounded-xl border border-secondary bg-primary p-3 text-left transition duration-100 hover:border-brand sm:p-4"
+                                >
+                                    <File06 className="size-5 text-fg-quaternary" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-primary truncate">{f.fileName}</p>
+                                        <p className="text-xs text-tertiary truncate">
+                                            Requirement · {item.description}
+                                        </p>
+                                    </div>
+                                    <Badge size="sm" color={badgeColor} type="pill-color">{badgeLabel}</Badge>
+                                </button>
+                            );
+                        })}
+
+                        {/* General KLOE-level evidence (evidence_items) */}
                         {kloeEvidence.map((ev) => {
                             const name = ev.title ?? ev.file_name ?? ev.fileName ?? "Untitled";
                             const category = ev.category ?? "OTHER";
@@ -644,17 +1145,17 @@ export default function KloeDetailPage() {
                 ) : (
                     <div className="rounded-xl border border-dashed border-secondary bg-secondary p-8 text-center">
                         <p className="text-sm text-tertiary">No evidence linked to this KLOE yet.</p>
-                        <Button color="primary" size="sm" className="mt-3" iconLeading={Upload01} onClick={() => router.push(`/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`)}>Upload Evidence</Button>
+                        <Button color="primary" size="sm" className="mt-3" iconLeading={Upload01} onClick={() => setShowUploadModal(true)}>Upload Evidence</Button>
                     </div>
                 )}
             </div>
 
             {/* Gaps */}
             <div>
-                <h2 className="mb-4 text-lg font-semibold text-primary">Compliance Gaps ({kloeGaps.length})</h2>
-                {kloeGaps.length > 0 ? (
+                <h2 className="mb-4 text-lg font-semibold text-primary">Compliance Gaps ({allKloeGaps.length})</h2>
+                {allKloeGaps.length > 0 ? (
                     <div className="flex flex-col gap-3">
-                        {kloeGaps.map((gap) => {
+                        {allKloeGaps.map((gap) => {
                             const isExpanded = expandedGapId === gap.id;
                             const hasSteps = gap.remediationSteps && gap.remediationSteps.length > 0;
 
@@ -705,7 +1206,7 @@ export default function KloeDetailPage() {
                                                 {isExpanded ? "Hide Remediation" : "View Remediation"}
                                             </Button>
                                         )}
-                                        {gap.status !== "RESOLVED" && (
+                                        {gap.status !== "RESOLVED" && !gap.id.startsWith("derived_") && (
                                             <Button
                                                 color="tertiary"
                                                 size="sm"
@@ -753,6 +1254,465 @@ export default function KloeDetailPage() {
                     </div>
                 )}
             </div>
+
+            {/* Document Viewer Modal */}
+            {viewerFile && (
+                <ModalOverlay isOpen onOpenChange={(open) => { if (!open) setViewerFile(null); }}>
+                    <Modal className="sm:max-w-4xl">
+                        <Dialog>
+                            <div className="flex w-full flex-col overflow-hidden rounded-xl bg-primary shadow-xl ring-1 ring-secondary">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-secondary px-4 py-3 sm:px-6">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <File06 className="size-5 shrink-0 text-fg-quaternary" />
+                                        <p className="text-sm font-semibold text-primary truncate">{viewerFile.name}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <Button
+                                            color="secondary"
+                                            size="sm"
+                                            iconLeading={Download01}
+                                            onClick={() => window.open(viewerFile.url, "_blank")}
+                                        >
+                                            Download
+                                        </Button>
+                                        <button
+                                            type="button"
+                                            className="rounded-md p-1.5 text-fg-quaternary transition hover:bg-secondary hover:text-fg-quaternary_hover"
+                                            onClick={() => setViewerFile(null)}
+                                            aria-label="Close viewer"
+                                        >
+                                            <XClose className="size-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                {/* Body */}
+                                <div className="relative flex items-center justify-center bg-secondary/50" style={{ height: "min(75vh, 800px)" }}>
+                                    {viewerFile.type.startsWith("image/") ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                            src={viewerFile.url}
+                                            alt={viewerFile.name}
+                                            className="max-h-full max-w-full object-contain p-4"
+                                        />
+                                    ) : viewerFile.type === "application/pdf" || viewerFile.name.endsWith(".pdf") ? (
+                                        <iframe
+                                            src={viewerFile.url}
+                                            title={viewerFile.name}
+                                            className="h-full w-full border-0"
+                                        />
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-4 p-8 text-center">
+                                            <File06 className="size-12 text-fg-quaternary" />
+                                            <div>
+                                                <p className="text-sm font-medium text-primary">Preview not available</p>
+                                                <p className="mt-1 text-xs text-tertiary">This file type cannot be previewed in the browser.</p>
+                                            </div>
+                                            <Button
+                                                color="primary"
+                                                size="sm"
+                                                iconLeading={Download01}
+                                                onClick={() => window.open(viewerFile.url, "_blank")}
+                                            >
+                                                Download to view
+                                            </Button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </Dialog>
+                    </Modal>
+                </ModalOverlay>
+            )}
+
+            {/* Link Policy Modal */}
+            {linkPolicyTarget && (
+                <ModalOverlay isOpen onOpenChange={(open) => { if (!open) setLinkPolicyTarget(null); }}>
+                    <Modal className="sm:max-w-lg">
+                        <Dialog>
+                            <div className="flex w-full flex-col overflow-hidden rounded-xl bg-primary shadow-xl ring-1 ring-secondary">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-secondary px-5 py-4">
+                                    <div>
+                                        <h3 className="text-base font-semibold text-primary">Link a policy</h3>
+                                        <p className="mt-0.5 text-sm text-tertiary">Select a published policy to link to this evidence requirement.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="rounded-md p-1.5 text-fg-quaternary transition hover:bg-secondary hover:text-fg-quaternary_hover"
+                                        onClick={() => setLinkPolicyTarget(null)}
+                                        aria-label="Close"
+                                    >
+                                        <XClose className="size-5" />
+                                    </button>
+                                </div>
+
+                                {/* Search */}
+                                <div className="border-b border-secondary px-5 py-3">
+                                    <div className="flex items-center gap-2 rounded-lg border border-secondary bg-primary px-3 py-2">
+                                        <SearchLg className="size-4 shrink-0 text-fg-quaternary" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search policies…"
+                                            value={policySearch}
+                                            onChange={(e) => setPolicySearch(e.target.value)}
+                                            className="w-full bg-transparent text-sm text-primary placeholder:text-placeholder outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Policy list */}
+                                <div className="max-h-72 overflow-y-auto">
+                                    {(() => {
+                                        const allPolicies = (policiesResponse?.data ?? []) as Policy[];
+                                        const filtered = policySearch.trim()
+                                            ? allPolicies.filter((p) => p.title.toLowerCase().includes(policySearch.toLowerCase()))
+                                            : allPolicies;
+
+                                        if (filtered.length === 0) {
+                                            return (
+                                                <div className="px-5 py-8 text-center">
+                                                    <p className="text-sm text-tertiary">
+                                                        {allPolicies.length === 0 ? "No published policies found." : "No policies match your search."}
+                                                    </p>
+                                                </div>
+                                            );
+                                        }
+
+                                        return filtered.map((policy) => (
+                                            <button
+                                                key={policy.id}
+                                                type="button"
+                                                className="flex w-full items-center gap-3 border-b border-secondary px-5 py-3 text-left transition hover:bg-primary_hover last:border-b-0"
+                                                onClick={() => {
+                                                    updateStatus.mutate({
+                                                        evidenceItemId: linkPolicyTarget,
+                                                        status: "complete",
+                                                        linkedPolicyId: policy.id,
+                                                    });
+                                                    setLinkPolicyTarget(null);
+                                                }}
+                                            >
+                                                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10">
+                                                    <File06 className="size-4 text-brand-primary" />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-medium text-primary truncate">{policy.title}</p>
+                                                    <p className="text-xs text-tertiary">
+                                                        {policy.status === "PUBLISHED" ? "Published" : policy.status}
+                                                        {policy.category && ` · ${policy.category}`}
+                                                    </p>
+                                                </div>
+                                                <Link01 className="size-4 shrink-0 text-fg-quaternary" />
+                                            </button>
+                                        ));
+                                    })()}
+                                </div>
+
+                                {/* Footer */}
+                                <div className="border-t border-secondary px-5 py-3">
+                                    <p className="text-xs text-tertiary">
+                                        {"Don't see the policy you need? "}
+                                        <button
+                                            type="button"
+                                            className="font-medium text-brand-primary hover:text-brand-primary_hover transition"
+                                            onClick={() => { setLinkPolicyTarget(null); router.push(`/policies?domain=${domainSlug}`); }}
+                                        >
+                                            Create or generate one with AI
+                                        </button>
+                                        {" on the Policies page."}
+                                    </p>
+                                </div>
+                            </div>
+                        </Dialog>
+                    </Modal>
+                </ModalOverlay>
+            )}
+
+            {/* Upload Evidence Modal */}
+            {showUploadModal && (
+                <ModalOverlay isOpen onOpenChange={(open) => { if (!open) resetUploadModal(); }}>
+                    <Modal className="sm:max-w-xl">
+                        <Dialog>
+                            <div className="flex w-full flex-col overflow-hidden rounded-xl bg-primary shadow-xl ring-1 ring-secondary">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-secondary px-5 py-4">
+                                    <div>
+                                        <h3 className="text-base font-semibold text-primary">{uploadTargetItemId ? "Upload Requirement Evidence" : "Upload Evidence"}</h3>
+                                        <p className="mt-0.5 text-sm text-tertiary">
+                                            {uploadTargetItemId
+                                                ? evidenceItems.find((i) => i.id === uploadTargetItemId)?.description ?? `Upload a file for ${uploadTargetItemId}`
+                                                : `Upload a document and link it to ${kloeCode.toUpperCase()}.`}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="rounded-md p-1.5 text-fg-quaternary transition hover:bg-secondary hover:text-fg-quaternary_hover"
+                                        onClick={resetUploadModal}
+                                        aria-label="Close"
+                                    >
+                                        <XClose className="size-5" />
+                                    </button>
+                                </div>
+
+                                {/* Body */}
+                                <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-5 py-4">
+                                    {/* Hidden file input */}
+                                    <input
+                                        ref={uploadFileInputRef}
+                                        type="file"
+                                        accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.webp"
+                                        className="hidden"
+                                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFileSelect(f); }}
+                                    />
+
+                                    {/* Drop zone / file preview */}
+                                    {uploadFile ? (
+                                        <div className="flex items-center gap-4 rounded-xl border border-secondary bg-secondary p-4">
+                                            <div className="flex size-10 items-center justify-center rounded-lg bg-primary">
+                                                <File06 className="size-5 text-fg-quaternary" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="truncate text-sm font-medium text-primary">{uploadFile.name}</p>
+                                                <p className="text-xs text-tertiary">{formatFileSize(uploadFile.size)}</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="rounded-md p-1 text-fg-quaternary transition hover:text-fg-quaternary_hover"
+                                                onClick={() => { setUploadFile(null); if (uploadFileInputRef.current) uploadFileInputRef.current.value = ""; }}
+                                            >
+                                                <XClose className="size-4" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => uploadFileInputRef.current?.click()}
+                                            onDragOver={(e) => { e.preventDefault(); setUploadDragOver(true); }}
+                                            onDragLeave={() => setUploadDragOver(false)}
+                                            onDrop={handleUploadDrop}
+                                            className={cx(
+                                                "flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition duration-100 cursor-pointer",
+                                                uploadDragOver ? "border-brand bg-secondary" : "border-secondary bg-secondary hover:border-brand",
+                                            )}
+                                        >
+                                            <div className="flex size-10 items-center justify-center rounded-full bg-primary">
+                                                <UploadCloud01 className="size-5 text-fg-quaternary" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-primary">Click to upload or drag and drop</p>
+                                                <p className="mt-0.5 text-xs text-tertiary">PDF, DOCX, XLSX, JPG, PNG up to 10 MB</p>
+                                            </div>
+                                        </button>
+                                    )}
+
+                                    {/* Error */}
+                                    {uploadError && (
+                                        <div className="rounded-lg border border-error px-4 py-3">
+                                            <p className="text-sm text-error-primary">{uploadError}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Form fields — only show name/category for general uploads */}
+                                    {!uploadTargetItemId && (
+                                        <>
+                                            <Input
+                                                label="Document name"
+                                                placeholder="Fire Safety Certificate 2026"
+                                                isRequired
+                                                value={uploadName}
+                                                onChange={setUploadName}
+                                            />
+                                            <Select
+                                                label="Document type"
+                                                placeholder="Select type…"
+                                                isRequired
+                                                selectedKey={uploadCategory}
+                                                onSelectionChange={(key) => setUploadCategory(key as string)}
+                                                items={EVIDENCE_TYPES}
+                                            >
+                                                {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
+                                            </Select>
+                                        </>
+                                    )}
+                                    <DatePickerField
+                                        label="Expiry date (if applicable)"
+                                        value={uploadExpiry}
+                                        onChange={setUploadExpiry}
+                                    />
+
+                                    {/* Pre-filled info */}
+                                    <div className="flex items-center gap-4 rounded-lg bg-secondary px-4 py-3">
+                                        <div className="flex-1">
+                                            <p className="text-xs font-medium text-quaternary uppercase tracking-wide">Linked to</p>
+                                            <p className="mt-0.5 text-sm font-medium text-primary">
+                                                {domainSlug.charAt(0).toUpperCase() + domainSlug.slice(1)} · {kloeCode.toUpperCase()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-end gap-3 border-t border-secondary px-5 py-3">
+                                    <Button color="secondary" size="sm" onClick={resetUploadModal}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        color="primary"
+                                        size="sm"
+                                        iconLeading={uploadMutation.isSuccess ? CheckCircle : UploadCloud01}
+                                        isLoading={uploadMutation.isPending}
+                                        isDisabled={!canSubmitUpload}
+                                        onClick={() => uploadMutation.mutate()}
+                                    >
+                                        Upload &amp; Save
+                                    </Button>
+                                </div>
+                            </div>
+                        </Dialog>
+                    </Modal>
+                </ModalOverlay>
+            )}
+
+            {/* AI Verification Results Modal */}
+            {verificationResultModal && (
+                <ModalOverlay isOpen onOpenChange={(open) => { if (!open) setVerificationResultModal(null); }}>
+                    <Modal className="sm:max-w-2xl">
+                        <Dialog>
+                            <div className="flex w-full flex-col overflow-hidden rounded-xl bg-primary shadow-xl ring-1 ring-secondary">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-secondary px-5 py-4">
+                                    <div className="flex items-center gap-3">
+                                        {verificationResultModal.status === "verified" ? (
+                                            <div className="flex size-10 items-center justify-center rounded-full bg-success-primary/10">
+                                                <ShieldTick className="size-5 text-success-primary" />
+                                            </div>
+                                        ) : (
+                                            <div className="flex size-10 items-center justify-center rounded-full bg-error-primary/10">
+                                                <AlertTriangle className="size-5 text-error-primary" />
+                                            </div>
+                                        )}
+                                        <div>
+                                            <h3 className="text-base font-semibold text-primary">
+                                                {verificationResultModal.status === "verified" ? "Evidence Verified" : "Evidence Not Compliant"}
+                                            </h3>
+                                            <p className="mt-0.5 text-sm text-tertiary">
+                                                AI Compliance Score: {verificationResultModal.result.complianceScore}% · Confidence: {verificationResultModal.result.confidenceScore}%
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="rounded-md p-1.5 text-fg-quaternary transition hover:bg-secondary hover:text-fg-quaternary_hover"
+                                        onClick={() => setVerificationResultModal(null)}
+                                        aria-label="Close"
+                                    >
+                                        <XClose className="size-5" />
+                                    </button>
+                                </div>
+
+                                {/* Body */}
+                                <div className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto px-5 py-4">
+                                    {/* Summary */}
+                                    <div className={cx(
+                                        "rounded-lg border px-4 py-3",
+                                        verificationResultModal.status === "verified" ? "border-success bg-success-primary/5" : "border-error bg-error-primary/5",
+                                    )}>
+                                        <p className="text-sm text-primary">{verificationResultModal.result.summary}</p>
+                                    </div>
+
+                                    {/* Compliance Score Bar */}
+                                    <div>
+                                        <div className="mb-1.5 flex items-center justify-between">
+                                            <span className="text-xs font-medium text-tertiary">Compliance Score</span>
+                                            <span className="text-xs font-semibold text-primary">{verificationResultModal.result.complianceScore}%</span>
+                                        </div>
+                                        <ProgressBarBase
+                                            value={verificationResultModal.result.complianceScore}
+                                            max={100}
+                                            progressClassName={
+                                                verificationResultModal.result.complianceScore >= 70 ? "bg-success-primary"
+                                                : verificationResultModal.result.complianceScore >= 50 ? "bg-warning-primary"
+                                                : "bg-error-primary"
+                                            }
+                                        />
+                                    </div>
+
+                                    {/* Findings */}
+                                    {verificationResultModal.result.findings.length > 0 && (
+                                        <div>
+                                            <h4 className="mb-2 text-sm font-semibold text-primary">Findings</h4>
+                                            <div className="flex flex-col gap-2">
+                                                {verificationResultModal.result.findings.map((finding, idx) => (
+                                                    <div key={idx} className="flex items-start gap-2.5 rounded-lg border border-secondary bg-secondary px-3 py-2.5">
+                                                        {finding.met ? (
+                                                            <CheckCircle className="mt-0.5 size-4 shrink-0 text-success-primary" />
+                                                        ) : (
+                                                            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-error-primary" />
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-primary">{finding.criterion}</p>
+                                                            <p className="mt-0.5 text-xs text-tertiary">{finding.detail}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Missing Elements */}
+                                    {verificationResultModal.result.missingElements.length > 0 && (
+                                        <div>
+                                            <h4 className="mb-2 text-sm font-semibold text-primary">Missing Elements</h4>
+                                            <ul className="flex flex-col gap-1 pl-4">
+                                                {verificationResultModal.result.missingElements.map((el, idx) => (
+                                                    <li key={idx} className="list-disc text-sm text-tertiary">{el}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Recommendations */}
+                                    {verificationResultModal.result.recommendations.length > 0 && (
+                                        <div>
+                                            <h4 className="mb-2 text-sm font-semibold text-primary">Recommendations</h4>
+                                            <ul className="flex flex-col gap-1 pl-4">
+                                                {verificationResultModal.result.recommendations.map((rec, idx) => (
+                                                    <li key={idx} className="list-disc text-sm text-tertiary">{rec}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Meta info */}
+                                    <div className="flex flex-wrap gap-2">
+                                        <Badge size="sm" color="gray" type="pill-color">
+                                            {verificationResultModal.result.documentType}
+                                        </Badge>
+                                        <Badge size="sm" color={
+                                            verificationResultModal.result.dateRelevance === "current" ? "success"
+                                            : verificationResultModal.result.dateRelevance === "outdated" ? "error"
+                                            : "warning"
+                                        } type="pill-color">
+                                            {verificationResultModal.result.dateRelevance === "current" ? "Current"
+                                            : verificationResultModal.result.dateRelevance === "outdated" ? "Outdated"
+                                            : verificationResultModal.result.dateRelevance === "undated" ? "No date found"
+                                            : "N/A"}
+                                        </Badge>
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-end gap-3 border-t border-secondary px-5 py-3">
+                                    <Button color="secondary" size="sm" onClick={() => setVerificationResultModal(null)}>
+                                        Close
+                                    </Button>
+                                </div>
+                            </div>
+                        </Dialog>
+                    </Modal>
+                </ModalOverlay>
+            )}
         </div>
     );
 }

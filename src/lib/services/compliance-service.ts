@@ -17,15 +17,14 @@ export class ComplianceService {
       .maybeSingle();
 
     if (!score) {
-      return ComplianceService.recalculate(organizationId);
-    }
-
-    // Auto-recalculate if data is stale (>1 hour old) to ensure scores
-    // reflect latest evidence state and pick up any engine changes.
-    const STALE_MS = 60 * 60 * 1000; // 1 hour
-    const calculatedAt = score.calculated_at ? new Date(score.calculated_at).getTime() : 0;
-    if (Date.now() - calculatedAt > STALE_MS) {
-      return ComplianceService.recalculate(organizationId);
+      // No score row yet — return a zero-state. Scores are created when
+      // evidence is uploaded, status changes, or the user explicitly recalculates.
+      return {
+        overall: 0,
+        predictedRating: 'INADEQUATE',
+        lastUpdated: new Date().toISOString(),
+        domains: [],
+      };
     }
 
     const dbDomainToSlug = (domain: string): DomainSlug => {

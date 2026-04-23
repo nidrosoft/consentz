@@ -6,9 +6,12 @@ import {
 import {
   getKloesForDomain,
   getEvidenceItems,
-  CRITICALITY_WEIGHT,
 } from '@/lib/constants/cqc-evidence-requirements';
 import type { DomainSlug } from '@/types';
+import {
+  computeKloeScore,
+  type VerificationInfo,
+} from '@/lib/services/kloe-score-formula';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,7 +40,16 @@ export interface KloeScoreResult {
   criticalGapCount: number;
   highGapCount: number;
   isHighRisk: boolean;
+  verifiedCount: number;
+  rejectedCount: number;
 }
+
+// Evidence quality is now graduated via `computeKloeScore` in
+// `kloe-score-formula.ts`, which reads the AI-produced `complianceScore` (0-100)
+// stored on `evidence_file_versions.verification_result`. A document scoring
+// 95 contributes 0.95× its weight; a document scoring 55 contributes 0.55×.
+// The legacy binary verified/rejected logic is kept as a fallback for files
+// uploaded before auto-verification was wired up.
 
 // ---------------------------------------------------------------------------
 // scoreAnswer — per-question scoring following the spec
@@ -465,11 +477,12 @@ export async function calculateKloeScore(
   serviceType: ServiceType,
   prefetchedStatuses?: Array<{ evidence_item_id: string; status: string; expiry_status: string | null; evidence_type?: string; consentz_synced_at?: string | null }>,
   consentzConnected = true,
+  verificationMap?: Map<string, VerificationInfo>,
 ): Promise<KloeScoreResult> {
   const items = getEvidenceItems(serviceType, kloeCode);
 
   if (items.length === 0) {
-    return { kloeCode, score: 0, criticalGapCount: 0, highGapCount: 0, isHighRisk: false };
+    return { kloeCode, score: 0, criticalGapCount: 0, highGapCount: 0, isHighRisk: false, verifiedCount: 0, rejectedCount: 0 };
   }
 
   let statusRows = prefetchedStatuses;
@@ -483,67 +496,51 @@ export async function calculateKloeScore(
     statusRows = data ?? [];
   }
 
-  const SYNC_OVERDUE_MS = 24 * 60 * 60 * 1000;
-  const statusMap = new Map(
-    statusRows.map((r) => [r.evidence_item_id, r]),
-  );
-
-  let weightedSum = 0;
-  let totalWeight = 0;
-  let criticalGapCount = 0;
-  let highGapCount = 0;
-  let hasCriticalExpired = false;
-
-  for (const item of items) {
-    const weight = CRITICALITY_WEIGHT[item.criticality];
-    totalWeight += weight;
-
-    const row = statusMap.get(item.id);
-
-    // Consentz items score 0 if org not connected, no sync data, or sync overdue (>24h)
-    const isConsentzType = row?.evidence_type === 'CONSENTZ' || row?.evidence_type === 'CONSENTZ_MANUAL';
-    const consentzDisconnected = isConsentzType && !consentzConnected;
-    const consentzMissing = isConsentzType && consentzConnected && !row?.consentz_synced_at;
-    const consentzOverdue = isConsentzType && consentzConnected && row?.consentz_synced_at
-      ? (Date.now() - new Date(row.consentz_synced_at).getTime() > SYNC_OVERDUE_MS)
-      : false;
-
-    const isPresent = row?.status === 'complete'
-      && row?.expiry_status !== 'expired'
-      && !consentzDisconnected
-      && !consentzMissing
-      && !consentzOverdue;
-
-    if (isPresent) {
-      weightedSum += weight;
-    } else {
-      if (item.criticality === 'critical') {
-        criticalGapCount++;
-        if (row?.expiry_status === 'expired') hasCriticalExpired = true;
-      } else if (item.criticality === 'high') {
-        highGapCount++;
-      }
-    }
+  // If no verification map was provided, load one for this KLOE
+  let vMap = verificationMap;
+  if (!vMap) {
+    const client = await getDb();
+    const { data: fileVersions } = await client
+      .from('evidence_file_versions')
+      .select('evidence_item_id, verification_status, verification_result')
+      .eq('organization_id', organizationId)
+      .eq('kloe_code', kloeCode)
+      .eq('is_current', true);
+    vMap = new Map(
+      (fileVersions ?? []).map((fv: any) => [
+        fv.evidence_item_id as string,
+        {
+          status: (fv.verification_status as string) ?? 'unverified',
+          complianceScore: extractComplianceScore(fv.verification_result),
+        } as VerificationInfo,
+      ]),
+    );
   }
 
-  let score = totalWeight > 0 ? (weightedSum / totalWeight) * 100 : 0;
-
-  if (criticalGapCount > 0) {
-    score = Math.min(score, hasCriticalExpired ? 40 : 50);
-  }
-  if (highGapCount >= 2) {
-    score = Math.min(score, 60);
-  } else if (highGapCount > 0) {
-    score = Math.min(score, 70);
-  }
+  const computation = computeKloeScore({
+    items,
+    statusRows: statusRows as any,
+    verificationByItemId: vMap,
+    consentzConnected,
+  });
 
   return {
     kloeCode,
-    score: Math.round(score),
-    criticalGapCount,
-    highGapCount,
-    isHighRisk: criticalGapCount >= 2,
+    score: computation.score,
+    criticalGapCount: computation.criticalGapCount,
+    highGapCount: computation.highGapCount,
+    isHighRisk: computation.criticalGapCount >= 2,
+    verifiedCount: computation.verifiedCount,
+    rejectedCount: computation.rejectedCount,
   };
+}
+
+// Safely extract a 0-100 complianceScore from an evidence_file_versions.verification_result row.
+export function extractComplianceScore(result: unknown): number | null {
+  if (!result || typeof result !== 'object') return null;
+  const v = (result as Record<string, unknown>).complianceScore;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +557,7 @@ export async function recalculateComplianceScores(organizationId: string) {
     openGapsResult,
     orgResult,
     kloeStatusResult,
+    fileVersionResult,
   ] = await Promise.all([
     client
       .from('compliance_gaps')
@@ -575,6 +573,11 @@ export async function recalculateComplianceScores(organizationId: string) {
       .from('kloe_evidence_status')
       .select('kloe_code, evidence_item_id, status, expiry_status, evidence_type, consentz_synced_at')
       .eq('organization_id', organizationId),
+    client
+      .from('evidence_file_versions')
+      .select('evidence_item_id, verification_status, verification_result')
+      .eq('organization_id', organizationId)
+      .eq('is_current', true),
   ]);
 
   const openGaps = openGapsResult.data ?? [];
@@ -591,6 +594,18 @@ export async function recalculateComplianceScores(organizationId: string) {
   }>;
   const e3NutritionNa = orgResult.data?.e3_nutrition_na_aesthetic ?? false;
   const consentzConnected = !!orgResult.data?.consentz_clinic_id;
+
+  // Build verification map: evidence_item_id -> { status, complianceScore }
+  // so KLOE scoring can apply the graduated AI-produced quality factor.
+  const verificationMap = new Map<string, VerificationInfo>(
+    (fileVersionResult.data ?? []).map((fv: any) => [
+      fv.evidence_item_id as string,
+      {
+        status: (fv.verification_status as string) ?? 'unverified',
+        complianceScore: extractComplianceScore(fv.verification_result),
+      },
+    ]),
+  );
 
   // --- Per-domain scoring: domain score = average of KLOE evidence scores ---
   // The self-assessment questionnaire sets a *claimed* starting position.
@@ -628,6 +643,7 @@ export async function recalculateComplianceScores(organizationId: string) {
           serviceType,
           kloeStatuses,
           consentzConnected,
+          verificationMap,
         );
         kloeResults.push(kloeResult);
         allKloeScores.push(kloeResult);

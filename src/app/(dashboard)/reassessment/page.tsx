@@ -110,8 +110,8 @@ export default function ReAssessmentPage() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await apiGet<{ serviceType: ServiceType }>("/api/organization");
-        if (!cancelled) setServiceType(data.serviceType);
+        const { data } = await apiGet<{ service_type: ServiceType }>("/api/organization");
+        if (!cancelled) setServiceType(data.service_type);
       } catch {
         if (!cancelled) setLoadError("Could not load organisation.");
       }
@@ -239,7 +239,27 @@ export default function ReAssessmentPage() {
   if (!serviceType || !currentQuestion || activeDomains.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <p className="text-tertiary text-sm">{!serviceType ? "Loading…" : "No questions for your service type."}</p>
+        {!serviceType ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <svg
+              className="mb-4 size-8 animate-spin text-brand-600"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <p className="text-sm font-medium text-primary">Preparing your assessment</p>
+            <p className="mt-1 text-xs text-tertiary">Loading questions for your service type…</p>
+          </div>
+        ) : (
+          <p className="text-tertiary text-sm">No questions for your service type.</p>
+        )}
       </div>
     );
   }
@@ -248,11 +268,11 @@ export default function ReAssessmentPage() {
   const DomainIcon = DOMAIN_META[activeDomain].icon;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl px-4 py-6">
+      <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-display-xs text-primary font-semibold">Full Compliance Assessment</h1>
-          <p className="text-tertiary mt-1 text-sm">
+          <h1 className="text-lg text-primary font-semibold">Full Compliance Assessment</h1>
+          <p className="text-tertiary mt-0.5 text-xs">
             {answeredCount} of {totalQuestions} questions answered
           </p>
         </div>
@@ -261,7 +281,7 @@ export default function ReAssessmentPage() {
         </Button>
       </div>
 
-      <ProgressBarBase value={answeredCount} min={0} max={Math.max(totalQuestions, 1)} className="mb-6" />
+      <ProgressBarBase value={answeredCount} min={0} max={Math.max(totalQuestions, 1)} className="mb-4" />
 
       {error && (
         <p className="text-error-primary mb-4 text-sm" role="alert">
@@ -269,7 +289,7 @@ export default function ReAssessmentPage() {
         </p>
       )}
 
-      <div className="border-secondary bg-secondary mb-4 flex flex-wrap gap-1 rounded-xl border p-1">
+      <div className="border-secondary bg-secondary mb-3 flex items-center gap-0.5 rounded-lg border p-0.5 overflow-x-auto">
         {activeDomains.map((domain, i) => {
           const meta = DOMAIN_META[domain];
           const Icon = meta.icon;
@@ -284,31 +304,31 @@ export default function ReAssessmentPage() {
                 setActiveQuestionIdx(0);
               }}
               className={cx(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition duration-100 whitespace-nowrap",
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition duration-100 whitespace-nowrap",
                 i === activeDomainIdx ? "bg-primary text-primary shadow-xs" : "text-tertiary hover:text-secondary",
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-3.5" />
               {meta.label}
-              <span className="text-tertiary text-xs">
-                ({doneCount}/{totalInDomain})
+              <span className="text-quaternary text-[10px]">
+                {doneCount}/{totalInDomain}
               </span>
             </button>
           );
         })}
       </div>
 
-      <div className="text-tertiary mb-2 text-sm">
-        <DomainIcon className="text-fg-secondary mr-1 inline size-4" />
+      <div className="text-tertiary mb-1.5 text-xs">
+        <DomainIcon className="text-fg-secondary mr-1 inline size-3.5" />
         {DOMAIN_META[activeDomain].label} — Question {activeQuestionIdx + 1} of {domainQuestions.length}
       </div>
 
-      <div className="border-secondary bg-primary rounded-xl border p-6">
-        <p className="text-brand-secondary mb-1 text-xs font-medium">
+      <div className="border-secondary bg-primary rounded-xl border p-5">
+        <p className="text-brand-secondary mb-0.5 text-[10px] font-semibold uppercase tracking-wide">
           {currentQuestion.kloeCode} · {currentQuestion.regulationCodes.join(", ")}
         </p>
-        <p className="text-primary mb-6 text-base font-medium">{currentQuestion.text}</p>
-        {currentQuestion.helpText && <p className="text-tertiary mb-4 text-sm">{currentQuestion.helpText}</p>}
+        <p className="text-primary mb-4 text-sm font-medium leading-snug">{currentQuestion.text}</p>
+        {currentQuestion.helpText && <p className="text-tertiary mb-3 text-xs leading-relaxed">{currentQuestion.helpText}</p>}
 
         {currentQuestion.answerType === "multi_select" && currentQuestion.options ? (
           <div className="flex flex-col gap-3">
@@ -332,14 +352,14 @@ export default function ReAssessmentPage() {
             ))}
           </div>
         ) : currentQuestion.answerType === "scale" ? (
-          <div className="grid grid-cols-5 gap-2 sm:gap-3">
+          <div className="grid grid-cols-5 gap-2">
             {(["1", "2", "3", "4", "5"] as const).map((n) => (
               <button
                 key={n}
                 type="button"
                 onClick={() => setAnswers((prev) => ({ ...prev, [currentQuestion.id]: Number.parseInt(n, 10) }))}
                 className={cx(
-                  "rounded-lg border-2 px-2 py-3 text-center text-sm font-medium transition duration-100 sm:px-4",
+                  "rounded-lg border px-2 py-2 text-center text-xs font-medium transition duration-100",
                   answers[currentQuestion.id] === Number.parseInt(n, 10)
                     ? "border-brand-600 bg-brand-primary text-brand-primary"
                     : "border-secondary bg-primary text-secondary hover:border-brand-300",
@@ -350,14 +370,14 @@ export default function ReAssessmentPage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className={cx("grid gap-2", options.length <= 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4")}>
             {options.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => handleScalarAnswer(currentQuestion.id, opt.value)}
                 className={cx(
-                  "rounded-lg border-2 px-4 py-3 text-left text-sm font-medium transition duration-100",
+                  "rounded-lg border px-3 py-2 text-center text-xs font-medium transition duration-100",
                   answers[currentQuestion.id] === opt.value
                     ? OPTION_COLORS[opt.value] ||
                       "border-brand-600 bg-brand-primary text-brand-primary"
@@ -371,10 +391,10 @@ export default function ReAssessmentPage() {
         )}
       </div>
 
-      <div className="mt-6 flex justify-between">
+      <div className="mt-4 flex justify-between">
         <Button
           color="secondary"
-          size="lg"
+          size="md"
           iconLeading={ChevronLeft}
           isDisabled={isFirstQuestion}
           onClick={goPrevQuestion}
@@ -382,13 +402,13 @@ export default function ReAssessmentPage() {
           Previous
         </Button>
         {isLastQuestion ? (
-          <Button color="primary" size="lg" isLoading={submitting} onClick={handleSubmit}>
+          <Button color="primary" size="md" isLoading={submitting} onClick={handleSubmit}>
             Submit Assessment
           </Button>
         ) : (
           <Button
             color="primary"
-            size="lg"
+            size="md"
             iconTrailing={ChevronRight}
             isDisabled={!questionHasAnswer(currentQuestion, answers)}
             onClick={goNextQuestion}
