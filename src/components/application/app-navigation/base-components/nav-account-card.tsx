@@ -4,7 +4,8 @@ import type { FC, HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { Placement } from "@react-types/overlays";
-import { Bell01, BookOpen01, ChevronSelectorVertical, LogOut01, Settings01, User01, Users01 } from "@untitledui/icons";
+import { Bell01, ChevronSelectorVertical, LogOut01, Settings01, User01, Users01 } from "@untitledui/icons";
+import { useUiStore } from "@/stores/ui-store";
 import { useFocusManager } from "react-aria";
 import type { DialogProps as AriaDialogProps } from "react-aria-components";
 import { Button as AriaButton, Dialog as AriaDialog, DialogTrigger as AriaDialogTrigger, Popover as AriaPopover } from "react-aria-components";
@@ -46,6 +47,7 @@ export const NavAccountMenu = ({
     const displayAccounts = accounts ?? placeholderAccounts;
     const { requestSignOutConfirm } = useSignOutConfirm();
     const router = useRouter();
+    const setNotificationsOpen = useUiStore((s) => s.setNotificationsOpen);
     const focusManager = useFocusManager();
     const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -91,10 +93,9 @@ export const NavAccountMenu = ({
                     </div>
                 )}
                 <div className="flex flex-col gap-0.5 py-1.5">
-                    <NavAccountCardMenuItem label="View profile" icon={User01} onClick={() => router.push("/settings")} />
+                    <NavAccountCardMenuItem label="View profile" icon={User01} onClick={() => router.push("/settings?tab=profile")} />
                     <NavAccountCardMenuItem label="Account settings" icon={Settings01} onClick={() => router.push("/settings")} />
-                    <NavAccountCardMenuItem label="Notifications" icon={Bell01} onClick={() => router.push("/settings?tab=notifications")} />
-                    <NavAccountCardMenuItem label="Documentation" icon={BookOpen01} />
+                    <NavAccountCardMenuItem label="Notifications" icon={Bell01} onClick={() => setNotificationsOpen(true)} />
                 </div>
                 <div className="border-t border-secondary px-2 py-2">
                     <Button iconLeading={Users01} color="secondary" size="sm" className="w-full" onClick={() => router.push("/settings?tab=users")}>

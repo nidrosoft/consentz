@@ -11,6 +11,7 @@ import { Select } from "@/components/base/select/select";
 import { Table, TableCard } from "@/components/application/table/table";
 import { cx } from "@/utils/cx";
 import { useEvidence } from "@/hooks/use-evidence";
+import { useAllKloeScores } from "@/hooks/use-kloe-scores";
 import { toEvidence } from "@/lib/evidence-mapper";
 import { DomainBadgeList } from "@/components/shared/domain-badge";
 import type { EvidenceType, EvidenceStatus, DomainSlug } from "@/types";
@@ -27,12 +28,15 @@ const KLOE_DOMAIN_COLORS: Record<string, { text: string; bg: string }> = {
     W: { text: "text-[#10B981]", bg: "bg-[#ECFDF5]" },
 };
 
-function KloeBadge({ code }: { code: string }) {
+function KloeBadge({ code, score }: { code: string; score?: number }) {
     const colors = KLOE_DOMAIN_COLORS[code.charAt(0).toUpperCase()];
     if (!colors) return <span className="text-xs text-tertiary">{code}</span>;
     return (
-        <span className={cx("rounded px-1 py-px text-[10px] font-semibold leading-tight", colors.text, colors.bg)}>
+        <span className={cx("rounded px-1.5 py-px text-[10px] font-semibold leading-tight", colors.text, colors.bg)}>
             {code}
+            {typeof score === "number" && (
+                <span className="opacity-70"> — {score}%</span>
+            )}
         </span>
     );
 }
@@ -51,6 +55,7 @@ export default function EvidencePage() {
     const [sortBy, setSortBy] = useState<"date" | "name">("date");
     const [showFilters, setShowFilters] = useState(false);
 
+    const { scoresByKloe } = useAllKloeScores();
     const { data, isLoading, error } = useEvidence({
         search: search || undefined,
         status: statusFilter ?? undefined,
@@ -258,13 +263,14 @@ export default function EvidencePage() {
                         <button
                             key={ev.id}
                             onClick={() => router.push(`/evidence/${ev.id}`)}
-                            className="flex flex-col gap-3 rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 hover:shadow-xs"
+                            className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-secondary bg-primary p-4 text-left transition duration-100 hover:border-brand-300 hover:shadow-xs"
+                            title={ev.name}
                         >
                             <div className="flex size-10 items-center justify-center rounded-lg bg-secondary">
                                 <File06 className="size-5 text-fg-quaternary" />
                             </div>
-                            <div>
-                                <p className="text-sm font-medium text-primary">{ev.name}</p>
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-primary">{ev.name}</p>
                                 <p className="mt-0.5 text-xs text-tertiary">{ev.type.replace("_", " ")}</p>
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -276,7 +282,7 @@ export default function EvidencePage() {
                             <div className="flex items-center gap-2 text-xs text-tertiary">
                                 {ev.linkedKloes.length > 0 ? (
                                     <span className="flex flex-wrap items-center gap-1">
-                                        {ev.linkedKloes.map((k) => <KloeBadge key={k} code={k} />)}
+                                        {ev.linkedKloes.map((k) => <KloeBadge key={k} code={k} score={scoresByKloe[k]} />)}
                                     </span>
                                 ) : null}
                                 {ev.linkedKloes.length > 0 && ev.uploadedBy && <span>&middot;</span>}
@@ -320,7 +326,7 @@ export default function EvidencePage() {
                                     </Table.Cell>
                                     <Table.Cell className="hidden sm:table-cell">
                                         <span className="flex flex-wrap items-center gap-1">
-                                            {ev.linkedKloes.map((k) => <KloeBadge key={k} code={k} />)}
+                                            {ev.linkedKloes.map((k) => <KloeBadge key={k} code={k} score={scoresByKloe[k]} />)}
                                         </span>
                                     </Table.Cell>
                                     <Table.Cell>

@@ -19,8 +19,15 @@ export const updatePolicySchema = createPolicySchema.partial().extend({
 });
 
 export const generatePolicySchema = z.object({
-  templateId: z.string().min(1).max(100),
+  // Either a Cura template code (preferred — uses uploaded DOCX as RAG ground
+  // truth) or a legacy free-form templateId string ("Safeguarding Adults Policy").
+  // At least one must be supplied; `templateCode` takes precedence when both are present.
+  templateId: z.string().min(1).max(100).optional(),
+  templateCode: z.string().min(1).max(32).optional(),
   customInstructions: z.string().max(2000).optional(),
+}).refine((v) => !!(v.templateCode ?? v.templateId), {
+  message: 'Either templateCode or templateId is required',
+  path: ['templateId'],
 });
 
 export const policyFilterSchema = z.object({

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
     ChevronLeft, File06, AlertTriangle, CheckCircle, ChevronDown, ChevronUp,
     Upload01, UploadCloud01, RefreshCcw01, Link01, LinkBroken01, Trash01, RefreshCw01,
-    Eye, Download01, XClose, SearchLg, ShieldTick,
+    Eye, Download01, XClose, SearchLg, ShieldTick, Stars01,
 } from "@untitledui/icons";
 import { FileIcon } from "@untitledui/file-icons";
 import { Badge } from "@/components/base/badges/badges";
@@ -854,16 +854,39 @@ export default function KloeDetailPage() {
                                                                 Exp. {new Date(statusRecord.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                                                             </p>
                                                         )}
-                                                        {!currentFile && primaryTemplate && (
-                                                            <a
-                                                                href={getPolicyTemplateDownloadUrl(primaryTemplate.code)}
-                                                                className="mt-0.5 inline-flex items-center gap-1 text-xs text-brand-primary hover:underline"
-                                                                title={`Download pre-filled ${primaryTemplate.title}${itemTemplates.length > 1 ? ` (+${itemTemplates.length - 1} more)` : ""}`}
-                                                            >
-                                                                <Download01 className="size-3" />
-                                                                Cura template: {primaryTemplate.code}
-                                                                {itemTemplates.length > 1 && <span className="text-tertiary">+{itemTemplates.length - 1}</span>}
-                                                            </a>
+                                                        {!currentFile && (primaryTemplate || item.sourceLabel === "POLICY") && (
+                                                            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                                                                {primaryTemplate && (
+                                                                    <a
+                                                                        href={getPolicyTemplateDownloadUrl(primaryTemplate.code)}
+                                                                        className="inline-flex items-center gap-1 text-brand-primary hover:underline"
+                                                                        title={`Download pre-filled ${primaryTemplate.title}${itemTemplates.length > 1 ? ` (+${itemTemplates.length - 1} more)` : ""}`}
+                                                                    >
+                                                                        <Download01 className="size-3" />
+                                                                        Cura template: {primaryTemplate.code}
+                                                                        {itemTemplates.length > 1 && <span className="text-tertiary">+{itemTemplates.length - 1}</span>}
+                                                                    </a>
+                                                                )}
+                                                                {item.sourceLabel === "POLICY" && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="inline-flex items-center gap-1 text-brand-primary hover:underline"
+                                                                        title={primaryTemplate
+                                                                            ? `Generate a personalised ${primaryTemplate.code} policy using AI`
+                                                                            : "Generate this policy using AI"}
+                                                                        onClick={() => {
+                                                                            const qs = new URLSearchParams();
+                                                                            if (primaryTemplate) qs.set("templateCode", primaryTemplate.code);
+                                                                            qs.set("kloe", kloeCode);
+                                                                            qs.set("evidenceItemId", item.id);
+                                                                            router.push(`/policies/create?${qs.toString()}`);
+                                                                        }}
+                                                                    >
+                                                                        <Stars01 className="size-3" />
+                                                                        Generate with AI
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1186,11 +1209,13 @@ export default function KloeDetailPage() {
                                                 }
                                                 onClick={() => {
                                                     if (gap.remediationAction?.includes("Upload")) {
-                                                        router.push(`/evidence/upload?kloe=${kloeCode}&domain=${domainSlug}`);
+                                                        // Pass kloe in lowercase so the upload-page "Back" button returns to
+                                                        // the exact same URL casing the user arrived from.
+                                                        router.push(`/evidence/upload?kloe=${kloeCode.toLowerCase()}&domain=${domainSlug}`);
                                                     } else if (gap.remediationAction?.includes("policy") || gap.remediationAction?.includes("Policy")) {
                                                         router.push(`/policies?domain=${domainSlug}`);
                                                     } else if (gap.remediationAction?.includes("Consentz")) {
-                                                        router.push("/settings");
+                                                        router.push("/settings?tab=integrations");
                                                     }
                                                 }}
                                             >

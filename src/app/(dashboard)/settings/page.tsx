@@ -1380,6 +1380,10 @@ function NotificationsPanel() {
 
 const TAB_MAP: Record<string, string> = {
     organization: "organisation",
+    // "profile" is an alias for the organisation tab — it shows the clinic's
+    // registered profile (name, CQC IDs, registered manager, address). Users
+    // reach this via the sidebar menu's "View profile" item.
+    profile: "organisation",
     users: "users",
     billing: "billing",
     integrations: "integrations",

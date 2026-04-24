@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { CheckCircle, ChevronLeft, FileCheck02, Loading01, Stars01 } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { TextArea } from "@/components/base/textarea/textarea";
-import { useCreatePolicy, useGeneratePolicy, useTemplates, useUpdatePolicy } from "@/hooks/use-policies";
+import { useCreatePolicy, useGeneratePolicy, useUpdatePolicy } from "@/hooks/use-policies";
+import { useAllPolicyTemplates } from "@/hooks/use-policy-templates";
 
 const CATEGORIES = ["Health & Safety", "Clinical", "Governance", "HR", "Operations", "Safeguarding"];
 
@@ -52,10 +53,12 @@ function useGenerationProgress(isGenerating: boolean) {
 
 export default function CreatePolicyPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const prefillTemplateCode = searchParams.get("templateCode");
 
-    // AI generation state
-    const [aiExpanded, setAiExpanded] = useState(false);
-    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+    // AI generation state — selectedTemplateCode is a Cura code (e.g. "CPS-14").
+    const [aiExpanded, setAiExpanded] = useState(!!prefillTemplateCode);
+    const [selectedTemplateCode, setSelectedTemplateCode] = useState<string | null>(prefillTemplateCode);
     const [customInstructions, setCustomInstructions] = useState("");
 
     // Manual form state
@@ -65,7 +68,7 @@ export default function CreatePolicyPage() {
     const [version, setVersion] = useState("");
 
     // Hooks
-    const { data: templates, isLoading: templatesLoading } = useTemplates();
+    const { data: templates, isLoading: templatesLoading } = useAllPolicyTemplates();
     const generatePolicy = useGeneratePolicy();
     const createPolicy = useCreatePolicy();
     const updatePolicy = useUpdatePolicy();
@@ -73,28 +76,34 @@ export default function CreatePolicyPage() {
     const isGenerating = generatePolicy.isPending;
     const stepIndex = useGenerationProgress(isGenerating);
 
+    // Flatten Cura templates into Select items; the label is "CPS-14 — <title>"
+    // and supportingText is the category so users can skim to the right section.
     const templateItems = useMemo(() => {
         if (!templates) return [];
-        return templates.map((t) => ({
-            id: t.id,
-            label: t.name,
-            supportingText: t.description,
+        // Sort by category then by code so related templates group together.
+        const sorted = [...templates].sort((a, b) =>
+            a.category === b.category ? a.code.localeCompare(b.code) : a.category.localeCompare(b.category)
+        );
+        return sorted.map((t) => ({
+            id: t.code,
+            label: `${t.code} — ${t.title}`,
+            supportingText: t.categoryLabel,
         }));
     }, [templates]);
 
     const manualFormValid = title.trim().length > 0 && category !== null && content.trim().length > 0;
 
     const handleGenerate = useCallback(() => {
-        if (!selectedTemplateId) return;
+        if (!selectedTemplateCode) return;
         generatePolicy.mutate(
-            { templateId: selectedTemplateId, customInstructions: customInstructions || undefined },
+            { templateCode: selectedTemplateCode, customInstructions: customInstructions || undefined },
             {
                 onSuccess: (data) => {
                     router.push(`/policies/${data.policy.id}`);
                 },
             },
         );
-    }, [selectedTemplateId, customInstructions, generatePolicy, router]);
+    }, [selectedTemplateCode, customInstructions, generatePolicy, router]);
 
     const handleSaveDraft = useCallback(() => {
         if (!title.trim() || !category) return;
@@ -146,7 +155,7 @@ export default function CreatePolicyPage() {
                     <div className="flex-1">
                         <h3 className="text-lg font-semibold text-primary">AI-Generated Policy</h3>
                         <p className="mt-1 text-sm text-tertiary">
-                            Generate a CQC-compliant policy draft using AI. You can then review and edit before publishing.
+                            Generate a CQC-compliant policy draft using AI. The generator uses the relevant Cura template as its structural and compliance baseline, then personalises it for your clinic. You can review and edit before publishing.
                         </p>
 
                         {!aiExpanded && !isGenerating && (
@@ -188,13 +197,13 @@ export default function CreatePolicyPage() {
                                     ) : (
                                         <div className="mt-5 flex flex-col gap-4">
                                             <Select
-                                                label="Policy template"
-                                                placeholder={templatesLoading ? "Loading templates…" : "Select a template"}
+                                                label="Cura policy template"
+                                                placeholder={templatesLoading ? "Loading Cura templates…" : "Select a Cura template"}
                                                 isRequired
                                                 isDisabled={templatesLoading}
                                                 items={templateItems}
-                                                selectedKey={selectedTemplateId}
-                                                onSelectionChange={(key) => setSelectedTemplateId(key as string)}
+                                                selectedKey={selectedTemplateCode}
+                                                onSelectionChange={(key) => setSelectedTemplateCode(key as string)}
                                             >
                                                 {(item) => (
                                                     <Select.Item key={item.id} id={item.id} supportingText={item.supportingText}>
@@ -216,7 +225,7 @@ export default function CreatePolicyPage() {
                                                     color="primary"
                                                     size="sm"
                                                     iconLeading={Stars01}
-                                                    isDisabled={!selectedTemplateId}
+                                                    isDisabled={!selectedTemplateCode}
                                                     onClick={handleGenerate}
                                                 >
                                                     Generate

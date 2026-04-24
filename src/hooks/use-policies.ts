@@ -124,7 +124,12 @@ export function useTemplates() {
 export function useGeneratePolicy() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { templateId: string; customInstructions?: string }) =>
+    mutationFn: (data: {
+      templateId?: string;
+      /** Cura template code (e.g. "CPS-14") — preferred. */
+      templateCode?: string;
+      customInstructions?: string;
+    }) =>
       apiPost<{ policy: { id: string }; linkedKloes: string[] }>('/api/policies/generate', data).then((r) => r.data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['policies'] });

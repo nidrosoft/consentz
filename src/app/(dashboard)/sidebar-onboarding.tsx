@@ -3,13 +3,16 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, Circle, X } from "@untitledui/icons";
+import { CheckCircle, Circle, X, Rocket01, Stars02 } from "@untitledui/icons";
 import { ProgressBar } from "@/components/base/progress-indicators/progress-indicators";
 import { Button } from "@/components/base/buttons/button";
 import { cx } from "@/utils/cx";
 import { apiGet } from "@/lib/api-client";
+import { FeaturedCardUpgradeCTA } from "@/components/application/featured-card/featured-card-upgrade-cta";
+import { useSubscriptionUpgrade } from "@/hooks/use-subscription";
 
 const DISMISS_KEY = "consentz_onboarding_dismissed";
+const UPGRADE_DISMISS_KEY = "consentz_upgrade_cta_dismissed";
 
 const STEPS = [
     { key: "org_profile", label: "Complete your profile" },
@@ -30,9 +33,11 @@ const STEP_HREF: Record<string, string> = {
 export function SidebarOnboarding() {
     const router = useRouter();
     const [dismissed, setDismissed] = useState(true);
+    const [upgradeDismissed, setUpgradeDismissed] = useState(true);
 
     useEffect(() => {
         setDismissed(localStorage.getItem(DISMISS_KEY) === "true");
+        setUpgradeDismissed(localStorage.getItem(UPGRADE_DISMISS_KEY) === "true");
     }, []);
 
     const { data, isLoading } = useQuery({
@@ -41,7 +46,10 @@ export function SidebarOnboarding() {
             apiGet<{ steps: { step_key: string; completed_at: string }[] }>("/api/onboarding/progress").then((r) => r.data),
     });
 
-    if (isLoading || dismissed) return null;
+    const { currentPlan, nextPlan, isFree, isTopTier, isLoading: subLoading } =
+        useSubscriptionUpgrade();
+
+    if (isLoading) return null;
 
     const completedKeys = new Set(data?.steps?.map((s) => s.step_key) ?? []);
     const completedCount = STEPS.filter((s) => completedKeys.has(s.key)).length;
@@ -50,9 +58,48 @@ export function SidebarOnboarding() {
 
     const nextStep = STEPS.find((s) => !completedKeys.has(s.key));
 
+    // Show the upgrade CTA once the user has either completed onboarding OR
+    // explicitly dismissed the checklist. Users who are already on the top
+    // paid tier, or who have also dismissed the upgrade CTA, see nothing.
+    const onboardingFinished = dismissed || allDone;
+    const showUpgrade =
+        onboardingFinished &&
+        !upgradeDismissed &&
+        !subLoading &&
+        !isTopTier &&
+        !!nextPlan;
+
+    if (dismissed && !showUpgrade) return null;
+
     function handleDismiss() {
         localStorage.setItem(DISMISS_KEY, "true");
         setDismissed(true);
+    }
+
+    function handleUpgradeDismiss() {
+        localStorage.setItem(UPGRADE_DISMISS_KEY, "true");
+        setUpgradeDismissed(true);
+    }
+
+    if (onboardingFinished && showUpgrade && nextPlan) {
+        // Upgrade card copy adapts to free vs. mid-tier users.
+        const title = isFree ? `Upgrade to ${nextPlan.name}` : `Level up to ${nextPlan.name}`;
+        const description = isFree
+            ? `Unlock full AI policy generation, unlimited evidence verification, and priority CQC insights with ${nextPlan.name}.`
+            : `You're on ${currentPlan?.name ?? "the current plan"}. Move to ${nextPlan.name} for expanded limits and premium features.`;
+        const icon = isFree ? Stars02 : Rocket01;
+        const badge = isFree ? "Free" : currentPlan?.name;
+        return (
+            <FeaturedCardUpgradeCTA
+                icon={icon}
+                title={title}
+                badge={badge}
+                description={description}
+                confirmLabel={isFree ? "Upgrade now" : `Upgrade to ${nextPlan.name}`}
+                onConfirm={() => router.push("/settings?tab=billing")}
+                onDismiss={handleUpgradeDismiss}
+            />
+        );
     }
 
     return (

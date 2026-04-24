@@ -276,6 +276,19 @@ export class AIService {
     serviceType: string;
     organizationName?: string;
     additionalContext?: string;
+    /**
+     * Optional Cura reference template. When supplied, the AI uses it as the
+     * structural & compliance baseline (RAG ground truth) rather than
+     * generating from scratch.
+     */
+    referenceTemplate?: {
+      code: string;
+      title: string;
+      category: string;
+      /** Extracted DOCX body text — will be truncated to stay within context. */
+      contentText: string;
+      linkedKloes?: string[];
+    };
   }): Promise<{ content: string; title: string; category?: string; linkedKloes?: string[] }> {
     const client = getClient();
     if (!client) {
@@ -306,16 +319,61 @@ This policy should be reviewed annually.`,
     const serviceLabel =
       params.serviceType === 'AESTHETIC_CLINIC' ? 'aesthetic clinic' : 'care home';
 
-    const systemPrompt = buildPolicySystemPrompt(serviceLabel);
+    // Base system prompt (21-section structure + CQC rules).
+    let systemPrompt = buildPolicySystemPrompt(serviceLabel);
 
-    let userContent = `Generate a ${params.policyType} policy for our ${serviceLabel}`;
-    if (params.organizationName) userContent += ` called "${params.organizationName}"`;
-    if (params.additionalContext) userContent += `.\n\nAdditional context: ${params.additionalContext}`;
-    userContent += '.';
+    // When a Cura reference template is supplied, append it to the system
+    // prompt so Claude uses it as the structural / compliance ground truth.
+    if (params.referenceTemplate) {
+      const ref = params.referenceTemplate;
+      // Keep well below Claude's context window but large enough to convey
+      // the full structure of a typical Cura policy (~20-30k chars).
+      const MAX_REF_CHARS = 50_000;
+      const body = ref.contentText.length > MAX_REF_CHARS
+        ? ref.contentText.slice(0, MAX_REF_CHARS) + '\n\n[... reference truncated for length ...]'
+        : ref.contentText;
+
+      systemPrompt += `
+
+=== REFERENCE TEMPLATE (Cura ${ref.code} — ${ref.title}) ===
+
+The organisation has adopted the Cura Cosmetic Clinic Policies & Procedures
+Manual as its baseline. The following text is the verbatim body of the Cura
+template for this policy. Treat it as the AUTHORITATIVE STRUCTURE and
+COMPLIANCE BASELINE.
+
+Instructions when a reference template is supplied:
+- Preserve every CQC-required section and numbered heading from the reference.
+- Preserve the spirit and intent of each section — do not weaken or shorten.
+- Personalise boilerplate (organisation name, CQC registration no., addresses,
+  review dates) for the named clinic, substituting sensible [Placeholders] when
+  unknown.
+- Enrich with any Clinic-specific context from the user's instructions, but
+  never remove regulatory content.
+- Keep CQC Regulation numbers and KLOE codes exactly as cited in the reference.
+- Output plain text (no Markdown).
+
+--- BEGIN REFERENCE (${ref.category}) ---
+${body}
+--- END REFERENCE ---`;
+    }
+
+    let userContent: string;
+    if (params.referenceTemplate) {
+      userContent = `Produce a personalised version of the ${params.referenceTemplate.code} (${params.referenceTemplate.title}) policy for our ${serviceLabel}`;
+      if (params.organizationName) userContent += ` called "${params.organizationName}"`;
+      userContent += '. Use the Cura reference template in the system prompt as your structural baseline. Do not remove any CQC-required sections.';
+      if (params.additionalContext) userContent += `\n\nAdditional context from the user: ${params.additionalContext}`;
+    } else {
+      userContent = `Generate a ${params.policyType} policy for our ${serviceLabel}`;
+      if (params.organizationName) userContent += ` called "${params.organizationName}"`;
+      if (params.additionalContext) userContent += `.\n\nAdditional context: ${params.additionalContext}`;
+      userContent += '.';
+    }
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 12000,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     });
@@ -323,13 +381,16 @@ This policy should be reviewed annually.`,
     const content =
       response.content[0].type === 'text' ? response.content[0].text : '';
     const titleMatch = content.match(/^[A-Z][A-Z\s&:,'-]+$/m);
-    const title = titleMatch ? titleMatch[0].trim() : `${params.policyType} Policy`;
+    const fallbackTitle = params.referenceTemplate?.title ?? `${params.policyType} Policy`;
+    const title = titleMatch ? titleMatch[0].trim() : fallbackTitle;
 
     return {
       content,
       title,
-      category: params.policyType,
-      linkedKloes: AIService.getKloesForCategory(params.policyType),
+      category: params.referenceTemplate?.category ?? params.policyType,
+      linkedKloes: params.referenceTemplate?.linkedKloes?.length
+        ? params.referenceTemplate.linkedKloes
+        : AIService.getKloesForCategory(params.policyType),
     };
   }
 

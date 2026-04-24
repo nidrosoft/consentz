@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -132,7 +132,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         }
         return crumb;
     });
-    const [notifOpen, setNotifOpen] = useState(false);
+    const notifOpen = useUiStore((s) => s.notificationsOpen);
+    const setNotifOpen = useUiStore((s) => s.setNotificationsOpen);
 
     const { data: org } = useOrganization();
     const { data: me } = useMe();
