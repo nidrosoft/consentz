@@ -1,11 +1,21 @@
 # CQC Compliance Platform — Assessment Engine Specification
 
-> **File 7 of 7** | The brain that evaluates every compliance dimension and tells users exactly where they stand
+> **File 7 of 8** | The brain that evaluates every compliance dimension and tells users exactly where they stand
 > **Question Bank:** 120+ questions across 5 domains × 2 service types
-> **Scoring Model:** Weighted percentage with evidence quality & timeliness factors
+> **Scoring Model:** ⚠️ **PARTIALLY SUPERSEDED** — see banner below
 > **Rating Prediction:** Mirrors CQC aggregation methodology with domain-level limiters
-> **Last Updated:** February 2026
-> **Companion Files:** `01-ARCHITECTURE.md` · `02-DATABASE.md` · `03-UI-UX.md` · `04-CQC-FRAMEWORK.md` · `05-API-SERVICES.md` · `06-AUTH-SECURITY.md`
+> **Last Updated:** February 2026 (scoring sections superseded May 2026)
+> **Companion Files:** `01-ARCHITECTURE.md` · `02-DATABASE.md` · `03-UI-UX.md` · `04-CQC-FRAMEWORK.md` · `05-API-SERVICES.md` · `06-AUTH-SECURITY.md` · `08-EVIDENCE-SCORING-ENGINE.md`
+
+---
+
+> ## ⚠️ Scoring sections superseded
+>
+> Sections **§11 (Scoring Engine Pipeline)**, **§12 (Evidence Quality & Timeliness Factors)**, and **§18 (Worked Examples)** below describe the **legacy** questionnaire-driven scoring model that has been replaced by an evidence-first model in production since April 2026.
+>
+> **For the current scoring model, see → [`08-EVIDENCE-SCORING-ENGINE.md`](./08-EVIDENCE-SCORING-ENGINE.md)**
+>
+> The rest of this file (§1–§10, §13–§17, §19) — covering the questionnaire architecture, KLOE structure, question bank, conditional logic, and re-assessment flow — **remains current** and is the canonical reference for those areas.
 
 ---
 
